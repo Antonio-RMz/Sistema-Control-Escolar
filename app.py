@@ -1,9 +1,9 @@
-from flask import Flask, jsonify  # Trae Flask (para el servidor) y jsonify (para enviar datos como JSON)
+from flask import Flask, jsonify, request # Trae Flask (para el servidor) y jsonify (para enviar datos como JSON)
 import pymysql                    # Trae la librería para conectar Python con bases de datos MySQL
-
+from flask_cors import CORS
 # Crea la aplicación Flask. Es el "cerebro" que manejará las rutas de tu sitio web
 app = Flask(__name__)
-
+CORS(app)
 # Función que sirve como "puerta" para entrar a la base de datos cada vez que la necesites
 def get_connection():
     return pymysql.connect(
@@ -122,6 +122,88 @@ def get_generaciones():
     # Convierte la lista de diccionarios a un formato JSON que el navegador entienda
     return jsonify(generaciones)
 
+@app.route('/alumnos', methods=['POST'])
+def create_alumno():
+    data = request.json
+
+    nombre = data.get('nombre')
+    apPaterno = data.get('apPaterno')
+    apMaterno = data.get('apMaterno')
+    fechaNacimiento = data.get('fechaNacimiento')
+    if not nombre or not apPaterno:
+        return jsonify({"error": "Faltan datos"}), 400
+
+    conexion = get_connection()
+    cursor = conexion.cursor()
+
+    query = """
+    INSERT INTO TB_ALUMNOS (nombre, apPaterno, apMaterno,fechaNacimiento)
+    VALUES (%s, %s, %s, %s)
+    """
+
+    cursor.execute(query, (nombre, apPaterno, apMaterno, fechaNacimiento))
+    conexion.commit()
+
+    cursor.close()
+    conexion.close()
+
+    return jsonify({"mensaje": "Alumno creado correctamente"})
+
+@app.route('/grupos', methods=['POST'])
+def create_grupo():
+    data = request.json
+
+    clave = data.get('clave')
+    fechaCreacion = data.get('fechaCreacion')
+    fechaInicio = data.get('fechaInicio')
+    fechaFin = data.get('fechaFin')
+    if not clave or not fechaCreacion:
+        return jsonify({"error": "Faltan datos"}), 400
+
+    conexion = get_connection()
+    cursor = conexion.cursor()
+
+    query = """
+    INSERT INTO TB_GRUPOS (clave, fechaCreacion, fechaInicio, fechaFin)
+    VALUES (%s, %s, %s, %s)
+    """
+
+    cursor.execute(query, (clave, fechaCreacion, fechaInicio, fechaFin))
+    conexion.commit()
+
+    cursor.close()
+    conexion.close()
+
+    return jsonify({"mensaje": "Grupo creado correctamente"})
+
+@app.route('/generaciones', methods=['POST'])
+def create_generacion():
+    data = request.json
+
+    numeroGeneracion = data.get('numeroGeneracion')
+    periodo = data.get('periodo')
+    createBy = data.get('createBy')
+    UpdateBy = data.get('UpdateBy')
+    if not numeroGeneracion or not periodo:
+        return jsonify({"error": "Faltan datos"}), 400
+
+    conexion = get_connection()
+    cursor = conexion.cursor()
+
+    query = """
+    INSERT INTO TB_GENERACIONES (numeroGeneracion, periodo, createBy, UpdateBy)
+    VALUES (%s, %s, %s, %s)
+    """
+
+    cursor.execute(query, (numeroGeneracion, periodo, createBy, UpdateBy))
+    conexion.commit()
+
+    cursor.close()
+    conexion.close()
+
+    return jsonify({"mensaje": "Generación creada correctamente"})
+
+#ultima seccion 
 if __name__ == '__main__':
     
     app.run(debug=True)
