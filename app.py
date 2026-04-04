@@ -21,8 +21,8 @@ def get_alumnos():
 
     # El mensajero ejecuta la orden SQL para pedir los datos de la tabla de alumnos
     cursor.execute("""
-        SELECT id, nombre, apPaterno, apMaterno 
-        FROM TB_ALUMNOS
+        SELECT id, nombre, apPaterno, apMaterno,id_generacion,id_grupo
+        FROM TB_ALUMNOS 
     """)
 
     # fetchall() atrapa TODOS los registros que encontró la consulta y los guarda en una lista
@@ -40,7 +40,9 @@ def get_alumnos():
             "id": fila[0],         # El primer dato de la fila es el ID
             "nombre": fila[1],     # El segundo es el nombre
             "apPaterno": fila[2],  # El tercero el apellido paterno
-            "apMaterno": fila[3]   # El cuarto el apellido materno
+            "apMaterno": fila[3],   # El cuarto el apellido materno
+            "id_Generacion": fila[4],   # El quinto es el ID de generación
+            "id_Grupo": fila[5]    # El sexto es el ID de grupo
         }
         alumnos.append(alumno)     # Agrega ese alumno a nuestra lista general
 
@@ -130,6 +132,8 @@ def create_alumno():
     apPaterno = data.get('apPaterno')
     apMaterno = data.get('apMaterno')
     fechaNacimiento = data.get('fechaNacimiento')
+    id_generacion = data.get('id_generacion')
+    id_grupo = data.get('id_grupo')
     if not nombre or not apPaterno:
         return jsonify({"error": "Faltan datos"}), 400
 
@@ -137,11 +141,11 @@ def create_alumno():
     cursor = conexion.cursor()
 
     query = """
-    INSERT INTO TB_ALUMNOS (nombre, apPaterno, apMaterno,fechaNacimiento)
-    VALUES (%s, %s, %s, %s)
+    INSERT INTO TB_ALUMNOS (nombre, apPaterno, apMaterno,fechaNacimiento,id_generacion,id_grupo)
+    VALUES (%s, %s, %s, %s, %s, %s)
     """
 
-    cursor.execute(query, (nombre, apPaterno, apMaterno, fechaNacimiento))
+    cursor.execute(query, (nombre, apPaterno, apMaterno, fechaNacimiento, id_generacion, id_grupo))
     conexion.commit()
 
     cursor.close()

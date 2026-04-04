@@ -1,21 +1,139 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document</title>
+    <title>Alumnos CRUD</title>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+        }
+
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin-top: 20px;
+        }
+
+        th, td {
+            border: 1px solid #ccc;
+            padding: 10px;
+            text-align: left;
+        }
+
+        input {
+            padding: 8px;
+            margin: 5px 0;
+            width: 200px;
+        }
+
+        button {
+            padding: 8px 12px;
+            margin-top: 10px;
+            cursor: pointer;
+        }
+
+        .btn-eliminar {
+            background-color: #e74c3c;
+            color: white;
+            border: none;
+        }
+    </style>
 </head>
 <body>
-    <h1>Lista de Alumnos</h1>
-    <div id="contenido">Cargando...</div>
 
-    <script>
-        fetch('http://127.0.0.1:5000/alumnos')
+<h1>Lista de alumnos</h1>
+
+<table>
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Nombre</th>
+            <th>Apellido Paterno</th>
+            <th>Apellido Materno</th>
+            <th>Fecha Nacimiento</th>
+            <th>Acciones</th>
+        </tr>
+    </thead>
+    <tbody id="tabla-alumnos"></tbody>
+</table>
+
+<h2>Agregar alumno</h2>
+<form id="formulario">
+    <input type="text" id="nombre" placeholder="Nombre" required><br>
+    <input type="text" id="apPaterno" placeholder="Apellido Paterno" required><br>
+    <input type="text" id="apMaterno" placeholder="Apellido Materno" required><br>
+    <input type="date" id="fechaNacimiento" required><br>
+    <button type="submit">Guardar</button>
+</form>
+
+<script>
+    const API_URL = 'http://localhost:5000/alumnos';
+
+    function cargarAlumnos() {
+        fetch(API_URL)
             .then(res => res.json())
             .then(data => {
-                document.getElementById('contenido').innerText = JSON.stringify(data);
+                const tabla = document.getElementById('tabla-alumnos');
+                tabla.innerHTML = '';
+
+                data.forEach(alumno => {
+                    const fila = document.createElement('tr');
+
+                    fila.innerHTML = `
+                        <td>${alumno.id}</td>
+                        <td>${alumno.nombre}</td>
+                        <td>${alumno.apPaterno}</td>
+                        <td>${alumno.apMaterno}</td>
+                        <td>${alumno.fechaNacimiento || ''}</td>
+                        <td>
+                            <button class="btn-eliminar" onclick="eliminarAlumno(${alumno.id})">Eliminar</button>
+                        </td>
+                    `;
+
+                    tabla.appendChild(fila);
+                });
             })
-            .catch(err => console.error("Error:", err));
-    </script>
+            .catch(err => console.error('Error:', err));
+    }
+
+    document.getElementById('formulario').addEventListener('submit', function(e) {
+        e.preventDefault();
+
+        const nombre = document.getElementById('nombre').value;
+        const apPaterno = document.getElementById('apPaterno').value;
+        const apMaterno = document.getElementById('apMaterno').value;
+        const fechaNacimiento = document.getElementById('fechaNacimiento').value;
+
+        fetch(API_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                nombre,
+                apPaterno,
+                apMaterno,
+                fechaNacimiento
+            })
+        })
+        .then(() => {
+            cargarAlumnos();
+            this.reset();
+        });
+    });
+
+    function eliminarAlumno(id) {
+        fetch(`${API_URL}/${id}`, {
+            method: 'DELETE'
+        })
+        .then(() => cargarAlumnos())
+        .catch(err => console.error('Error:', err));
+    }
+
+    cargarAlumnos();
+</script>
+
 </body>
 </html>
