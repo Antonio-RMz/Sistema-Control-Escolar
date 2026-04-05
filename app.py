@@ -3,6 +3,8 @@ import pymysql                    # Trae la librería para conectar Python con b
 from flask_cors import CORS
 # Crea la aplicación Flask. Es el "cerebro" que manejará las rutas de tu sitio web
 app = Flask(__name__)
+app.json.sort_keys = False
+app.json.ensure_ascii = False
 CORS(app)
 # Función que sirve como "puerta" para entrar a la base de datos cada vez que la necesites
 def get_connection():
@@ -21,7 +23,7 @@ def get_alumnos():
 
     # El mensajero ejecuta la orden SQL para pedir los datos de la tabla de alumnos
     cursor.execute("""
-        SELECT id, nombre, apPaterno, apMaterno,id_generacion,id_grupo
+        SELECT idAlumno, nombre, apPaterno, apMaterno,fechaNacimiento,tutor,parentesco,calle,colonia,localidad,municipio,telefonoTutor,celularAlumno,correoAlumno,escuelaProcedencia,observaciones,idGeneracion,idGrupo
         FROM TB_ALUMNOS 
     """)
 
@@ -37,12 +39,26 @@ def get_alumnos():
     # Este ciclo recorre cada fila de la base de datos para darle un formato bonito de diccionario
     for fila in resultados:
         alumno = {
-            "id": fila[0],         # El primer dato de la fila es el ID
+            "idAlumno": fila[0],         # El primer dato de la fila es el ID
             "nombre": fila[1],     # El segundo es el nombre
             "apPaterno": fila[2],  # El tercero el apellido paterno
-            "apMaterno": fila[3],   # El cuarto el apellido materno
-            "id_Generacion": fila[4],   # El quinto es el ID de generación
-            "id_Grupo": fila[5]    # El sexto es el ID de grupo
+            "apMaterno": fila[3], 
+            "fechaNacimiento": fila[4],
+            "tutor": fila[5],   
+            "parentesco": fila[6],
+            "calle": fila[7],   
+            "colonia": fila[8],
+            "localidad": fila[9],
+            "municipio": fila[10],
+            "telefonoTutor": fila[11],
+            "celularAlumno": fila[12],
+            "correoAlumno": fila[13],
+            "escuelaProcedencia": fila[14],
+            "observaciones": fila[15],
+            "idGeneracion": fila[16],
+            "idGrupo": fila[17]
+        
+            
         }
         alumnos.append(alumno)     # Agrega ese alumno a nuestra lista general
 
@@ -210,4 +226,4 @@ def create_generacion():
 #ultima seccion 
 if __name__ == '__main__':
     
-    app.run(debug=True)
+  app.run(host='0.0.0.0', port=5000, debug=True)
