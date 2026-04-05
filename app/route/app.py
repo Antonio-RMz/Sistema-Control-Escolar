@@ -12,62 +12,107 @@ def get_connection():
         host='localhost',         # Dónde está la base de datos (en tu propia compu)
         user='root',              # Usuario de la base de datos
         passwd='root',            # Contraseña de la base de datos
-        db='escuelaBTI'           # El nombre de la base de datos que quieres usar
+        db='escuelaBTI' ,   
+        cursorclass=pymysql.cursors.DictCursor
     )
 
 # Define una "ruta". Cuando alguien entre a http://localhost:5000/alumnos, se activa esta función
+
 @app.route('/alumnos', methods=['GET'])
 def get_alumnos():
-    conexion = get_connection()   # Llama a la función de arriba para abrir la conexión
-    cursor = conexion.cursor()    # Crea un "cursor", que es como el mensajero que lleva y trae datos
+    conexion = get_connection()
+    cursor = conexion.cursor()
 
-    # El mensajero ejecuta la orden SQL para pedir los datos de la tabla de alumnos
-    cursor.execute("""
-        SELECT idAlumno, nombre, apPaterno, apMaterno,fechaNacimiento,tutor,parentesco,calle,colonia,localidad,municipio,telefonoTutor,celularAlumno,correoAlumno,escuelaProcedencia,observaciones,idGeneracion,idGrupo
-        FROM TB_ALUMNOS 
-    """)
+    try:
+        # Parámetros de paginación
+        page = int(request.args.get('page', 1))
+        limit = int(request.args.get('limit', 50))
 
-    # fetchall() atrapa TODOS los registros que encontró la consulta y los guarda en una lista
-    resultados = cursor.fetchall()
+        if page < 1:
+            page = 1
+        if limit < 1:
+            limit = 50
+        if limit > 200:
+            limit = 200
 
-    # Estas líneas sirven para que tú veas en la consola negra cuántos datos llegaron (para debug)
-    print("Cantidad de filas:", len(resultados))
-    print("Resultados:", resultados)
+        offset = (page - 1) * limit
 
-    alumnos = []  # Crea una lista vacía de Python para guardar los datos ya limpios
+        # Filtros opcionales
+        idGeneracion = request.args.get('idGeneracion')
+        idGrupo = request.args.get('idGrupo')
+        search = request.args.get('search', '').strip()
 
-    # Este ciclo recorre cada fila de la base de datos para darle un formato bonito de diccionario
-    for fila in resultados:
-        alumno = {
-            "idAlumno": fila[0],         # El primer dato de la fila es el ID
-            "nombre": fila[1],     # El segundo es el nombre
-            "apPaterno": fila[2],  # El tercero el apellido paterno
-            "apMaterno": fila[3], 
-            "fechaNacimiento": fila[4],
-            "tutor": fila[5],   
-            "parentesco": fila[6],
-            "calle": fila[7],   
-            "colonia": fila[8],
-            "localidad": fila[9],
-            "municipio": fila[10],
-            "telefonoTutor": fila[11],
-            "celularAlumno": fila[12],
-            "correoAlumno": fila[13],
-            "escuelaProcedencia": fila[14],
-            "observaciones": fila[15],
-            "idGeneracion": fila[16],
-            "idGrupo": fila[17]
+        where = []
+        valores = []
+
+        if idGeneracion:
+            where.append("idGeneracion = %s")
+            valores.append(idGeneracion)
+
+        if idGrupo:
+            where.append("idGrupo = %s")
+            valores.append(idGrupo)
+
+        # Búsqueda flexible
+        if search:
+            palabras = search.split()
+
+            for palabra in palabras:
+                where.append("""
+                    (
+                        nombre LIKE %s OR
+                        apPaterno LIKE %s OR
+                        apMaterno LIKE %s
+                    )
+                """)
+                like = f"%{palabra}%"
+                valores.extend([like, like, like])
+
+        where_sql = ""
+        if where:
+            where_sql = "WHERE " + " AND ".join(where)
+
+        # Total de registros
+        sql_total = f"""
+            SELECT COUNT(*) AS total
+            FROM TB_ALUMNOS
+            {where_sql}
+        """
+        cursor.execute(sql_total, valores)
+        total = cursor.fetchone()["total"]
+
+        # Consulta paginada
+        sql_datos = f"""
+            SELECT 
+                idAlumno, nombre, apPaterno, apMaterno, fechaNacimiento,
+                tutor, parentesco, calle, colonia, localidad, municipio,
+                telefonoTutor, celularAlumno, correoAlumno,
+                escuelaProcedencia, observaciones, idGeneracion, idGrupo
+            FROM TB_ALUMNOS
+            {where_sql}
+            ORDER BY idAlumno ASC
+            LIMIT %s OFFSET %s
+        """
+
+        cursor.execute(sql_datos, valores + [limit, offset])
+        alumnos = cursor.fetchall()
+
+        return jsonify({
+            "page": page,
+            "limit": limit,
+            "total": total,
+            "total_pages": (total + limit - 1) // limit,
+            "search": search,
+            "data": alumnos
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+    finally:
+        cursor.close()
+        conexion.close()
         
-            
-        }
-        alumnos.append(alumno)     # Agrega ese alumno a nuestra lista general
-
-    conexion.close()               # Cierra la puerta de la base de datos (es buena práctica)
-
-    # Convierte la lista de diccionarios a un formato JSON que el navegador entienda
-    return jsonify(alumnos)
-
-
 @app.route('/grupos', methods=['GET'])
 def get_grupos():    
     conexion = get_connection()   
@@ -140,7 +185,7 @@ def get_generaciones():
     # Convierte la lista de diccionarios a un formato JSON que el navegador entienda
     return jsonify(generaciones)
 
-@app.route('/alumnos', methods=['POST'])
+@app.route('/crealumnos', methods=['POST'])
 def create_alumno():
     data = request.json
 
@@ -148,8 +193,19 @@ def create_alumno():
     apPaterno = data.get('apPaterno')
     apMaterno = data.get('apMaterno')
     fechaNacimiento = data.get('fechaNacimiento')
-    id_generacion = data.get('id_generacion')
-    id_grupo = data.get('id_grupo')
+    tutor = data.get('tutor')
+    parentesco = data.get('parentesco')
+    calle = data.get('calle')
+    colonia = data.get('colonia')
+    localidad = data.get('localidad')
+    municipio = data.get('municipio')
+    telefonoTutor = data.get('telefonoTutor')
+    celularAlumno = data.get('celularAlumno')
+    correoAlumno = data.get('correoAlumno')
+    escuelaProcedencia = data.get('escuelaProcedencia')
+    observaciones = data.get('observaciones')
+    idGeneracion = data.get('idGeneracion')
+    idGrupo = data.get('idGrupo')
     if not nombre or not apPaterno:
         return jsonify({"error": "Faltan datos"}), 400
 
@@ -157,11 +213,11 @@ def create_alumno():
     cursor = conexion.cursor()
 
     query = """
-    INSERT INTO TB_ALUMNOS (nombre, apPaterno, apMaterno,fechaNacimiento,id_generacion,id_grupo)
-    VALUES (%s, %s, %s, %s, %s, %s)
+    INSERT INTO TB_ALUMNOS (nombre, apPaterno, apMaterno,fechaNacimiento,tutor,parentesco,calle,colonia,localidad,municipio,telefonoTutor,celularAlumno,correoAlumno,escuelaProcedencia,observaciones,idGeneracion,idGrupo)
+    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
     """
 
-    cursor.execute(query, (nombre, apPaterno, apMaterno, fechaNacimiento, id_generacion, id_grupo))
+    cursor.execute(query, (nombre, apPaterno, apMaterno, fechaNacimiento, tutor, parentesco, calle, colonia, localidad, municipio, telefonoTutor, celularAlumno, correoAlumno, escuelaProcedencia, observaciones, idGeneracion, idGrupo))
     conexion.commit()
 
     cursor.close()
@@ -222,6 +278,8 @@ def create_generacion():
     conexion.close()
 
     return jsonify({"mensaje": "Generación creada correctamente"})
+
+
 
 #ultima seccion 
 if __name__ == '__main__':

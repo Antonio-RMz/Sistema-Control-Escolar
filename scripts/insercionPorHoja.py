@@ -19,10 +19,10 @@ def get_connection():
 def importar_alumnos_hoja1():
     try:
         archivo = 'GENERACIONES43.xlsx'  # ruta del archivo Excel
-        id_generacion = 2       # porque vas a importar solo la hoja 1
+        id_generacion =  3  # porque vas a importar solo la hoja 1
 
         # Leer solo la primera hoja del Excel
-        df = pd.read_excel(archivo, sheet_name=1)
+        df = pd.read_excel(archivo, sheet_name=37)
 
         # Limpiar nombres de columnas por si tienen espacios
         df.columns = df.columns.str.strip()
