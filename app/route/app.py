@@ -15,9 +15,7 @@ def get_connection():
         db='escuelaBTI' ,   
         cursorclass=pymysql.cursors.DictCursor
     )
-
 # Define una "ruta". Cuando alguien entre a http://localhost:5000/alumnos, se activa esta función
-
 @app.route('/alumnos', methods=['GET'])
 def get_alumnos():
     conexion = get_connection()
@@ -111,80 +109,136 @@ def get_alumnos():
 
     finally:
         cursor.close()
-        conexion.close()
-        
+        conexion.close()     
 @app.route('/grupos', methods=['GET'])
-def get_grupos():    
-    conexion = get_connection()   
-    cursor = conexion.cursor()   
-
+def get_grupos():
     
-    cursor.execute("""
-        SELECT id, clave, fechaCreacion, fechaInicio, fechaFin 
-        FROM TB_GRUPOS
-    """)
+    conexion = get_connection()
+    cursor = conexion.cursor()
 
-   
-    resultados = cursor.fetchall()
+    try:
+        cursor.execute("""
+            SELECT id, clave, fechaCreacion, fechaInicio, fechaFin
+            FROM TB_GRUPOS
+        """)
 
-   
-    print("Cantidad de filas:", len(resultados))
-    print("Resultados:", resultados)
+        resultados = cursor.fetchall()
+        return jsonify(resultados)
 
-    grupos = []  
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
-    
-    for fila in resultados:
-        grupo = {
-            "id": fila[0],         # El primer dato de la fila es el ID
-            "clave": fila[1],      # El segundo es la clave
-            "fechaCreacion": fila[2], # El tercero es la fecha de creación
-            "fechaInicio": fila[3],  # El cuarto es la fecha de inicio
-            "fechaFin": fila[4]   # El quinto es la fecha de fin
-        }
-        grupos.append(grupo)     # Agrega ese grupo a nuestra lista general
-
-    conexion.close()               # Cierra la puerta de la base de datos (es buena práctica)
-
-    # Convierte la lista de diccionarios a un formato JSON que el navegador entienda
-    return jsonify(grupos)
-
+    finally:
+        cursor.close()
+        conexion.close()
 @app.route('/generaciones', methods=['GET'])
 def get_generaciones():    
     conexion = get_connection()   
     cursor = conexion.cursor()   
 
-    
-    cursor.execute("""
-        SELECT id, numeroGeneracion, periodo, createBy, UpdateBy 
-        FROM TB_GENERACIONES
-    """)
+    try:
+        cursor.execute("""
+            SELECT id, nombreGeneracion, mesInicio, mesFin, 
+                   anioInicio, aniofin, numeroGeneracion 
+            FROM TB_GENERACIONES
+        """)
 
-   
-    resultados = cursor.fetchall()
+        resultados = cursor.fetchall()
 
-   
-    print("Cantidad de filas:", len(resultados))
-    print("Resultados:", resultados)
+        return jsonify(resultados)
 
-    generaciones = []  
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
-    
-    for fila in resultados:
-        generacion = {
-            "id": fila[0],         # El primer dato de la fila es el ID
-            "numeroGeneracion": fila[1],      # El segundo es el número de generación
-            "periodo": fila[2],  # El tercero es el periodo
-            "createBy": fila[3],  # El cuarto es el creador
-            "UpdateBy": fila[4]   # El quinto es el actualizador
-        }
-        generaciones.append(generacion)     # Agrega esa generación a nuestra lista general
+    finally:
+        cursor.close()
+        conexion.close()
+@app.route('/centroTrabajo', methods=['GET'])
+def get_centro_trabajo():      
+    conexion = get_connection()   
+    cursor = conexion.cursor()   
 
-    conexion.close()               # Cierra la puerta de la base de datos (es buena práctica)
+    try:
+        cursor.execute("""
+            SELECT id, nombre, direccion, telefono, correo
+            FROM TB_CENTROTRABAJO
+        """)
 
-    # Convierte la lista de diccionarios a un formato JSON que el navegador entienda
-    return jsonify(generaciones)
+        resultados = cursor.fetchall()
 
+        return jsonify(resultados)
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+    finally:
+        cursor.close()
+        conexion.close()
+        
+@app.route('/tipoPeriodo', methods=['GET'])
+def get_tipo_periodo():      
+    conexion = get_connection()   
+    cursor = conexion.cursor()   
+
+    try:
+        cursor.execute("""
+            SELECT id,nombrePeriodo, descripcionPeriodo
+            FROM TB_TIPOPERIODO
+        """)
+
+        resultados = cursor.fetchall()
+
+        return jsonify(resultados)
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+    finally:
+        cursor.close()
+        conexion.close() 
+@app.route('/materias', methods=['GET'])
+def get_materias():      
+    conexion = get_connection()   
+    cursor = conexion.cursor()   
+
+    try:
+        cursor.execute("""
+            SELECT id,nombreMateria, descripcionMateria, idDocente, estatusMateria
+            FROM TB_MATERIAS
+        """)
+
+        resultados = cursor.fetchall()
+
+        return jsonify(resultados)
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+    finally:
+        cursor.close()
+        conexion.close() 
+@app.route('/docentes', methods=['GET'])
+def get_docentes():      
+    conexion = get_connection()   
+    cursor = conexion.cursor()   
+
+    try:
+        cursor.execute("""
+            SELECT idDocente, nombreDocente, apPaternoDocente, apMaternoDocente, correoDocente, telefonoDocente, statusDocente, observacionesDocente
+            FROM TB_DOCENTES
+        """)
+
+        resultados = cursor.fetchall()
+
+        return jsonify(resultados)
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+    finally:
+        cursor.close()
+        conexion.close()  
+        ## de aqui comienza la seccion POST 
 @app.route('/crealumnos', methods=['POST'])
 def create_alumno():
     data = request.json
@@ -224,7 +278,6 @@ def create_alumno():
     conexion.close()
 
     return jsonify({"mensaje": "Alumno creado correctamente"})
-
 @app.route('/grupos', methods=['POST'])
 def create_grupo():
     data = request.json
@@ -233,6 +286,9 @@ def create_grupo():
     fechaCreacion = data.get('fechaCreacion')
     fechaInicio = data.get('fechaInicio')
     fechaFin = data.get('fechaFin')
+    id_centroTrabajo = data.get('id_centroTrabajo')
+    id_planEstudios = data.get('id_planEstudios')
+    id_tipoPeriodo = data.get('id_tipoPeriodo')
     if not clave or not fechaCreacion:
         return jsonify({"error": "Faltan datos"}), 400
 
@@ -240,18 +296,17 @@ def create_grupo():
     cursor = conexion.cursor()
 
     query = """
-    INSERT INTO TB_GRUPOS (clave, fechaCreacion, fechaInicio, fechaFin)
-    VALUES (%s, %s, %s, %s)
+    INSERT INTO TB_GRUPOS (clave, fechaCreacion, fechaInicio, fechaFin, id_centroTrabajo, id_tipoPeriodo, id_planEstudios)
+    VALUES (%s, %s, %s, %s, %s, %s, %s)
     """
 
-    cursor.execute(query, (clave, fechaCreacion, fechaInicio, fechaFin))
+    cursor.execute(query, (clave, fechaCreacion, fechaInicio, fechaFin, id_centroTrabajo, id_tipoPeriodo, id_planEstudios))
     conexion.commit()
 
     cursor.close()
     conexion.close()
 
     return jsonify({"mensaje": "Grupo creado correctamente"})
-
 @app.route('/generaciones', methods=['POST'])
 def create_generacion():
     data = request.json
@@ -279,9 +334,163 @@ def create_generacion():
 
     return jsonify({"mensaje": "Generación creada correctamente"})
 
+@app.route('/createCentroTrabajo', methods=['POST'])
+def create_centro_trabajo():
+    data = request.json
 
+    clave = data.get('clave')
+    nombre = data.get('nombre')
+    direccion = data.get('direccion')
+    telefono = data.get('telefono')
+    correo = data.get('correo')
+    if not clave or not nombre:
+        return jsonify({"error": "Faltan datos"}), 400
 
-#ultima seccion 
-if __name__ == '__main__':
+    conexion = get_connection()
+    cursor = conexion.cursor()
+
+    query = """
+    INSERT INTO TB_CENTROTRABAJO (clave, nombre, direccion, telefono, correo)
+    VALUES (%s, %s, %s, %s, %s)
+    """
+
+    cursor.execute(query, (clave, nombre, direccion, telefono, correo))
+    conexion.commit()
+
+    cursor.close()
+    conexion.close()
+
+    return jsonify({"mensaje": "Centro de trabajo creado correctamente"})
+
+@app.route('/createTipoPeriodo', methods=['POST'])
+def create_tipo_periodo():
+
+    data = request.json
+
+    nombrePeriodo = data.get('nombrePeriodo')
+    descripcionPeriodo = data.get('descripcionPeriodo')
     
-  app.run(host='0.0.0.0', port=5000, debug=True)
+    if not nombrePeriodo or not descripcionPeriodo:
+        return jsonify({"error": "Faltan datos"}), 400
+
+    conexion = get_connection()
+    cursor = conexion.cursor()
+
+    query = """
+    INSERT INTO TB_TIPOPERIODO (nombrePeriodo, descripcionPeriodo)
+    VALUES (%s, %s)
+    """
+
+    cursor.execute(query, (nombrePeriodo, descripcionPeriodo))
+    conexion.commit()
+
+    cursor.close()
+    conexion.close()
+
+    return jsonify({"mensaje": "Tipo de periodo creado correctamente"})
+
+@app.route('/createMateria', methods=['POST'])
+def create_materia():
+    
+    data = request.json
+
+    nombreMateria = data.get('nombreMateria')
+    descripcionMateria = data.get('descripcionMateria')
+    idDocente = data.get('idDocente')
+    estatusMateria = data.get('estatusMateria')
+    if not nombreMateria or not idDocente or not estatusMateria:
+        return jsonify({"error": "Faltan datos"}), 400
+
+    conexion = get_connection()
+    cursor = conexion.cursor()
+
+    query = """
+    INSERT INTO TB_MATERIAS (nombreMateria, descripcionMateria, idDocente, estatusMateria)
+    VALUES (%s, %s, %s, %s)
+    """
+
+    cursor.execute(query, (nombreMateria, descripcionMateria, idDocente, estatusMateria))
+    conexion.commit()
+
+    cursor.close()
+    conexion.close()
+
+    return jsonify({"mensaje": "Materia creada correctamente"})
+@app.route('/createDocente', methods=['POST'])
+def create_docente():
+    
+    data = request.json
+
+    nombreDocente = data.get('nombreDocente')
+    apPaternoDocente = data.get('apPaternoDocente')
+    apMaternoDocente = data.get('apMaternoDocente')
+    correoDocente = data.get('correoDocente')
+    telefonoDocente = data.get('telefonoDocente')
+    statusDocente = data.get('statusDocente')
+    observacionesDocente = data.get('observacionesDocente')
+    if not nombreDocente or not apPaternoDocente or not apMaternoDocente or not correoDocente or not telefonoDocente:
+        return jsonify({"error": "Faltan datos"}), 400
+
+    conexion = get_connection()
+    cursor = conexion.cursor()
+
+    query = """
+    INSERT INTO TB_DOCENTES (nombreDocente, apPaternoDocente, apMaternoDocente, correoDocente, telefonoDocente, statusDocente, observacionesDocente)
+    VALUES (%s, %s, %s, %s, %s, %s, %s)
+    """
+
+    cursor.execute(query, (nombreDocente, apPaternoDocente, apMaternoDocente, correoDocente, telefonoDocente, statusDocente, observacionesDocente))
+    conexion.commit()
+
+    cursor.close()
+    conexion.close()
+
+    return jsonify({"mensaje": "Docente creado correctamente"})
+@app.route('/createPlanEstudios', methods=['POST'])
+def create_plan_estudios():
+    
+    data = request.json
+
+    nombrePlan = data.get('nombrePlan')
+    descripcionPlan = data.get('descripcionPlan')
+    estatusPlan = data.get('estatusPlan')
+    if not nombrePlan or not descripcionPlan or not estatusPlan:
+        return jsonify({"error": "Faltan datos"}), 400
+
+    conexion = get_connection()
+    cursor = conexion.cursor()
+
+    query = """
+    INSERT INTO TB_PLANESESTUDIO (nombrePlan, descripcionPlan, estatusPlan)
+    VALUES (%s, %s, %s)
+    """
+
+    cursor.execute(query, (nombrePlan, descripcionPlan, estatusPlan))
+    conexion.commit()
+
+    cursor.close()
+    conexion.close()
+
+    return jsonify({"mensaje": "Plan de estudios creado correctamente"})
+#ultima seccion 
+
+import os
+from flask import send_from_directory
+
+# Ruta al proyecto frontend
+FRONTEND_PATH = r'D:\Proyectos\3 test bti'
+
+@app.route('/')
+def serve_index():
+    return send_from_directory(FRONTEND_PATH, 'index.html')
+
+@app.route('/<path:path>')
+def serve_static(path):
+    # Si el archivo existe en la carpeta frontend, lo servimos
+    if os.path.exists(os.path.join(FRONTEND_PATH, path)):
+        return send_from_directory(FRONTEND_PATH, path)
+    # Por defecto, si no existe, devolvemos 404 o podrías redirigir
+    return jsonify({"error": "No encontrado"}), 404
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000, debug=True)
