@@ -4,8 +4,8 @@ import os
 # Configuración de la base de datos
 DB_CONFIG = {
     'host': 'localhost',
-    'user': 'root',
-    'passwd': 'root',
+    'user': 'api_user',
+    'passwd': '123456',
     'db': 'escuelaBTI',
     'cursorclass': pymysql.cursors.DictCursor
 }
