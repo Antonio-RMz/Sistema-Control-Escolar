@@ -6,7 +6,7 @@ class CatalogosService:
         conexion = get_connection()
         cursor = conexion.cursor()
         try:
-            cursor.execute("SELECT id, nombre, direccion, telefono, correo FROM TB_CENTROTRABAJO")
+            cursor.execute("SELECT id, nombre, direccion, telefono, correo FROM tb_centrotrabajo")
             return cursor.fetchall()
         finally:
             cursor.close()
@@ -17,7 +17,7 @@ class CatalogosService:
         conexion = get_connection()
         cursor = conexion.cursor()
         try:
-            query = "INSERT INTO TB_CENTROTRABAJO (clave, nombre, direccion, telefono, correo) VALUES (%s, %s, %s, %s, %s)"
+            query = "INSERT INTO tb_centrotrabajo (clave, nombre, direccion, telefono, correo) VALUES (%s, %s, %s, %s, %s)"
             cursor.execute(query, (data.get('clave'), data.get('nombre'), data.get('direccion'), data.get('telefono'), data.get('correo')))
             conexion.commit()
             return {"mensaje": "Centro de trabajo creado correctamente"}
@@ -30,7 +30,7 @@ class CatalogosService:
         conexion = get_connection()
         cursor = conexion.cursor()
         try:
-            cursor.execute("SELECT id, nombrePeriodo, descripcionPeriodo FROM TB_TIPOPERIODO")
+            cursor.execute("SELECT id, nombrePeriodo, descripcionPeriodo FROM tb_tipoperiodo")
             return cursor.fetchall()
         finally:
             cursor.close()
@@ -41,7 +41,7 @@ class CatalogosService:
         conexion = get_connection()
         cursor = conexion.cursor()
         try:
-            query = "INSERT INTO TB_TIPOPERIODO (nombrePeriodo, descripcionPeriodo) VALUES (%s, %s)"
+            query = "INSERT INTO tb_tipoperiodo (nombrePeriodo, descripcionPeriodo) VALUES (%s, %s)"
             cursor.execute(query, (data.get('nombrePeriodo'), data.get('descripcionPeriodo')))
             conexion.commit()
             return {"mensaje": "Tipo de periodo creado correctamente"}
@@ -54,7 +54,7 @@ class CatalogosService:
         conexion = get_connection()
         cursor = conexion.cursor()
         try:
-            cursor.execute("SELECT id, nombreMateria, descripcionMateria, idDocente, estatusMateria FROM TB_MATERIAS")
+            cursor.execute("SELECT id, nombreMateria, descripcionMateria, idDocente, estatusMateria FROM tb_materias")
             return cursor.fetchall()
         finally:
             cursor.close()
@@ -65,7 +65,7 @@ class CatalogosService:
         conexion = get_connection()
         cursor = conexion.cursor()
         try:
-            query = "INSERT INTO TB_MATERIAS (nombreMateria, descripcionMateria, idDocente, estatusMateria) VALUES (%s, %s, %s, %s)"
+            query = "INSERT INTO tb_materias (nombreMateria, descripcionMateria, idDocente, estatusMateria) VALUES (%s, %s, %s, %s)"
             cursor.execute(query, (data.get('nombreMateria'), data.get('descripcionMateria'), data.get('idDocente'), data.get('estatusMateria')))
             conexion.commit()
             return {"mensaje": "Materia creada correctamente"}
@@ -78,7 +78,7 @@ class CatalogosService:
         conexion = get_connection()
         cursor = conexion.cursor()
         try:
-            cursor.execute("SELECT idDocente, nombreDocente, apPaternoDocente, apMaternoDocente, correoDocente, telefonoDocente, statusDocente, observacionesDocente FROM TB_DOCENTES")
+            cursor.execute("SELECT idDocente, nombreDocente, apPaternoDocente, apMaternoDocente, correoDocente, telefonoDocente, statusDocente, observacionesDocente FROM tb_docentes")
             return cursor.fetchall()
         finally:
             cursor.close()
@@ -90,7 +90,7 @@ class CatalogosService:
         cursor = conexion.cursor()
         try:
             query = """
-                INSERT INTO TB_DOCENTES (nombreDocente, apPaternoDocente, apMaternoDocente, correoDocente, telefonoDocente, statusDocente, observacionesDocente)
+                INSERT INTO tb_docentes (nombreDocente, apPaternoDocente, apMaternoDocente, correoDocente, telefonoDocente, statusDocente, observacionesDocente)
                 VALUES (%s, %s, %s, %s, %s, %s, %s)
             """
             cursor.execute(query, (data.get('nombreDocente'), data.get('apPaternoDocente'), data.get('apMaternoDocente'), data.get('correoDocente'), data.get('telefonoDocente'), data.get('statusDocente'), data.get('observacionesDocente')))
@@ -105,7 +105,7 @@ class CatalogosService:
         conexion = get_connection()
         cursor = conexion.cursor()
         try:
-            query = "INSERT INTO TB_PLANESESTUDIO (nombrePlan, descripcionPlan, estatusPlan) VALUES (%s, %s, %s)"
+            query = "INSERT INTO tb_planesestudio (nombrePlan, descripcionPlan, estatusPlan) VALUES (%s, %s, %s)"
             cursor.execute(query, (data.get('nombrePlan'), data.get('descripcionPlan'), data.get('estatusPlan')))
             conexion.commit()
             return {"mensaje": "Plan de estudios creado correctamente"}

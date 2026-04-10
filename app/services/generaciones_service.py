@@ -9,7 +9,7 @@ class GeneracionesService:
             cursor.execute("""
                 SELECT id, nombreGeneracion, mesInicio, mesFin, 
                        anioInicio, aniofin, numeroGeneracion 
-                FROM TB_GENERACIONES
+                FROM tb_generaciones
             """)
             return cursor.fetchall()
         finally:
@@ -22,7 +22,7 @@ class GeneracionesService:
         cursor = conexion.cursor()
         try:
             query = """
-                INSERT INTO TB_GENERACIONES (numeroGeneracion, periodo, createBy, UpdateBy)
+                INSERT INTO tb_generaciones (numeroGeneracion, periodo, createBy, UpdateBy)
                 VALUES (%s, %s, %s, %s)
             """
             values = (

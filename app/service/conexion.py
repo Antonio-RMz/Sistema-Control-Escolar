@@ -10,7 +10,7 @@ miConexion = pymysql.connect(host='localhost', user='root', passwd='root', db='e
 # el cursor te permite recordar dónde estás en los resultados de una consulta SQL,
 # para que puedas acceder a los datos de manera eficiente y flexible.
 cur = miConexion.cursor()
-cur.execute("SELECT * FROM TB_ALUMNOS")
-# Imprime los resultados de la consulta. Se trae los registros de la tabla TB_ALUMNOS
+cur.execute("SELECT * FROM tb_alumnos")
+# Imprime los resultados de la consulta. Se trae los registros de la tabla tb_alumnos
 for fila in cur.fetchall():
     print(fila)

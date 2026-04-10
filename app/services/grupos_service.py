@@ -8,7 +8,7 @@ class GruposService:
         try:
             cursor.execute("""
                 SELECT id, clave, fechaCreacion, fechaInicio, fechaFin
-                FROM TB_GRUPOS
+                FROM tb_grupos
             """)
             return cursor.fetchall()
         finally:
@@ -21,7 +21,7 @@ class GruposService:
         cursor = conexion.cursor()
         try:
             query = """
-                INSERT INTO TB_GRUPOS (
+                INSERT INTO tb_grupos (
                     clave, fechaCreacion, fechaInicio, fechaFin, 
                     id_centroTrabajo, id_tipoPeriodo, id_planEstudios
                 )

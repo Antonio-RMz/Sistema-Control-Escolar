@@ -32,7 +32,7 @@ class AlumnosService:
             where_sql = "WHERE " + " AND ".join(where) if where else ""
 
             # Total de registros
-            sql_total = f"SELECT COUNT(*) AS total FROM TB_ALUMNOS {where_sql}"
+            sql_total = f"SELECT COUNT(*) AS total FROM tb_alumnos {where_sql}"
             cursor.execute(sql_total, valores)
             total = cursor.fetchone()["total"]
 
@@ -43,7 +43,7 @@ class AlumnosService:
                     tutor, parentesco, calle, colonia, localidad, municipio,
                     telefonoTutor, celularAlumno, correoAlumno,
                     escuelaProcedencia, observaciones, idGeneracion, idGrupo
-                FROM TB_ALUMNOS
+                FROM tb_alumnos
                 {where_sql}
                 ORDER BY idAlumno ASC
                 LIMIT %s OFFSET %s
@@ -69,7 +69,7 @@ class AlumnosService:
         cursor = conexion.cursor()
         try:
             query = """
-                INSERT INTO TB_ALUMNOS (
+                INSERT INTO tb_alumnos (
                     nombre, apPaterno, apMaterno, fechaNacimiento, tutor, 
                     parentesco, calle, colonia, localidad, municipio, 
                     telefonoTutor, celularAlumno, correoAlumno, 
