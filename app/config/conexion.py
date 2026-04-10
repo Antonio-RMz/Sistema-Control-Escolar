@@ -1,18 +1,20 @@
 import pymysql
 import os
+from dotenv import load_dotenv
 
-# Configuración de la base de datos
+# Cargar variables del .env
+load_dotenv()
+
 DB_CONFIG = {
-    'host': 'localhost',
-    'user': 'root',
-    'passwd': 'root',
-    'db': 'escuelaBTI',
+    'host': os.getenv('DB_HOST'),
+    'user': os.getenv('DB_USER'),
+    'passwd': os.getenv('DB_PASSWORD'),
+    'db': os.getenv('DB_NAME'),
+    'port': int(os.getenv('DB_PORT', 3306)),
     'cursorclass': pymysql.cursors.DictCursor
 }
 
-# Ruta al proyecto frontend
-FRONTEND_PATH = r'D:\Proyectos\3 test bti'
+FRONTEND_PATH = os.getenv('FRONTEND_PATH')
 
 def get_connection():
-    """Establece y devuelve una conexión a la base de datos MySQL."""
     return pymysql.connect(**DB_CONFIG)

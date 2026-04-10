@@ -1,0 +1,89 @@
+[33mcommit ce14658f7fa04c37d892c882743713e88491fa59[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mpruebasRama1[m[33m, [m[1;31morigin/pruebasRama1[m[33m)[m
+Author: Antonio-RMz <rodriguezmendezmarcoantonioh@gmail.com>
+Date:   Fri Apr 10 16:19:10 2026 -0600
+
+    Ajuste en response de grupo
+
+[33mcommit 1238643c1067d4e7ac8a320f211045cd862afd0e[m
+Author: Antonio-RMz <rodriguezmendezmarcoantonioh@gmail.com>
+Date:   Fri Apr 10 15:39:23 2026 -0600
+
+    Punto de respaldo,ya funciona con el server
+
+[33mcommit 3ee6695cb5ccb78130fc42f33674f8913ee05ea3[m
+Author: Antonio-RMz <rodriguezmendezmarcoantonioh@gmail.com>
+Date:   Fri Apr 10 11:47:41 2026 -0600
+
+    refactor:correcion nombre de tablas
+
+[33mcommit cdb2795687583bcf8333ecb935f37109310a819c[m
+Author: Antonio-RMz <rodriguezmendezmarcoantonioh@gmail.com>
+Date:   Fri Apr 10 11:16:00 2026 -0600
+
+    refactor:3 correcion en conexion nombre de bdd
+
+[33mcommit e60dc6020d2b3b98f5705ed3cc5775bd8cea0832[m
+Author: Antonio-RMz <rodriguezmendezmarcoantonioh@gmail.com>
+Date:   Fri Apr 10 11:11:51 2026 -0600
+
+    refactor:2 correcion en conexion nombre de bdd
+
+[33mcommit 3cb1302f42dd034be37d4c5ac1f2e104f9204422[m
+Author: Antonio-RMz <rodriguezmendezmarcoantonioh@gmail.com>
+Date:   Fri Apr 10 11:06:22 2026 -0600
+
+    refactor:correcion en conexion nombre de bdd
+
+[33mcommit d213164c19ae93cc95bddfcc02a9eb7d14f6736d[m
+Author: Antonio-RMz <rodriguezmendezmarcoantonioh@gmail.com>
+Date:   Fri Apr 10 10:52:35 2026 -0600
+
+    ajuste en conexion
+
+[33mcommit 00dd6b67040caef65ed854848edfa874eafbff21[m
+Author: Antonio-RMz <rodriguezmendezmarcoantonioh@gmail.com>
+Date:   Fri Apr 10 10:28:50 2026 -0600
+
+    validando hots
+
+[33mcommit d07087e9e96edf34370d95044236d59eaa40c874[m
+Author: Antonio-RMz <rodriguezmendezmarcoantonioh@gmail.com>
+Date:   Fri Apr 10 09:52:20 2026 -0600
+
+    refactor: reorganize project into modular Flask architecture (routes, services, config
+
+[33mcommit e8af4475463e9ab32230b985310ab5c2ccb5e37e[m
+Author: Antonio-RMz <rodriguezmendezmarcoantonioh@gmail.com>
+Date:   Tue Apr 7 23:21:05 2026 -0600
+
+    creacion de endpoints materias
+
+[33mcommit c096e2ab5cab1405625896916f44e507dca5cbb8[m
+Author: Antonio-RMz <rodriguezmendezmarcoantonioh@gmail.com>
+Date:   Sun Apr 5 12:32:41 2026 -0600
+
+    Restructuracion de carpetas
+
+[33mcommit 3a6150d62bf2df73a188bc3e9b3e31c47bd27f47[m
+Author: Antonio-RMz <rodriguezmendezmarcoantonioh@gmail.com>
+Date:   Sun Apr 5 09:29:16 2026 -0600
+
+    Creacion de api para cargar alumnos desde csv
+
+[33mcommit 9e54178a42202746264475e89914e854e6d602a1[m
+Author: Antonio-RMz <rodriguezmendezmarcoantonioh@gmail.com>
+Date:   Sat Apr 4 13:56:48 2026 -0600
+
+    atributos extra para crear alumno
+
+[33mcommit 29f9067942529fd363796f5ba38e3766e8d4c5f7[m
+Author: Antonio-RMz <rodriguezmendezmarcoantonioh@gmail.com>
+Date:   Thu Apr 2 09:05:10 2026 -0600
+
+    cambios agregados a rama pruebasRama1
+
+[33mcommit 1f2560760c58011072168f9f0e60907d1b89c80a[m[33m ([m[1;31morigin/main[m[33m, [m[1;32mmain[m[33m)[m
+Author: Antonio-RMz <rodriguezmendezmarcoantonioh@gmail.com>
+Date:   Thu Mar 26 22:44:05 2026 -0600
+
+    primer commit backend control escolar
