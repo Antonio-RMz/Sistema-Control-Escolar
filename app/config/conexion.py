@@ -4,7 +4,7 @@ import os
 # Configuración de la base de datos
 DB_CONFIG = {
     'host': '127.0.0.1',
-    'port': 3307,
+    'port': 3306,
     'user': 'api_user',
     'passwd': '123456',
     'db': 'escuelabti',
