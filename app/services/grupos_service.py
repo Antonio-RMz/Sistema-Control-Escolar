@@ -2,19 +2,21 @@ from app.config.conexion import get_connection
 
 class GruposService:
     @staticmethod
+    #para obtener todos los grupos
     def get_all():
         conexion = get_connection()
         cursor = conexion.cursor()
         try:
             cursor.execute("""
-                SELECT id, clave, fechaCreacion, fechaInicio, fechaFin
+                SELECT id, clave, fechaCreacion, fechaInicio, fechaFin,
+                id_centroTrabajo, id_tipoPeriodo, id_planEstudios
                 FROM tb_grupos
             """)
             return cursor.fetchall()
         finally:
             cursor.close()
             conexion.close()
-
+#para crear los grupos
     @staticmethod
     def create(data):
         conexion = get_connection()
