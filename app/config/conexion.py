@@ -6,7 +6,7 @@ DB_CONFIG = {
     'host': 'localhost',
     'user': 'api_user',
     'passwd': '123456',
-    'db': 'escuelaBTI',
+    'db': 'escuelabti',
     'cursorclass': pymysql.cursors.DictCursor
 }
 
