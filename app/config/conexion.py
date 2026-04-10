@@ -3,7 +3,7 @@ import os
 
 # Configuración de la base de datos
 DB_CONFIG = {
-    'host': 'localhost',
+    'host': 'qa_mysql',
     'user': 'api_user',
     'passwd': '123456',
     'db': 'escuelabti',
