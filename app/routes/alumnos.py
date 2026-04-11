@@ -2,7 +2,7 @@ from flask import Blueprint, jsonify, request
 from app.services.alumnos_service import AlumnosService
 
 alumnos_bp = Blueprint('alumnos', __name__)
-
+# Método GET para consultar alumnos
 @alumnos_bp.route('/alumnos', methods=['GET'])
 def get_alumnos():
     try:
@@ -16,7 +16,9 @@ def get_alumnos():
         return jsonify(resultado)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
+    
+    
+# bloque para crar a un alumno
 @alumnos_bp.route('/crealumnos', methods=['POST'])
 def create_alumno():
     try:

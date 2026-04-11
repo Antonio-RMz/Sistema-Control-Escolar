@@ -53,24 +53,33 @@ def create_materia():
         return jsonify(CatalogosService.create_materia(data))
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+# Métodos get para docentes
 
+    
+    
+# Método para crear un nuevo docente
 @catalogos_bp.route('/docentes', methods=['GET'])
 def get_docentes():
     try:
-        return jsonify(CatalogosService.get_docentes())
+        page = int(request.args.get('page', 1))
+        limit = int(request.args.get('limit', 50))
+        search = request.args.get('search', '').strip()
+        status = request.args.get('status')  # opcional filtro
+
+        resultado = CatalogosService.get_docentes(
+            page,
+            limit,
+            search,
+            status
+        )
+
+        return jsonify(resultado)
+    
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
-@catalogos_bp.route('/createDocente', methods=['POST'])
-def create_docente():
-    try:
-        data = request.json
-        if not data.get('nombreDocente') or not data.get('apPaternoDocente') or not data.get('apMaternoDocente') or not data.get('correoDocente') or not data.get('telefonoDocente'):
-            return jsonify({"error": "Faltan datos"}), 400
-        return jsonify(CatalogosService.create_docente(data))
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
+    
+    
+    
 @catalogos_bp.route('/createPlanEstudios', methods=['POST'])
 def create_plan_estudios():
     try:
