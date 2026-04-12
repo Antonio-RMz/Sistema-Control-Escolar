@@ -62,24 +62,38 @@ class CatalogosService:
         try:
             cursor.execute(
                 """
-                SELECT 
+              SELECT 
                     m.id,
                     m.nombreMateria,
                     m.descripcionMateria,
                     m.estatusMateria,
-                    IFNULL(GROUP_CONCAT(md.idDocente), '') AS docentes
+                    IFNULL(
+                        GROUP_CONCAT(
+                            CONCAT(d.idDocente, ':', d.nombreDocente)
+                        ), 
+                        ''
+                    ) AS docentes
                 FROM tb_materias m
                 LEFT JOIN tb_materiadocente md ON m.id = md.idMateria
-                GROUP BY m.id
+                LEFT JOIN tb_docentes d ON md.idDocente = d.idDocente
+                GROUP BY m.id;
             """
             )
 
             rows = cursor.fetchall()
 
             for row in rows:
-                docentes = row["docentes"].split(",") if row["docentes"] else []
-                row["docentes"] = [int(d) for d in docentes]
+                docentes_str = row["docentes"]
+                docentes = []
 
+                if docentes_str:
+                    for d in docentes_str.split(","):
+                        id_docente, nombre = d.split(":")
+                        docentes.append(
+                            {"idDocente": int(id_docente), "nombreDocente": nombre}
+                        )
+
+                row["docentes"] = docentes
             return rows
 
         finally:
