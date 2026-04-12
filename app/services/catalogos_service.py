@@ -1,4 +1,5 @@
 from app.config.conexion import get_connection
+import pymysql
 
 
 class CatalogosService:
@@ -55,30 +56,32 @@ class CatalogosService:
 
     # Método para crear un nuevo tipo de periodo
     @staticmethod
-    def create_tipo_periodo(data):
-        conexion = get_connection()
-        cursor = conexion.cursor()
-        try:
-            query = "INSERT INTO tb_tipoperiodo (nombrePeriodo, descripcionPeriodo) VALUES (%s, %s)"
-            cursor.execute(
-                query, (data.get("nombrePeriodo"), data.get("descripcionPeriodo"))
-            )
-            conexion.commit()
-            return {"mensaje": "Tipo de periodo creado correctamente"}
-        finally:
-            cursor.close()
-            conexion.close()
-
-    # Métodos get para materias
-    @staticmethod
     def get_materias():
         conexion = get_connection()
-        cursor = conexion.cursor()
+        cursor = conexion.cursor(pymysql.cursors.DictCursor)
         try:
             cursor.execute(
-                "SELECT id, nombreMateria, descripcionMateria, idDocente, estatusMateria FROM tb_materias"
+                """
+                SELECT 
+                    m.id,
+                    m.nombreMateria,
+                    m.descripcionMateria,
+                    m.estatusMateria,
+                    IFNULL(GROUP_CONCAT(md.idDocente), '') AS docentes
+                FROM tb_materias m
+                LEFT JOIN tb_materiaDocente md ON m.id = md.idMateria
+                GROUP BY m.id
+            """
             )
-            return cursor.fetchall()
+
+            rows = cursor.fetchall()
+
+            for row in rows:
+                docentes = row["docentes"].split(",") if row["docentes"] else []
+                row["docentes"] = [int(d) for d in docentes]
+
+            return rows
+
         finally:
             cursor.close()
             conexion.close()
