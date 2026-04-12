@@ -69,7 +69,7 @@ class CatalogosService:
                     m.estatusMateria,
                     IFNULL(GROUP_CONCAT(md.idDocente), '') AS docentes
                 FROM tb_materias m
-                LEFT JOIN tb_materiaDocente md ON m.id = md.idMateria
+                LEFT JOIN tb_materiadocente md ON m.id = md.idMateria
                 GROUP BY m.id
             """
             )
