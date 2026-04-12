@@ -117,7 +117,7 @@ class CatalogosService:
             # 🔗 Insertar en tabla puente
             if docentes:
                 query_rel = """
-                INSERT INTO tb_materiaDocente (idMateria, idDocente)
+                INSERT INTO tb_materiadocente (idMateria, idDocente)
                 VALUES (%s, %s)
                 """
 
