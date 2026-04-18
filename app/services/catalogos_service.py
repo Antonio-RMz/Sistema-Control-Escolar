@@ -1,3 +1,5 @@
+from annotated_types import doc
+
 from app.config.conexion import get_connection
 import pymysql
 
@@ -136,7 +138,12 @@ class CatalogosService:
                 """
 
                 for doc in docentes:
-                    cursor.execute(query_rel, (id_materia, doc))
+                    if isinstance(doc, dict):
+                        id_docente = doc.get("idDocente")
+                    else:
+                        id_docente = doc  # compatibilidad con formato viejo
+
+                    cursor.execute(query_rel, (id_materia, id_docente))
 
             conexion.commit()
 
