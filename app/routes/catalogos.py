@@ -1,5 +1,6 @@
 from flask import Blueprint, jsonify, request
 from app.services.catalogos_service import CatalogosService
+from app.services.grupos_service import GruposService
 
 catalogos_bp = Blueprint("catalogos", __name__)
 
@@ -141,5 +142,14 @@ def create_alumno_grupo():
         if not data.get("idAlumno") or not data.get("idGrupo"):
             return jsonify({"error": "Faltan datos"}), 400
         return jsonify(CatalogosService.create_alumno_grupo(data))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@grupos_bp.route("/<int:id_grupo>/alumnos", methods=["GET"])
+def obtener_alumnos_por_grupo(id_grupo):
+    try:
+        alumnos = GruposService.get_alumnos_by_grupo(id_grupo)
+        return jsonify(alumnos)
     except Exception as e:
         return jsonify({"error": str(e)}), 500

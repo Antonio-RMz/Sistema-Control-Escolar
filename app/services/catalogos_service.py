@@ -284,3 +284,24 @@ class CatalogosService:
         finally:
             cursor.close()
             conexion.close()
+
+
+@staticmethod
+def get_alumnos_by_grupo(id_grupo):
+    conexion = get_connection()
+    cursor = conexion.cursor(dictionary=True)
+
+    query = """
+    SELECT a.*
+    FROM tb_alumnos a
+    INNER JOIN tb_alumno_grupo ag ON a.idAlumno = ag.idAlumno
+    WHERE ag.idGrupo = %s
+    """
+
+    cursor.execute(query, (id_grupo,))
+    resultados = cursor.fetchall()
+
+    cursor.close()
+    conexion.close()
+
+    return resultados
