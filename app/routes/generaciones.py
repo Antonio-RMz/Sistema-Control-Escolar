@@ -15,8 +15,9 @@ def get_generaciones():
 def create_generacion():
     try:
         data = request.json
-        if not data.get('numeroGeneracion') or not data.get('periodo'):
-            return jsonify({"error": "Faltan datos"}), 400
+        required_fields = ['nombreGeneracion', 'numeroGeneracion', 'mesInicio', 'mesFin', 'anioInicio', 'aniofin']
+        if not all(data.get(field) for field in required_fields):
+            return jsonify({"error": "Faltan datos requeridos"}), 400
         
         resultado = GeneracionesService.create(data)
         return jsonify(resultado)

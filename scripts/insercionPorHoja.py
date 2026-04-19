@@ -13,14 +13,14 @@ def get_connection():
     )
 
 
-@app.route("/importar-alumnos-hoja1", methods=["POST"])
+@app.route("/importar-alumnos-hoja", methods=["POST"])
 def importar_alumnos_hoja1():
     try:
         archivo = "GENERACIONES _CON_43.xlsx"  # ruta del archivo Excel
-        id_generacion = 37  # porque vas a importar solo la hoja 1
+        id_generacion = 39  # porque vas a importar solo la hoja 1
 
         # Leer solo la primera hoja del Excel
-        df = pd.read_excel(archivo, sheet_name=37)
+        df = pd.read_excel(archivo, sheet_name="39 GENERACION")
 
         # Limpiar nombres de columnas por si tienen espacios
         df.columns = df.columns.str.strip()
@@ -139,5 +139,6 @@ def importar_alumnos_hoja1():
         return jsonify({"error": str(e)}), 500
 
 
+print("ENTRANDO A IMPORTAR")
 if __name__ == "__main__":
     app.run(debug=True)

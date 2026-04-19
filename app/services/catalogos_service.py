@@ -159,7 +159,6 @@ class CatalogosService:
 
     # Métodos get para docentes
     @staticmethod
-    @staticmethod
     def get_docentes(page, limit, search, status):
         conexion = get_connection()
         cursor = conexion.cursor()

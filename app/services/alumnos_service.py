@@ -1,4 +1,5 @@
 from app.config.conexion import get_connection
+import pandas as pd
 
 class AlumnosService:
     @staticmethod
@@ -88,6 +89,62 @@ class AlumnosService:
             cursor.execute(query, values)
             conexion.commit()
             return {"mensaje": "Alumno creado correctamente"}
+        finally:
+            cursor.close()
+            conexion.close()
+    @staticmethod
+    def importar_alumnos_hoja(sheet_index=37, id_generacion=38):
+        conexion = get_connection()
+        cursor = conexion.cursor()
+        try:
+            archivo = "scripts/GENERACIONES _CON_43.xlsx"  # ruta del archivo Excel
+            
+            # Leer la hoja indicada
+            df = pd.read_excel(archivo, sheet_name=sheet_index)
+            
+            # Limpiar nombres de columnas
+            df.columns = df.columns.str.strip()
+            
+            insertados = 0
+            for index, row in df.iterrows():
+                # Saltar filas vacías
+                if pd.isna(row.get("nombre")) and pd.isna(row.get("apPaterno")):
+                    continue
+
+                query = """
+                INSERT INTO tb_alumnos (
+                    nombre, apPaterno, apMaterno, idGeneracion, fechaNacimiento,
+                    tutor, parentesco, calle, colonia, localidad, municipio,
+                    telefonoTutor, celularAlumno, correoAlumno, escuelaProcedencia,
+                    observaciones, numeroControl
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """
+                
+                def f(val):
+                    if pd.isna(val):
+                        return None
+                    # Si es un número (flotante), convertirlo a entero antes de pasar a string
+                    # para evitar el ".0" o notación científica
+                    if isinstance(val, (float, int)):
+                        return str(int(val)).strip()
+                    return str(val).strip()
+
+                valores = (
+                    f(row.get("nombre")), f(row.get("apPaterno")), f(row.get("apMaterno")),
+                    id_generacion, f(row.get("fechaNacimiento")), f(row.get("tutor")),
+                    f(row.get("parentesco")), f(row.get("calle")), f(row.get("colonia")),
+                    f(row.get("localidad")), f(row.get("municipio")), f(row.get("telefonoTutor")),
+                    f(row.get("celularAlumno")), f(row.get("correoAlumno")),
+                    f(row.get("escuelaProcedencia")), f(row.get("observaciones")),
+                    f(row.get("numeroControl"))
+                )
+                
+                cursor.execute(query, valores)
+                insertados += 1
+
+            conexion.commit()
+            return {"mensaje": "Alumnos importados correctamente", "total_insertados": insertados}
         finally:
             cursor.close()
             conexion.close()

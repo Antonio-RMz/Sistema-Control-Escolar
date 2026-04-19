@@ -30,3 +30,19 @@ def create_alumno():
         return jsonify(resultado)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+@alumnos_bp.route('/importar-alumnos-hoja', methods=['POST'])
+def importar_alumnos_hoja():
+    try:
+        data = request.json or {}
+        # n_hoja es 1-indexed para el usuario (ej: 38 para la hoja 38)
+        # internamente restamos 1 para que sea 0-indexed para pandas (37)
+        n_hoja = data.get('n_hoja', 38) 
+        id_gen = data.get('id_generacion', 38)
+        
+        sheet_index = n_hoja - 1
+        
+        resultado = AlumnosService.importar_alumnos_hoja(sheet_index, id_gen)
+        return jsonify(resultado), 201
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500

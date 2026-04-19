@@ -22,12 +22,22 @@ class GeneracionesService:
         cursor = conexion.cursor()
         try:
             query = """
-                INSERT INTO tb_generaciones (numeroGeneracion, periodo, createBy, UpdateBy)
-                VALUES (%s, %s, %s, %s)
+                INSERT INTO tb_generaciones (
+                    nombreGeneracion, mesInicio, mesFin, 
+                    anioInicio, aniofin, numeroGeneracion, 
+                    createBy, updateBy
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             """
             values = (
-                data.get('numeroGeneracion'), data.get('periodo'),
-                data.get('createBy'), data.get('UpdateBy')
+                data.get('nombreGeneracion'), 
+                data.get('mesInicio'), 
+                data.get('mesFin'),
+                data.get('anioInicio'), 
+                data.get('aniofin'), 
+                data.get('numeroGeneracion'),
+                data.get('createBy'), 
+                data.get('updateBy')
             )
             cursor.execute(query, values)
             conexion.commit()
