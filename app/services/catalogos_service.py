@@ -286,22 +286,51 @@ class CatalogosService:
             conexion.close()
 
 
+from flask import Blueprint, jsonify, request
+from app.services.grupos_service import GruposService
+
+grupos_bp = Blueprint("grupos", __name__)
+
+
+@grupos_bp.route("/grupos", methods=["GET"])
+def get_grupos():
+    try:
+        resultado = GruposService.get_all()
+        return jsonify(resultado)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@grupos_bp.route("/grupos", methods=["POST"])
+def create_grupo():
+    try:
+        data = request.json
+        if not data.get("clave") or not data.get("fechaCreacion"):
+            return jsonify({"error": "Faltan datos"}), 400
+
+        resultado = GruposService.create(data)
+        return jsonify(resultado)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @staticmethod
 def get_alumnos_by_grupo(id_grupo):
     conexion = get_connection()
     cursor = conexion.cursor(dictionary=True)
 
-    query = """
-    SELECT a.*
-    FROM tb_alumnos a
-    INNER JOIN tb_alumno_grupo ag ON a.idAlumno = ag.idAlumno
-    WHERE ag.idGrupo = %s
-    """
+    try:
+        query = """
+        SELECT a.*
+        FROM tb_alumnos a
+        INNER JOIN tb_alumnogrupo ag 
+            ON a.idAlumno = ag.idAlumno
+        WHERE ag.idGrupo = %s
+        """
 
-    cursor.execute(query, (id_grupo,))
-    resultados = cursor.fetchall()
+        cursor.execute(query, (id_grupo,))
+        return cursor.fetchall()
 
-    cursor.close()
-    conexion.close()
-
-    return resultados
+    finally:
+        cursor.close()
+        conexion.close()

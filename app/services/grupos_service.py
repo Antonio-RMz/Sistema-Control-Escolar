@@ -40,3 +40,21 @@ class GruposService:
         finally:
             cursor.close()
             conexion.close()
+
+    @staticmethod
+    def get_alumnos_by_grupo(id_grupo):
+        conexion = get_connection()
+        cursor = conexion.cursor()
+        try:
+            query = """
+                SELECT a.*
+                FROM tb_alumnos a
+                INNER JOIN tb_alumnogrupo ag 
+                    ON a.idAlumno = ag.idAlumno
+                WHERE ag.idGrupo = %s
+            """
+            cursor.execute(query, (id_grupo,))
+            return cursor.fetchall()
+        finally:
+            cursor.close()
+            conexion.close()

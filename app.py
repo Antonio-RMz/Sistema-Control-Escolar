@@ -28,7 +28,7 @@ def create_app():
 
 
 app = create_app()
-
+print(app.url_map)
 if __name__ == "__main__":
     print("🔥 EJECUTANDO ESTE APP.PY 🔥")
     # El servidor se ejecuta en el puerto 5000 por defecto

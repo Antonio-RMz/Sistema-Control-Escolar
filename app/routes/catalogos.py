@@ -146,10 +146,15 @@ def create_alumno_grupo():
         return jsonify({"error": str(e)}), 500
 
 
-@grupos_bp.route("/<int:id_grupo>/alumnos", methods=["GET"])
+@catalogos_bp.route("/<int:id_grupo>/alumnos", methods=["GET"])
 def obtener_alumnos_por_grupo(id_grupo):
     try:
+        print("ID RECIBIDO:", id_grupo, type(id_grupo))  # 👈 DEBUG
+
         alumnos = GruposService.get_alumnos_by_grupo(id_grupo)
+
+        print("ALUMNOS:", alumnos)  # 👈 DEBUG
+
         return jsonify(alumnos)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
