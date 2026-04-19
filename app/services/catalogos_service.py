@@ -264,3 +264,23 @@ class CatalogosService:
         finally:
             cursor.close()
             conexion.close()
+
+    # metodo para asignar alumno a grupo
+    @staticmethod
+    def create_alumno_grupo(data):
+        conexion = get_connection()
+        cursor = conexion.cursor()
+        try:
+            query = "INSERT INTO tb_alumnoGrupo (idAlumno, idGrupo) VALUES (%s, %s)"
+            cursor.execute(
+                query,
+                (
+                    data.get("idAlumno"),
+                    data.get("idGrupo"),
+                ),
+            )
+            conexion.commit()
+            return {"mensaje": "Alumno asignado al grupo correctamente"}
+        finally:
+            cursor.close()
+            conexion.close()

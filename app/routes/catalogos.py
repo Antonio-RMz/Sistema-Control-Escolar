@@ -132,3 +132,14 @@ def create_plan_estudios():
         return jsonify(CatalogosService.create_plan_estudios(data))
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@catalogos_bp.route("/createAlumnoGrupo", methods=["POST"])
+def create_alumno_grupo():
+    try:
+        data = request.json
+        if not data.get("idAlumno") or not data.get("idGrupo"):
+            return jsonify({"error": "Faltan datos"}), 400
+        return jsonify(CatalogosService.create_alumno_grupo(data))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
