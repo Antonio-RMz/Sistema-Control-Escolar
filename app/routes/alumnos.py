@@ -1,5 +1,6 @@
 from flask import Blueprint, jsonify, request
 from app.services.alumnos_service import AlumnosService
+from app.services.grupos_service import GruposService
 
 alumnos_bp = Blueprint('alumnos', __name__)
 # Método GET para consultar alumnos
@@ -14,6 +15,15 @@ def get_alumnos():
 
         resultado = AlumnosService.get_alumnos(page, limit, idGeneracion, idGrupo, search)
         return jsonify(resultado)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@alumnos_bp.route('/<int:idGrupo>/alumnos', methods=['GET'])
+def get_alumnos_by_grupo(idGrupo):
+    try:
+        # Usamos el servicio de grupos que ya hace el JOIN con tb_alumnogrupo
+        alumnos = GruposService.get_alumnos_by_grupo(idGrupo)
+        return jsonify(alumnos)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
     

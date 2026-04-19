@@ -135,6 +135,14 @@ def create_plan_estudios():
         return jsonify({"error": str(e)}), 500
 
 
+@catalogos_bp.route("/getPlanesEstudio", methods=["GET"])
+def get_planes_estudio():
+    try:
+        return jsonify(CatalogosService.get_planes_estudio())
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @catalogos_bp.route("/createAlumnoGrupo", methods=["POST"])
 def create_alumno_grupo():
     try:
@@ -145,16 +153,6 @@ def create_alumno_grupo():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-
-@catalogos_bp.route("/<int:id_grupo>/alumnos", methods=["GET"])
-def obtener_alumnos_por_grupo(id_grupo):
-    try:
-        print("ID RECIBIDO:", id_grupo, type(id_grupo))  # 👈 DEBUG
-
-        alumnos = GruposService.get_alumnos_by_grupo(id_grupo)
-
-        print("ALUMNOS:", alumnos)  # 👈 DEBUG
-
-        return jsonify(alumnos)
+        return jsonify(CatalogosService.create_alumno_grupo(data))
     except Exception as e:
         return jsonify({"error": str(e)}), 500

@@ -1,5 +1,3 @@
-from annotated_types import doc
-
 from app.config.conexion import get_connection
 import pymysql
 
@@ -49,7 +47,7 @@ class CatalogosService:
         cursor = conexion.cursor()
         try:
             cursor.execute(
-                "SELECT id, nombrePeriodo, descripcionPeriodo FROM tb_tipoperiodo"
+                "SELECT id, nombrePeriodo, descripcionPeriodo FROM tb_conceptotipoperiodo"
             )
             return cursor.fetchall()
         finally:
@@ -244,9 +242,9 @@ class CatalogosService:
             cursor.close()
             conexion.close()
 
-    # Métodos get para planes de estudio
+    # Métodos crear planes de estudio
     @staticmethod
-    def create_plan_estudios(data):
+    def create_plan_estudios():
         conexion = get_connection()
         cursor = conexion.cursor()
         try:
@@ -265,9 +263,23 @@ class CatalogosService:
             cursor.close()
             conexion.close()
 
+    @staticmethod
+    def get_planes_estudio():
+        conexion = get_connection()
+        cursor = conexion.cursor()
+        try:
+            cursor.execute(
+                "SELECT id,nombrePlan, descripcionPlan, estatusPlan FROM tb_planesestudio"
+            )
+            return cursor.fetchall()
+        finally:
+            cursor.close()
+            conexion.close()
+
     # metodo para asignar alumno a grupo
     @staticmethod
     def create_alumno_grupo(data):
+
         conexion = get_connection()
         cursor = conexion.cursor()
         try:
@@ -285,52 +297,23 @@ class CatalogosService:
             cursor.close()
             conexion.close()
 
-
-from flask import Blueprint, jsonify, request
-from app.services.grupos_service import GruposService
-
-grupos_bp = Blueprint("grupos", __name__)
-
-
-@grupos_bp.route("/grupos", methods=["GET"])
-def get_grupos():
-    try:
-        resultado = GruposService.get_all()
-        return jsonify(resultado)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-
-@grupos_bp.route("/grupos", methods=["POST"])
-def create_grupo():
-    try:
-        data = request.json
-        if not data.get("clave") or not data.get("fechaCreacion"):
-            return jsonify({"error": "Faltan datos"}), 400
-
-        resultado = GruposService.create(data)
-        return jsonify(resultado)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    @staticmethod
+    def create_tipo_periodo(data):
+        conexion = get_connection()
+        cursor = conexion.cursor()
+        try:
+            query = "INSERT INTO tb_conceptotipoperiodo (nombrePeriodo, descripcionPeriodo) VALUES (%s, %s)"
+            cursor.execute(
+                query,
+                (
+                    data.get("nombrePeriodo"),
+                    data.get("descripcionPeriodo"),
+                ),
+            )
+            conexion.commit()
+            return {"mensaje": "Tipo de periodo creado correctamente"}
+        finally:
+            cursor.close()
+            conexion.close()
 
 
-@staticmethod
-def get_alumnos_by_grupo(id_grupo):
-    conexion = get_connection()
-    cursor = conexion.cursor(dictionary=True)
-
-    try:
-        query = """
-        SELECT a.*
-        FROM tb_alumnos a
-        INNER JOIN tb_alumnogrupo ag 
-            ON a.idAlumno = ag.idAlumno
-        WHERE ag.idGrupo = %s
-        """
-
-        cursor.execute(query, (id_grupo,))
-        return cursor.fetchall()
-
-    finally:
-        cursor.close()
-        conexion.close()

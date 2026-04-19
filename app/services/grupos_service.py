@@ -2,17 +2,40 @@ from app.config.conexion import get_connection
 
 class GruposService:
     @staticmethod
-    #para obtener todos los grupos
-    def get_all():
+    #para obtener todos los grupos con búsqueda y paginación
+    def get_all(page=1, limit=50, search=''):
         conexion = get_connection()
         cursor = conexion.cursor()
         try:
-            cursor.execute("""
+            offset = (page - 1) * limit
+            where = ""
+            params = []
+            
+            if search:
+                where = " WHERE clave LIKE %s "
+                params.append(f"%{search}%")
+            
+            # Obtener el total para la paginación de Laravel
+            sql_total = f"SELECT COUNT(*) AS total FROM tb_grupos {where}"
+            cursor.execute(sql_total, params)
+            total = cursor.fetchone()["total"]
+
+            # Obtener los datos paginados
+            sql_datos = f"""
                 SELECT id, clave, fechaCreacion, fechaInicio, fechaFin,
                 id_centroTrabajo, id_tipoPeriodo, id_planEstudios
                 FROM tb_grupos
-            """)
-            return cursor.fetchall()
+                {where}
+                ORDER BY id DESC
+                LIMIT %s OFFSET %s
+            """
+            cursor.execute(sql_datos, params + [limit, offset])
+            data = cursor.fetchall()
+
+            return {
+                "data": data,
+                "total": total
+            }
         finally:
             cursor.close()
             conexion.close()
