@@ -16,11 +16,11 @@ def get_connection():
 @app.route("/importar-alumnos-hoja", methods=["POST"])
 def importar_alumnos_hoja1():
     try:
-        archivo = "GENERACIONES _CON_43.xlsx"  # ruta del archivo Excel
-        id_generacion = 39  # porque vas a importar solo la hoja 1
+        archivo = "GENERACIONES BTI 2026-2018.xlsx"  # ruta del archivo Excel
+        # id_generacion = 39  # porque vas a importar solo la hoja 1
 
         # Leer solo la primera hoja del Excel
-        df = pd.read_excel(archivo, sheet_name="39 GENERACION")
+        df = pd.read_excel(archivo, sheet_name="GEN 03-06")
 
         # Limpiar nombres de columnas por si tienen espacios
         df.columns = df.columns.str.strip()
@@ -98,7 +98,6 @@ def importar_alumnos_hoja1():
                     None if pd.isna(nombre) else str(nombre).strip(),
                     None if pd.isna(apPaterno) else str(apPaterno).strip(),
                     None if pd.isna(apMaterno) else str(apMaterno).strip(),
-                    id_generacion,
                     None if pd.isna(fechaNacimiento) else str(fechaNacimiento).strip(),
                     None if pd.isna(tutor) else str(tutor).strip(),
                     None if pd.isna(parentesco) else str(parentesco).strip(),

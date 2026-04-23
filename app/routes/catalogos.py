@@ -38,7 +38,7 @@ def create_tipo_periodo():
         data = request.json
         if not data.get("nombrePeriodo") or not data.get("descripcionPeriodo"):
             return jsonify({"error": "Faltan datos"}), 400
-        return jsonify(CatalogosService.create_tipo_periodo(data))
+        return jsonify(CatalogosService.create_tipo_periodocreate_tipo_periodo(data))
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

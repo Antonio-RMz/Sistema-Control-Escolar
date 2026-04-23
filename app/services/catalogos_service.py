@@ -244,7 +244,7 @@ class CatalogosService:
 
     # Métodos crear planes de estudio
     @staticmethod
-    def create_plan_estudios():
+    def create_plan_estudios(data):
         conexion = get_connection()
         cursor = conexion.cursor()
         try:

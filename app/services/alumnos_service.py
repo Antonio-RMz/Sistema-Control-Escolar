@@ -93,22 +93,34 @@ class AlumnosService:
             cursor.close()
             conexion.close()
     @staticmethod
-    def importar_alumnos_hoja(sheet_index=37, id_generacion=38):
+    def importar_alumnos_hoja(sheet_index=37, id_generacion=38, filename="scripts/GENERACIONES BTI 2026-2018.xlsx"):
         conexion = get_connection()
         cursor = conexion.cursor()
         try:
-            archivo = "scripts/GENERACIONES _CON_43.xlsx"  # ruta del archivo Excel
-            
             # Leer la hoja indicada
-            df = pd.read_excel(archivo, sheet_name=sheet_index)
+            df = pd.read_excel(filename, sheet_name=sheet_index)
             
             # Limpiar nombres de columnas
             df.columns = df.columns.str.strip()
             
             insertados = 0
             for index, row in df.iterrows():
+                # Helper para buscar columnas con nombres variados
+                def get_val(names):
+                    for name in names:
+                        # Buscar en las columnas del row (ignorando espacios y mayúsculas)
+                        for col in row.index:
+                            if str(col).strip().upper() == name.strip().upper():
+                                return row[col]
+                    return None
+
+                nombre = get_val(["nombre", "NOMBRE(S)", "NOMBRE"])
+                apPaterno = get_val(["apPaterno", "APELLIDO PATERNO", "PATERNO"])
+                apMaterno = get_val(["apMaterno", "APELLIDO MATERNO", "MATERNO"])
+                n_control = get_val(["numeroControl", "NUMERO CONTROL", "NM. CONTROL", "NÚM. CONTROL"])
+
                 # Saltar filas vacías
-                if pd.isna(row.get("nombre")) and pd.isna(row.get("apPaterno")):
+                if pd.isna(nombre) and pd.isna(apPaterno):
                     continue
 
                 query = """
@@ -122,22 +134,20 @@ class AlumnosService:
                 """
                 
                 def f(val):
-                    if pd.isna(val):
+                    if pd.isna(val) or val is None:
                         return None
-                    # Si es un número (flotante), convertirlo a entero antes de pasar a string
-                    # para evitar el ".0" o notación científica
                     if isinstance(val, (float, int)):
                         return str(int(val)).strip()
                     return str(val).strip()
 
                 valores = (
-                    f(row.get("nombre")), f(row.get("apPaterno")), f(row.get("apMaterno")),
+                    f(nombre), f(apPaterno), f(apMaterno),
                     id_generacion, f(row.get("fechaNacimiento")), f(row.get("tutor")),
                     f(row.get("parentesco")), f(row.get("calle")), f(row.get("colonia")),
                     f(row.get("localidad")), f(row.get("municipio")), f(row.get("telefonoTutor")),
                     f(row.get("celularAlumno")), f(row.get("correoAlumno")),
                     f(row.get("escuelaProcedencia")), f(row.get("observaciones")),
-                    f(row.get("numeroControl"))
+                    f(n_control)
                 )
                 
                 cursor.execute(query, valores)

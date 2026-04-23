@@ -1,16 +1,19 @@
 from app.config.conexion import get_connection
 
+
 class GeneracionesService:
     @staticmethod
     def get_all():
         conexion = get_connection()
         cursor = conexion.cursor()
         try:
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT id, nombreGeneracion, mesInicio, mesFin, 
-                       anioInicio, aniofin, numeroGeneracion 
+                       anioInicio, aniofin, generacion , modalidad
                 FROM tb_generaciones
-            """)
+            """
+            )
             return cursor.fetchall()
         finally:
             cursor.close()
@@ -24,20 +27,21 @@ class GeneracionesService:
             query = """
                 INSERT INTO tb_generaciones (
                     nombreGeneracion, mesInicio, mesFin, 
-                    anioInicio, aniofin, numeroGeneracion, 
+                    anioInicio, anioFin,generacion,modalidad, 
                     createBy, updateBy
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             """
             values = (
-                data.get('nombreGeneracion'), 
-                data.get('mesInicio'), 
-                data.get('mesFin'),
-                data.get('anioInicio'), 
-                data.get('aniofin'), 
-                data.get('numeroGeneracion'),
-                data.get('createBy'), 
-                data.get('updateBy')
+                data.get("nombreGeneracion"),
+                data.get("mesInicio"),
+                data.get("mesFin"),
+                data.get("anioInicio"),
+                data.get("anioFin"),
+                data.get("generacion"),
+                data.get("modalidad"),
+                data.get("createBy"),
+                data.get("updateBy"),
             )
             cursor.execute(query, values)
             conexion.commit()

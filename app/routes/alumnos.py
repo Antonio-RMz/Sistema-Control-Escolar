@@ -49,10 +49,22 @@ def importar_alumnos_hoja():
         # internamente restamos 1 para que sea 0-indexed para pandas (37)
         n_hoja = data.get('n_hoja', 38) 
         id_gen = data.get('id_generacion', 38)
+        archivo = data.get('archivo') # Opcional
         
-        sheet_index = n_hoja - 1
+        # Si es un número, restamos 1 para que sea 0-indexed para pandas
+        # Si es un string (nombre de la hoja), lo pasamos tal cual
+        if isinstance(n_hoja, int) or (isinstance(n_hoja, str) and n_hoja.isdigit()):
+            sheet_param = int(n_hoja) - 1
+        else:
+            sheet_param = n_hoja
         
-        resultado = AlumnosService.importar_alumnos_hoja(sheet_index, id_gen)
+        # Preparamos los argumentos para el servicio
+        args = [sheet_param, id_gen]
+        if archivo:
+            # Si el usuario manda un nombre de archivo, lo buscamos en la carpeta scripts
+            args.append(f"scripts/{archivo}")
+            
+        resultado = AlumnosService.importar_alumnos_hoja(*args)
         return jsonify(resultado), 201
     except Exception as e:
         return jsonify({"error": str(e)}), 500
