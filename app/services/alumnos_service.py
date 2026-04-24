@@ -1,5 +1,6 @@
 from app.config.conexion import get_connection
 import pandas as pd
+import math
 
 class AlumnosService:
     @staticmethod
@@ -137,6 +138,9 @@ class AlumnosService:
                     if pd.isna(val) or val is None:
                         return None
                     if isinstance(val, (float, int)):
+                        # Validar que no sea infinito o NaN antes de convertir a int
+                        if not math.isfinite(val):
+                            return None
                         return str(int(val)).strip()
                     return str(val).strip()
 
