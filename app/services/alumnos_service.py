@@ -17,37 +17,39 @@ class AlumnosService:
             valores = []
 
             if idGeneracion:
-                where.append("idGeneracion = %s")
+                where.append("a.idGeneracion = %s")
                 valores.append(idGeneracion)
 
             if idGrupo:
-                where.append("idGrupo = %s")
+                where.append("a.idGrupo = %s")
                 valores.append(idGrupo)
 
             if search:
                 palabras = search.strip().split()
                 for palabra in palabras:
-                    where.append("(nombre LIKE %s OR apPaterno LIKE %s OR apMaterno LIKE %s)")
+                    where.append("(a.nombre LIKE %s OR a.apPaterno LIKE %s OR a.apMaterno LIKE %s)")
                     like = f"%{palabra}%"
                     valores.extend([like, like, like])
 
             where_sql = "WHERE " + " AND ".join(where) if where else ""
 
             # Total de registros
-            sql_total = f"SELECT COUNT(*) AS total FROM tb_alumnos {where_sql}"
+            sql_total = f"SELECT COUNT(*) AS total FROM tb_alumnos a {where_sql}"
             cursor.execute(sql_total, valores)
             total = cursor.fetchone()["total"]
 
             # Consulta paginada
             sql_datos = f"""
                 SELECT 
-                    idAlumno, nombre, apPaterno, apMaterno, fechaNacimiento,
-                    tutor, parentesco, calle, colonia, localidad, municipio,
-                    telefonoTutor, celularAlumno, correoAlumno,
-                    escuelaProcedencia, observaciones, idGeneracion, idGrupo
-                FROM tb_alumnos
+                    a.idAlumno, a.nombre, a.apPaterno, a.apMaterno, a.fechaNacimiento,
+                    a.tutor, a.parentesco, a.calle, a.colonia, a.localidad, a.municipio,
+                    a.telefonoTutor, a.celularAlumno, a.correoAlumno,
+                    a.escuelaProcedencia, a.observaciones, a.idGeneracion, a.idGrupo,
+                    g.generacion AS nombreGeneracionTexto
+                FROM tb_alumnos a
+                LEFT JOIN tb_generaciones g ON a.idGeneracion = g.id
                 {where_sql}
-                ORDER BY idAlumno ASC
+                ORDER BY a.idAlumno ASC
                 LIMIT %s OFFSET %s
             """
             cursor.execute(sql_datos, valores + [limit, offset])
