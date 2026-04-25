@@ -13,6 +13,14 @@ def get_centro_trabajo():
         return jsonify({"error": str(e)}), 500
 
 
+@catalogos_bp.route("/getAlumnoEquivalencia", methods=["GET"])
+def get_alumno_equivalencia():
+    try:
+        return jsonify(CatalogosService.get_alumno_equivalencia())
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @catalogos_bp.route("/createCentroTrabajo", methods=["POST"])
 def create_centro_trabajo():
     try:
@@ -70,8 +78,6 @@ def create_materia():
 
 
 # Métodos get para docentes
-
-
 @catalogos_bp.route("/createDocentes", methods=["POST"])
 def create_docente():
     try:

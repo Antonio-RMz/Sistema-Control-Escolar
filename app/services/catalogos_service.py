@@ -17,6 +17,19 @@ class CatalogosService:
             cursor.close()
             conexion.close()
 
+    @staticmethod
+    def get_alumno_equivalencia():
+        conexion = get_connection()
+        cursor = conexion.cursor()
+        try:
+            cursor.execute(
+                "SELECT * FROM tb_alumnos WHERE equivalencia = 'SI' OR equivalencia = 'si' OR equivalencia = 'Si' OR equivalencia = 'sI'"
+            )
+            return cursor.fetchall()
+        finally:
+            cursor.close()
+            conexion.close()
+
     # Método para crear un nuevo centro de trabajo
     @staticmethod
     def create_centro_trabajo(data):
@@ -315,5 +328,3 @@ class CatalogosService:
         finally:
             cursor.close()
             conexion.close()
-
-

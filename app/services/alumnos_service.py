@@ -2,16 +2,20 @@ from app.config.conexion import get_connection
 import pandas as pd
 import math
 
+
 class AlumnosService:
     @staticmethod
-    def get_alumnos(page=1, limit=50, idGeneracion=None, idGrupo=None, search=''):
+    def get_alumnos(page=1, limit=50, idGeneracion=None, idGrupo=None, search=""):
         conexion = get_connection()
         cursor = conexion.cursor()
         try:
-            if page < 1: page = 1
-            if limit < 1: limit = 50
-            if limit > 200: limit = 200
-            
+            if page < 1:
+                page = 1
+            if limit < 1:
+                limit = 50
+            if limit > 200:
+                limit = 200
+
             offset = (page - 1) * limit
             where = []
             valores = []
@@ -27,7 +31,9 @@ class AlumnosService:
             if search:
                 palabras = search.strip().split()
                 for palabra in palabras:
-                    where.append("(a.nombre LIKE %s OR a.apPaterno LIKE %s OR a.apMaterno LIKE %s)")
+                    where.append(
+                        "(a.nombre LIKE %s OR a.apPaterno LIKE %s OR a.apMaterno LIKE %s)"
+                    )
                     like = f"%{palabra}%"
                     valores.extend([like, like, like])
 
@@ -44,7 +50,7 @@ class AlumnosService:
                     a.idAlumno, a.nombre, a.apPaterno, a.apMaterno, a.fechaNacimiento,
                     a.tutor, a.parentesco, a.calle, a.colonia, a.localidad, a.municipio,
                     a.telefonoTutor, a.celularAlumno, a.correoAlumno,
-                    a.escuelaProcedencia, a.observaciones, a.idGeneracion, a.idGrupo,
+                    a.escuelaProcedencia, a.observaciones, a.idGeneracion, a.idGrupo, a.equivalencia,
                     g.generacion AS nombreGeneracionTexto
                 FROM tb_alumnos a
                 LEFT JOIN tb_generaciones g ON a.idGeneracion = g.id
@@ -61,7 +67,7 @@ class AlumnosService:
                 "total": total,
                 "total_pages": (total + limit - 1) // limit,
                 "search": search,
-                "data": alumnos
+                "data": alumnos,
             }
         finally:
             cursor.close()
@@ -82,12 +88,23 @@ class AlumnosService:
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """
             values = (
-                data.get('nombre'), data.get('apPaterno'), data.get('apMaterno'),
-                data.get('fechaNacimiento'), data.get('tutor'), data.get('parentesco'),
-                data.get('calle'), data.get('colonia'), data.get('localidad'),
-                data.get('municipio'), data.get('telefonoTutor'), data.get('celularAlumno'),
-                data.get('correoAlumno'), data.get('escuelaProcedencia'),
-                data.get('observaciones'), data.get('idGeneracion'), data.get('idGrupo')
+                data.get("nombre"),
+                data.get("apPaterno"),
+                data.get("apMaterno"),
+                data.get("fechaNacimiento"),
+                data.get("tutor"),
+                data.get("parentesco"),
+                data.get("calle"),
+                data.get("colonia"),
+                data.get("localidad"),
+                data.get("municipio"),
+                data.get("telefonoTutor"),
+                data.get("celularAlumno"),
+                data.get("correoAlumno"),
+                data.get("escuelaProcedencia"),
+                data.get("observaciones"),
+                data.get("idGeneracion"),
+                data.get("idGrupo"),
             )
             cursor.execute(query, values)
             conexion.commit()
@@ -95,17 +112,22 @@ class AlumnosService:
         finally:
             cursor.close()
             conexion.close()
+
     @staticmethod
-    def importar_alumnos_hoja(sheet_index=37, id_generacion=38, filename="scripts/GENERACIONES BTI 2026-2018.xlsx"):
+    def importar_alumnos_hoja(
+        sheet_index=37,
+        id_generacion=38,
+        filename="scripts/GENERACIONES BTI 2026-2018.xlsx",
+    ):
         conexion = get_connection()
         cursor = conexion.cursor()
         try:
             # Leer la hoja indicada
             df = pd.read_excel(filename, sheet_name=sheet_index)
-            
+
             # Limpiar nombres de columnas
             df.columns = df.columns.str.strip()
-            
+
             insertados = 0
             for index, row in df.iterrows():
                 # Helper para buscar columnas con nombres variados
@@ -120,7 +142,9 @@ class AlumnosService:
                 nombre = get_val(["nombre", "NOMBRE(S)", "NOMBRE"])
                 apPaterno = get_val(["apPaterno", "APELLIDO PATERNO", "PATERNO"])
                 apMaterno = get_val(["apMaterno", "APELLIDO MATERNO", "MATERNO"])
-                n_control = get_val(["numeroControl", "NUMERO CONTROL", "NM. CONTROL", "NÚM. CONTROL"])
+                n_control = get_val(
+                    ["numeroControl", "NUMERO CONTROL", "NM. CONTROL", "NÚM. CONTROL"]
+                )
 
                 # Saltar filas vacías
                 if pd.isna(nombre) and pd.isna(apPaterno):
@@ -135,7 +159,7 @@ class AlumnosService:
                 )
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """
-                
+
                 def f(val):
                     if pd.isna(val) or val is None:
                         return None
@@ -147,20 +171,33 @@ class AlumnosService:
                     return str(val).strip()
 
                 valores = (
-                    f(nombre), f(apPaterno), f(apMaterno),
-                    id_generacion, f(row.get("fechaNacimiento")), f(row.get("tutor")),
-                    f(row.get("parentesco")), f(row.get("calle")), f(row.get("colonia")),
-                    f(row.get("localidad")), f(row.get("municipio")), f(row.get("telefonoTutor")),
-                    f(row.get("celularAlumno")), f(row.get("correoAlumno")),
-                    f(row.get("escuelaProcedencia")), f(row.get("observaciones")),
-                    f(n_control)
+                    f(nombre),
+                    f(apPaterno),
+                    f(apMaterno),
+                    id_generacion,
+                    f(row.get("fechaNacimiento")),
+                    f(row.get("tutor")),
+                    f(row.get("parentesco")),
+                    f(row.get("calle")),
+                    f(row.get("colonia")),
+                    f(row.get("localidad")),
+                    f(row.get("municipio")),
+                    f(row.get("telefonoTutor")),
+                    f(row.get("celularAlumno")),
+                    f(row.get("correoAlumno")),
+                    f(row.get("escuelaProcedencia")),
+                    f(row.get("observaciones")),
+                    f(n_control),
                 )
-                
+
                 cursor.execute(query, valores)
                 insertados += 1
 
             conexion.commit()
-            return {"mensaje": "Alumnos importados correctamente", "total_insertados": insertados}
+            return {
+                "mensaje": "Alumnos importados correctamente",
+                "total_insertados": insertados,
+            }
         finally:
             cursor.close()
             conexion.close()

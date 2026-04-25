@@ -7,17 +7,17 @@ grupos_bp = Blueprint("grupos", __name__)
 @grupos_bp.route("/grupos", methods=["GET"])
 def get_grupos():
     try:
-        page = request.args.get('page', 1, type=int)
-        limit = request.args.get('limit', 50, type=int)
-        search = request.args.get('search', '').strip()
-        
+        page = request.args.get("page", 1, type=int)
+        limit = request.args.get("limit", 50, type=int)
+        search = request.args.get("search", "").strip()
+
         resultado = GruposService.get_all(page, limit, search)
         return jsonify(resultado)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 
-@grupos_bp.route("/grupos", methods=["POST"])
+@grupos_bp.route("/createGrupos", methods=["POST"])
 def create_grupo():
     try:
         data = request.json
