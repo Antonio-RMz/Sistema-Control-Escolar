@@ -7,6 +7,14 @@ class GruposService:
         conexion = get_connection()
         cursor = conexion.cursor()
         try:
+            # Validaciones de entrada para consistencia
+            if page < 1:
+                page = 1
+            if limit < 1:
+                limit = 50
+            if limit > 200:
+                limit = 200
+
             offset = (page - 1) * limit
             where = ""
             params = []
@@ -15,7 +23,7 @@ class GruposService:
                 where = " WHERE clave LIKE %s "
                 params.append(f"%{search}%")
             
-            # Obtener el total para la paginación de Laravel
+            # Obtener el total para la paginación
             sql_total = f"SELECT COUNT(*) AS total FROM tb_grupos {where}"
             cursor.execute(sql_total, params)
             total = cursor.fetchone()["total"]
@@ -33,8 +41,12 @@ class GruposService:
             data = cursor.fetchall()
 
             return {
-                "data": data,
-                "total": total
+                "page": page,
+                "limit": limit,
+                "total": total,
+                "total_pages": (total + limit - 1) // limit if limit > 0 else 1,
+                "search": search,
+                "data": data
             }
         finally:
             cursor.close()

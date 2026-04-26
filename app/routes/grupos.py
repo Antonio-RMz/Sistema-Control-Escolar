@@ -10,7 +10,6 @@ def get_grupos():
         page = request.args.get("page", 1, type=int)
         limit = request.args.get("limit", 50, type=int)
         search = request.args.get("search", "").strip()
-
         resultado = GruposService.get_all(page, limit, search)
         return jsonify(resultado)
     except Exception as e:

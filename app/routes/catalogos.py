@@ -16,7 +16,12 @@ def get_centro_trabajo():
 @catalogos_bp.route("/getAlumnoEquivalencia", methods=["GET"])
 def get_alumno_equivalencia():
     try:
-        return jsonify(CatalogosService.get_alumno_equivalencia())
+        page = int(request.args.get("page", 1))
+        limit = int(request.args.get("limit", 50))
+        search = request.args.get("search", "").strip()
+
+        resultado = CatalogosService.get_alumno_equivalencia(page, limit, search)
+        return jsonify(resultado)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
