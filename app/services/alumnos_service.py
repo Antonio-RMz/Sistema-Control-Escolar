@@ -87,6 +87,10 @@ class AlumnosService:
                 )
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """
+            # Extraer idGeneracion e idGrupo considerando ambas posibles nomenclaturas
+            id_generacion = data.get("idGeneracion") or data.get("id_Generacion")
+            id_grupo = data.get("idGrupo") or data.get("id_Grupo")
+
             values = (
                 data.get("nombre"),
                 data.get("apPaterno"),
@@ -103,8 +107,8 @@ class AlumnosService:
                 data.get("correoAlumno"),
                 data.get("escuelaProcedencia"),
                 data.get("observaciones"),
-                data.get("idGeneracion"),
-                data.get("idGrupo"),
+                id_generacion,
+                id_grupo,
             )
             cursor.execute(query, values)
             
@@ -112,7 +116,6 @@ class AlumnosService:
             id_alumno = cursor.lastrowid
             
             # Insertar la relación alumno-grupo si se proporcionó un idGrupo
-            id_grupo = data.get("idGrupo")
             if id_grupo:
                 query_grupo = "INSERT INTO tb_alumnoGrupo (idAlumno, idGrupo) VALUES (%s, %s)"
                 cursor.execute(query_grupo, (id_alumno, id_grupo))
