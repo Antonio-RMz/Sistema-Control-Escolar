@@ -83,9 +83,10 @@ class AlumnosService:
                     nombre, apPaterno, apMaterno, fechaNacimiento, tutor, 
                     parentesco, calle, colonia, localidad, municipio, 
                     telefonoTutor, celularAlumno, correoAlumno, 
-                    escuelaProcedencia, observaciones, idGeneracion, idGrupo
+                    escuelaProcedencia, observaciones, idGeneracion, idGrupo,
+                    equivalencia, numeroControl
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """
             # Extraer idGeneracion e idGrupo considerando ambas posibles nomenclaturas
             id_generacion = data.get("idGeneracion") or data.get("id_Generacion")
@@ -109,17 +110,21 @@ class AlumnosService:
                 data.get("observaciones"),
                 id_generacion,
                 id_grupo,
+                data.get("equivalencia"),
+                data.get("numeroControl"),
             )
             cursor.execute(query, values)
-            
+
             # Obtener el ID del alumno insertado
             id_alumno = cursor.lastrowid
-            
+
             # Insertar la relación alumno-grupo si se proporcionó un idGrupo
             if id_grupo:
-                query_grupo = "INSERT INTO tb_alumnoGrupo (idAlumno, idGrupo) VALUES (%s, %s)"
+                query_grupo = (
+                    "INSERT INTO tb_alumnoGrupo (idAlumno, idGrupo) VALUES (%s, %s)"
+                )
                 cursor.execute(query_grupo, (id_alumno, id_grupo))
-            
+
             # Insertar los cursos extracurriculares si vienen en el arreglo
             cursos = data.get("cursos")
             if cursos and isinstance(cursos, list):
