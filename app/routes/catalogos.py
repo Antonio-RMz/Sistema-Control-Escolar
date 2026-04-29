@@ -182,3 +182,11 @@ def create_curso_extracurricular():
         return jsonify(CatalogosService.create_curso_extracurricular(data))
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@catalogos_bp.route("/getCursosExtra", methods=["GET"])
+def get_cursos_extracurriculares():
+    try:
+        return jsonify(CatalogosService.get_cursos_extracurriculares())
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500

@@ -382,7 +382,7 @@ class CatalogosService:
         conexion = get_connection()
         cursor = conexion.cursor()
         try:
-            query = "INSERT INTO tb_cursoextracurricular (nombre,descripcion,fechaInicio,fechaFin,idCentroTrabajo,idDocente) VALUES (%s, %s, %s, %s, %s, %s)"
+            query = "INSERT INTO tb_cursoExtracurricular (nombre,descripcion,fechaInicio,fechaFin,idCentroTrabajo,idDocente) VALUES (%s, %s, %s, %s, %s, %s)"
             cursor.execute(
                 query,
                 (
@@ -396,6 +396,31 @@ class CatalogosService:
             )
             conexion.commit()
             return {"mensaje": "Curso extracurricular creado correctamente"}
+        finally:
+            cursor.close()
+            conexion.close()
+
+    @staticmethod
+    def get_cursos_extracurriculares():
+        conexion = get_connection()
+        cursor = conexion.cursor(pymysql.cursors.DictCursor)
+        try:
+            cursor.execute(
+                """
+                SELECT 
+                    ce.id,
+                    ce.nombre,
+                    ce.descripcion,
+                    ce.fechaInicio,
+                    ce.fechaFin,
+                    ct.nombre AS nombreCentroTrabajo,
+                    CONCAT(d.nombreDocente, ' ', d.apPaternoDocente, ' ', d.apMaternoDocente) AS nombreDocente
+                FROM tb_cursoextracurricular ce
+                LEFT JOIN tb_centrotrabajo ct ON ce.idCentroTrabajo = ct.id
+                LEFT JOIN tb_docentes d ON ce.idDocente = d.idDocente
+                """
+            )
+            return cursor.fetchall()
         finally:
             cursor.close()
             conexion.close()
