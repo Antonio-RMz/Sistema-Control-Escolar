@@ -167,3 +167,18 @@ def create_alumno_grupo():
         return jsonify(CatalogosService.create_alumno_grupo(data))
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@catalogos_bp.route("/createCursoExtra", methods=["POST"])
+def create_curso_extracurricular():
+    try:
+        data = request.json
+        if (
+            not data.get("nombre")
+            or not data.get("idCentroTrabajo")
+            or not data.get("idDocente")
+        ):
+            return jsonify({"error": "Faltan datos"}), 400
+        return jsonify(CatalogosService.create_curso_extracurricular(data))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500

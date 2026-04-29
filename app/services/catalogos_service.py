@@ -376,3 +376,26 @@ class CatalogosService:
         finally:
             cursor.close()
             conexion.close()
+
+    @staticmethod
+    def create_curso_extracurricular(data):
+        conexion = get_connection()
+        cursor = conexion.cursor()
+        try:
+            query = "INSERT INTO tb_cursoextracurricular (nombre,descripcion,fechaInicio,fechaFin,idCentroTrabajo,idDocente) VALUES (%s, %s, %s, %s, %s, %s)"
+            cursor.execute(
+                query,
+                (
+                    data.get("nombre"),
+                    data.get("descripcion"),
+                    data.get("fechaInicio"),
+                    data.get("fechaFin"),
+                    data.get("idCentroTrabajo"),
+                    data.get("idDocente"),
+                ),
+            )
+            conexion.commit()
+            return {"mensaje": "Curso extracurricular creado correctamente"}
+        finally:
+            cursor.close()
+            conexion.close()

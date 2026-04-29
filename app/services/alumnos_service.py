@@ -107,8 +107,26 @@ class AlumnosService:
                 data.get("idGrupo"),
             )
             cursor.execute(query, values)
+            
+            # Obtener el ID del alumno insertado
+            id_alumno = cursor.lastrowid
+            
+            # Insertar los cursos extracurriculares si vienen en el arreglo
+            cursos = data.get("cursos")
+            if cursos and isinstance(cursos, list):
+                query_cursos = """
+                    INSERT INTO tb_cursoExtraAlumno (
+                        idCursoExtracurricular, idAlumno, createDate, lastUpdateDate
+                    ) VALUES (%s, %s, NOW(), NOW())
+                """
+                for id_curso in cursos:
+                    cursor.execute(query_cursos, (id_curso, id_alumno))
+
             conexion.commit()
-            return {"mensaje": "Alumno creado correctamente"}
+            return {"mensaje": "Alumno creado correctamente", "idAlumno": id_alumno}
+        except Exception as e:
+            conexion.rollback()
+            return {"error": str(e)}
         finally:
             cursor.close()
             conexion.close()
