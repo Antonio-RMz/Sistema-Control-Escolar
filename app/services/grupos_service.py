@@ -1,9 +1,10 @@
 from app.config.conexion import get_connection
 
+
 class GruposService:
     @staticmethod
-    #para obtener todos los grupos con búsqueda y paginación
-    def get_all(page=1, limit=50, search=''):
+    # para obtener todos los grupos con búsqueda y paginación
+    def get_all(page=1, limit=50, search=""):
         conexion = get_connection()
         cursor = conexion.cursor()
         try:
@@ -18,11 +19,11 @@ class GruposService:
             offset = (page - 1) * limit
             where = ""
             params = []
-            
+
             if search:
                 where = " WHERE clave LIKE %s "
                 params.append(f"%{search}%")
-            
+
             # Obtener el total para la paginación
             sql_total = f"SELECT COUNT(*) AS total FROM tb_grupos {where}"
             cursor.execute(sql_total, params)
@@ -46,12 +47,13 @@ class GruposService:
                 "total": total,
                 "total_pages": (total + limit - 1) // limit if limit > 0 else 1,
                 "search": search,
-                "data": data
+                "data": data,
             }
         finally:
             cursor.close()
             conexion.close()
-#para crear los grupos
+
+    # para crear los grupos
     @staticmethod
     def create(data):
         conexion = get_connection()
@@ -65,9 +67,13 @@ class GruposService:
                 VALUES (%s, %s, %s, %s, %s, %s, %s)
             """
             values = (
-                data.get('clave'), data.get('fechaCreacion'), data.get('fechaInicio'),
-                data.get('fechaFin'), data.get('id_centroTrabajo'),
-                data.get('id_tipoPeriodo'), data.get('id_planEstudios')
+                data.get("clave"),
+                data.get("fechaCreacion"),
+                data.get("fechaInicio"),
+                data.get("fechaFin"),
+                data.get("id_centroTrabajo"),
+                data.get("id_tipoPeriodo"),
+                data.get("id_planEstudios"),
             )
             cursor.execute(query, values)
             conexion.commit()
@@ -84,7 +90,7 @@ class GruposService:
             query = """
                 SELECT a.*
                 FROM tb_alumnos a
-                INNER JOIN tb_alumnogrupo ag 
+                INNER JOIN tb_alumnoGrupo ag 
                     ON a.idAlumno = ag.idAlumno
                 WHERE ag.idGrupo = %s
             """
