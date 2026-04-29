@@ -111,6 +111,12 @@ class AlumnosService:
             # Obtener el ID del alumno insertado
             id_alumno = cursor.lastrowid
             
+            # Insertar la relación alumno-grupo si se proporcionó un idGrupo
+            id_grupo = data.get("idGrupo")
+            if id_grupo:
+                query_grupo = "INSERT INTO tb_alumnoGrupo (idAlumno, idGrupo) VALUES (%s, %s)"
+                cursor.execute(query_grupo, (id_alumno, id_grupo))
+            
             # Insertar los cursos extracurriculares si vienen en el arreglo
             cursos = data.get("cursos")
             if cursos and isinstance(cursos, list):
