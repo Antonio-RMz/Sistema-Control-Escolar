@@ -415,7 +415,7 @@ class CatalogosService:
                     ce.fechaFin,
                     ct.nombre AS nombreCentroTrabajo,
                     CONCAT(d.nombreDocente, ' ', d.apPaternoDocente, ' ', d.apMaternoDocente) AS nombreDocente
-                FROM tb_cursoextracurricular ce
+                FROM tb_cursoExtracurricular ce
                 LEFT JOIN tb_centrotrabajo ct ON ce.idCentroTrabajo = ct.id
                 LEFT JOIN tb_docentes d ON ce.idDocente = d.idDocente
                 """
