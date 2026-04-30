@@ -384,12 +384,31 @@ class CatalogosService:
     @staticmethod
     def get_planes_estudio():
         conexion = get_connection()
-        cursor = conexion.cursor()
+        cursor = conexion.cursor(pymysql.cursors.DictCursor)
         try:
-            cursor.execute(
-                "SELECT id,nombrePlan, descripcionPlan, estatusPlan FROM tb_planesestudio"
-            )
-            return cursor.fetchall()
+            cursor.execute("""
+                SELECT 
+                    p.id,
+                    p.nombrePlan, 
+                    p.descripcionPlan, 
+                    p.estatusPlan,
+                    IFNULL(GROUP_CONCAT(DISTINCT pm.idMateria), '') AS idmaterias
+                FROM tb_planesestudio p
+                LEFT JOIN plan_estudio_materia pm ON p.id = pm.idPlanEstudio
+                GROUP BY p.id
+            """)
+            
+            rows = cursor.fetchall()
+            
+            for row in rows:
+                materias_str = row["idmaterias"]
+                materias = []
+                if materias_str:
+                    for m in materias_str.split(","):
+                        materias.append(int(m))
+                row["idmaterias"] = materias
+                
+            return rows
         finally:
             cursor.close()
             conexion.close()
