@@ -117,16 +117,40 @@ class CatalogosService:
 
     # Método para crear un nuevo tipo de periodo
     @staticmethod
-    def get_materias():
+    def get_materias(page=1, limit=50, search=""):
         conexion = get_connection()
         cursor = conexion.cursor(pymysql.cursors.DictCursor)
         try:
-            cursor.execute("""
+            if page < 1:
+                page = 1
+            if limit < 1:
+                limit = 50
+            if limit > 200:
+                limit = 200
+
+            offset = (page - 1) * limit
+            
+            where = ""
+            params = []
+            
+            if search:
+                where = "WHERE m.nombreMateria LIKE %s OR m.descripcionMateria LIKE %s OR m.clave LIKE %s"
+                like = f"%{search}%"
+                params.extend([like, like, like])
+                
+            # Primero obtener el total
+            sql_total = f"SELECT COUNT(DISTINCT m.id) AS total FROM tb_materias m {where}"
+            cursor.execute(sql_total, params)
+            total = cursor.fetchone()["total"]
+
+            # Luego obtener los datos
+            sql = f"""
               SELECT 
                     m.id,
                     m.nombreMateria,
                     m.descripcionMateria,
                     m.estatusMateria,
+                    m.clave,
                     IFNULL(
                         GROUP_CONCAT(
                             CONCAT(d.idDocente, ':', d.nombreDocente)
@@ -136,8 +160,12 @@ class CatalogosService:
                 FROM tb_materias m
                 LEFT JOIN tb_materiadocente md ON m.id = md.idMateria
                 LEFT JOIN tb_docentes d ON md.idDocente = d.idDocente
-                GROUP BY m.id;
-            """)
+                {where}
+                GROUP BY m.id
+                ORDER BY m.id DESC
+                LIMIT %s OFFSET %s
+            """
+            cursor.execute(sql, params + [limit, offset])
 
             rows = cursor.fetchall()
 
@@ -147,13 +175,22 @@ class CatalogosService:
 
                 if docentes_str:
                     for d in docentes_str.split(","):
-                        id_docente, nombre = d.split(":")
-                        docentes.append(
-                            {"idDocente": int(id_docente), "nombreDocente": nombre}
-                        )
+                        if ":" in d:
+                            id_docente, nombre = d.split(":", 1)
+                            docentes.append(
+                                {"idDocente": int(id_docente), "nombreDocente": nombre}
+                            )
 
                 row["docentes"] = docentes
-            return rows
+                
+            return {
+                "page": page,
+                "limit": limit,
+                "total": total,
+                "total_pages": (total + limit - 1) // limit if limit > 0 else 0,
+                "search": search,
+                "data": rows,
+            }
 
         finally:
             cursor.close()
