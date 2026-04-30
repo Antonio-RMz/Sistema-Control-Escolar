@@ -121,8 +121,7 @@ class CatalogosService:
         conexion = get_connection()
         cursor = conexion.cursor(pymysql.cursors.DictCursor)
         try:
-            cursor.execute(
-                """
+            cursor.execute("""
               SELECT 
                     m.id,
                     m.nombreMateria,
@@ -138,8 +137,7 @@ class CatalogosService:
                 LEFT JOIN tb_materiadocente md ON m.id = md.idMateria
                 LEFT JOIN tb_docentes d ON md.idDocente = d.idDocente
                 GROUP BY m.id;
-            """
-            )
+            """)
 
             rows = cursor.fetchall()
 
@@ -170,8 +168,8 @@ class CatalogosService:
             # 🧱 Insertar materia
             query = """
             INSERT INTO tb_materias 
-            (nombreMateria, descripcionMateria, estatusMateria)
-            VALUES (%s, %s, %s)
+            (nombreMateria, descripcionMateria, estatusMateria, clave)
+            VALUES (%s, %s, %s, %s)
             """
 
             cursor.execute(
@@ -180,6 +178,7 @@ class CatalogosService:
                     data.get("nombreMateria"),
                     data.get("descripcionMateria"),
                     data.get("estatusMateria"),
+                    data.get("clave"),
                 ),
             )
 
@@ -405,8 +404,7 @@ class CatalogosService:
         conexion = get_connection()
         cursor = conexion.cursor(pymysql.cursors.DictCursor)
         try:
-            cursor.execute(
-                """
+            cursor.execute("""
                 SELECT 
                     ce.id,
                     ce.nombre,
@@ -418,8 +416,7 @@ class CatalogosService:
                 FROM tb_cursoExtracurricular ce
                 LEFT JOIN tb_centrotrabajo ct ON ce.idCentroTrabajo = ct.id
                 LEFT JOIN tb_docentes d ON ce.idDocente = d.idDocente
-                """
-            )
+                """)
             return cursor.fetchall()
         finally:
             cursor.close()
