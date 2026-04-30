@@ -1,5 +1,5 @@
 from app.config.conexion import get_connection
-
+import datetime
 
 class GruposService:
     @staticmethod
@@ -21,25 +21,32 @@ class GruposService:
             params = []
 
             if search:
-                where = " WHERE clave LIKE %s "
+                where = " WHERE g.clave LIKE %s "
                 params.append(f"%{search}%")
 
             # Obtener el total para la paginación
-            sql_total = f"SELECT COUNT(*) AS total FROM tb_grupos {where}"
+            sql_total = f"SELECT COUNT(DISTINCT g.id) AS total FROM tb_grupos g {where}"
             cursor.execute(sql_total, params)
             total = cursor.fetchone()["total"]
 
             # Obtener los datos paginados
             sql_datos = f"""
-                SELECT id, clave, fechaCreacion, fechaInicio, fechaFin,
-                id_centroTrabajo, id_tipoPeriodo, id_planEstudios
-                FROM tb_grupos
+                SELECT g.id, g.clave, g.fechaCreacion, g.fechaInicio, g.fechaFin,
+                g.id_centroTrabajo, g.id_tipoPeriodo, g.id_planEstudios,
+                IFNULL(GROUP_CONCAT(gd.dia), '') AS diasClase
+                FROM tb_grupos g
+                LEFT JOIN tb_grupodias gd ON g.id = gd.idGrupo
                 {where}
-                ORDER BY id DESC
+                GROUP BY g.id
+                ORDER BY g.id DESC
                 LIMIT %s OFFSET %s
             """
             cursor.execute(sql_datos, params + [limit, offset])
             data = cursor.fetchall()
+            
+            for row in data:
+                dias_str = row["diasClase"]
+                row["diasClase"] = dias_str.split(",") if dias_str else []
 
             return {
                 "page": page,
@@ -59,6 +66,16 @@ class GruposService:
         conexion = get_connection()
         cursor = conexion.cursor()
         try:
+            fecha_inicio_str = data.get("fechaInicio")
+            fecha_fin = data.get("fechaFin")
+            duracion_semanas = data.get("duracionSemanas")
+            
+            if duracion_semanas and fecha_inicio_str:
+                # Calcular fechaFin sumando semanas
+                fecha_inicio_dt = datetime.datetime.strptime(fecha_inicio_str, "%Y-%m-%d")
+                fecha_fin_dt = fecha_inicio_dt + datetime.timedelta(weeks=int(duracion_semanas))
+                fecha_fin = fecha_fin_dt.strftime("%Y-%m-%d")
+
             query = """
                 INSERT INTO tb_grupos (
                     clave, fechaCreacion, fechaInicio, fechaFin, 
@@ -69,15 +86,28 @@ class GruposService:
             values = (
                 data.get("clave"),
                 data.get("fechaCreacion"),
-                data.get("fechaInicio"),
-                data.get("fechaFin"),
+                fecha_inicio_str,
+                fecha_fin,
                 data.get("id_centroTrabajo"),
                 data.get("id_tipoPeriodo"),
                 data.get("id_planEstudios"),
             )
             cursor.execute(query, values)
+            
+            id_grupo = cursor.lastrowid
+            
+            # Guardar los días de clase si vienen en el payload
+            dias_clase = data.get("diasClase", [])
+            if dias_clase:
+                query_dias = "INSERT INTO tb_grupodias (idGrupo, dia) VALUES (%s, %s)"
+                for dia in dias_clase:
+                    cursor.execute(query_dias, (id_grupo, dia))
+                    
             conexion.commit()
-            return {"mensaje": "Grupo creado correctamente"}
+            return {"mensaje": "Grupo creado correctamente", "idGrupo": id_grupo}
+        except Exception as e:
+            conexion.rollback()
+            return {"error": str(e)}
         finally:
             cursor.close()
             conexion.close()
