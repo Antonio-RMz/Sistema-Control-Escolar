@@ -354,8 +354,29 @@ class CatalogosService:
                     data.get("estatusPlan"),
                 ),
             )
+            
+            # Obtener el id insertado
+            id_plan = cursor.lastrowid
+            
+            # Recuperar materias enviadas
+            materias = data.get("idmaterias", [])
+            
+            if materias:
+                query_rel = "INSERT INTO plan_estudio_materia (idPlanEstudio, idMateria) VALUES (%s, %s)"
+                for mat in materias:
+                    if isinstance(mat, dict):
+                        id_materia = mat.get("idMateria") or mat.get("id")
+                    else:
+                        id_materia = mat
+                        
+                    if id_materia:
+                        cursor.execute(query_rel, (id_plan, id_materia))
+
             conexion.commit()
-            return {"mensaje": "Plan de estudios creado correctamente"}
+            return {"mensaje": "Plan de estudios creado correctamente", "idPlanEstudio": id_plan}
+        except Exception as e:
+            conexion.rollback()
+            return {"error": str(e)}
         finally:
             cursor.close()
             conexion.close()
