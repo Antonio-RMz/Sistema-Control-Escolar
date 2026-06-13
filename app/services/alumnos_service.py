@@ -5,9 +5,10 @@ import math
 
 class AlumnosService:
     @staticmethod
-    def get_alumnos(page=1, limit=50, idGeneracion=None, idGrupo=None, search=""):
+    def get_alumnos(page=1, limit=50, generacion=None, idGrupo=None, search=""):
         conexion = get_connection()
         cursor = conexion.cursor()
+
         try:
             if page < 1:
                 page = 1
@@ -20,9 +21,9 @@ class AlumnosService:
             where = []
             valores = []
 
-            if idGeneracion:
-                where.append("a.idGeneracion = %s")
-                valores.append(idGeneracion)
+            if generacion:
+                where.append("g.generacion = %s")
+                valores.append(generacion)
 
             if idGrupo:
                 where.append("a.idGrupo = %s")
@@ -30,27 +31,50 @@ class AlumnosService:
 
             if search:
                 palabras = search.strip().split()
+
                 for palabra in palabras:
                     where.append(
                         "(a.nombre LIKE %s OR a.apPaterno LIKE %s OR a.apMaterno LIKE %s)"
                     )
+
                     like = f"%{palabra}%"
                     valores.extend([like, like, like])
 
             where_sql = "WHERE " + " AND ".join(where) if where else ""
 
             # Total de registros
-            sql_total = f"SELECT COUNT(*) AS total FROM tb_alumnos a {where_sql}"
+            sql_total = f"""
+                SELECT COUNT(*) AS total
+                FROM tb_alumnos a
+                LEFT JOIN tb_generaciones g ON a.idGeneracion = g.id
+                {where_sql}
+            """
+
             cursor.execute(sql_total, valores)
             total = cursor.fetchone()["total"]
 
             # Consulta paginada
             sql_datos = f"""
                 SELECT 
-                    a.idAlumno, a.nombre, a.apPaterno, a.apMaterno, a.fechaNacimiento,
-                    a.tutor, a.parentesco, a.calle, a.colonia, a.localidad, a.municipio,
-                    a.telefonoTutor, a.celularAlumno, a.correoAlumno,
-                    a.escuelaProcedencia, a.observaciones, a.idGeneracion, a.idGrupo, a.equivalencia,
+                    a.idAlumno,
+                    a.nombre,
+                    a.apPaterno,
+                    a.apMaterno,
+                    a.fechaNacimiento,
+                    a.tutor,
+                    a.parentesco,
+                    a.calle,
+                    a.colonia,
+                    a.localidad,
+                    a.municipio,
+                    a.telefonoTutor,
+                    a.celularAlumno,
+                    a.correoAlumno,
+                    a.escuelaProcedencia,
+                    a.observaciones,
+                    a.idGeneracion,
+                    a.idGrupo,
+                    a.equivalencia,
                     g.generacion AS nombreGeneracionTexto
                 FROM tb_alumnos a
                 LEFT JOIN tb_generaciones g ON a.idGeneracion = g.id
@@ -58,6 +82,7 @@ class AlumnosService:
                 ORDER BY a.idAlumno ASC
                 LIMIT %s OFFSET %s
             """
+
             cursor.execute(sql_datos, valores + [limit, offset])
             alumnos = cursor.fetchall()
 
@@ -69,6 +94,7 @@ class AlumnosService:
                 "search": search,
                 "data": alumnos,
             }
+
         finally:
             cursor.close()
             conexion.close()
@@ -233,3 +259,34 @@ class AlumnosService:
         finally:
             cursor.close()
             conexion.close()
+
+
+# pendiente api para eliminar
+@staticmethod
+def delete_alumno(id_alumno):
+    conexion = get_connection()
+    cursor = conexion.cursor()
+
+    try:
+        # Eliminar cursos extracurriculares del alumno
+        cursor.execute(
+            "DELETE FROM tb_cursoExtraAlumno WHERE idAlumno = %s", (id_alumno,)
+        )
+
+        # Eliminar relación alumno-grupo
+        cursor.execute("DELETE FROM tb_alumnoGrupo WHERE idAlumno = %s", (id_alumno,))
+
+        # Eliminar alumno
+        cursor.execute("DELETE FROM tb_alumnos WHERE idAlumno = %s", (id_alumno,))
+
+        conexion.commit()
+
+        return {"mensaje": "Alumno eliminado correctamente", "idAlumno": id_alumno}
+
+    except Exception as e:
+        conexion.rollback()
+        return {"error": str(e)}
+
+    finally:
+        cursor.close()
+        conexion.close()
