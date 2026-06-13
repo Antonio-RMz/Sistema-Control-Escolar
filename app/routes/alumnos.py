@@ -76,5 +76,8 @@ def importar_alumnos_hoja():
 
 @alumnos_bp.route("/deleteAlumno/<int:id_alumno>", methods=["DELETE"])
 def delete_alumno(id_alumno):
-    resultado = AlumnosService.delete_alumno(id_alumno)
-    return jsonify(resultado)
+    try:
+        resultado = AlumnosService.delete_alumno(id_alumno)
+        return jsonify(resultado)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500

@@ -260,33 +260,34 @@ class AlumnosService:
             cursor.close()
             conexion.close()
 
+    # pendiente api para eliminar
+    @staticmethod
+    def delete_alumno(id_alumno):
+        conexion = get_connection()
+        cursor = conexion.cursor()
 
-# pendiente api para eliminar
-@staticmethod
-def delete_alumno(id_alumno):
-    conexion = get_connection()
-    cursor = conexion.cursor()
+        try:
+            # Eliminar cursos extracurriculares del alumno
+            cursor.execute(
+                "DELETE FROM tb_cursoExtraAlumno WHERE idAlumno = %s", (id_alumno,)
+            )
 
-    try:
-        # Eliminar cursos extracurriculares del alumno
-        cursor.execute(
-            "DELETE FROM tb_cursoExtraAlumno WHERE idAlumno = %s", (id_alumno,)
-        )
+            # Eliminar relación alumno-grupo
+            cursor.execute(
+                "DELETE FROM tb_alumnoGrupo WHERE idAlumno = %s", (id_alumno,)
+            )
 
-        # Eliminar relación alumno-grupo
-        cursor.execute("DELETE FROM tb_alumnoGrupo WHERE idAlumno = %s", (id_alumno,))
+            # Eliminar alumno
+            cursor.execute("DELETE FROM tb_alumnos WHERE idAlumno = %s", (id_alumno,))
 
-        # Eliminar alumno
-        cursor.execute("DELETE FROM tb_alumnos WHERE idAlumno = %s", (id_alumno,))
+            conexion.commit()
 
-        conexion.commit()
+            return {"mensaje": "Alumno eliminado correctamente", "idAlumno": id_alumno}
 
-        return {"mensaje": "Alumno eliminado correctamente", "idAlumno": id_alumno}
+        except Exception as e:
+            conexion.rollback()
+            return {"error": str(e)}
 
-    except Exception as e:
-        conexion.rollback()
-        return {"error": str(e)}
-
-    finally:
-        cursor.close()
-        conexion.close()
+        finally:
+            cursor.close()
+            conexion.close()
