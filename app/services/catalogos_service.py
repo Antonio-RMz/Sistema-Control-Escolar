@@ -439,7 +439,7 @@ class CatalogosService:
         conexion = get_connection()
         cursor = conexion.cursor()
         try:
-            query = "INSERT INTO tb_conceptotipoperiodo (nombrePeriodo, descripcionPeriodo) VALUES (%s, %s)"
+            query = "INSERT INTO tb_tipoperiodo (nombrePeriodo, descripcionPeriodo) VALUES (%s, %s)"
             cursor.execute(
                 query,
                 (

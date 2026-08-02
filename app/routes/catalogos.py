@@ -91,28 +91,28 @@ def create_materia():
 @catalogos_bp.route("/createDocentes", methods=["POST"])
 def create_docente():
     try:
-        # 📥 Obtener datos del body (JSON)
+        # Obtener datos del body (JSON)
         data = request.get_json()
 
-        # ⚠️ Validar que venga información
+        # Validar que venga información
         if not data:
             return jsonify({"error": "No se enviaron datos"}), 400
 
-        # 🧪 Validar x obligatorios
+        #  Validar x obligatorios
         required_fields = ["nombreDocente", "statusDocente"]
 
         for field in required_fields:
             if field not in data or not data.get(field):
                 return jsonify({"error": f"Falta el campo {field}"}), 400
 
-        # 🧠 Llamar al service (lógica de negocio)
+        #  Llamar al service (lógica de negocio)
         resultado = CatalogosService.create_docente(data)
 
-        # ❌ Si el service regresa error
+        #  Si el service regresa error
         if "error" in resultado:
             return jsonify(resultado), 500
 
-        # ✅ Todo correcto
+        # Todo correcto
         return jsonify(resultado), 201
 
     except Exception as e:
