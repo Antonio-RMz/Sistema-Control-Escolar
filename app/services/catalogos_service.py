@@ -108,7 +108,7 @@ class CatalogosService:
         cursor = conexion.cursor()
         try:
             cursor.execute(
-                "SELECT id, nombrePeriodo, descripcionPeriodo FROM tb_conceptotipoperiodo"
+                "SELECT id, nombrePeriodo, descripcionPeriodo FROM tb_tipoperiodo"
             )
             return cursor.fetchall()
         finally:
