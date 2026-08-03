@@ -256,9 +256,18 @@ class CatalogosService:
         conexion = get_connection()
         cursor = conexion.cursor()
         try:
+            # Eliminar relaciones en tablas secundarias para evitar errores de llave foránea
+            cursor.execute("DELETE FROM tb_materiadocente WHERE idMateria = %s", (id_materia,))
+            cursor.execute("DELETE FROM plan_estudio_materia WHERE idMateria = %s", (id_materia,))
+            cursor.execute("DELETE FROM tb_horarios WHERE id_materia = %s", (id_materia,))
+            
+            # Eliminar la materia
             cursor.execute("DELETE FROM tb_materias WHERE id = %s", (id_materia,))
             conexion.commit()
             return {"mensaje": "Materia eliminada correctamente"}
+        except Exception as e:
+            conexion.rollback()
+            return {"error": str(e)}
         finally:
             cursor.close()
             conexion.close()
@@ -564,18 +573,6 @@ class CatalogosService:
             cursor.execute("DELETE FROM tb_horarios WHERE id_horario = %s", (id_horario,))
             conexion.commit()
             return {"mensaje": "Horario de grupo eliminado correctamente"}
-        finally:
-            cursor.close()
-            conexion.close()
-
-    @staticmethod
-    def delete_materia(id_materia):
-        conexion = get_connection()
-        cursor = conexion.cursor()
-        try:
-            cursor.execute("DELETE FROM tb_materias WHERE id = %s", (id_materia,))
-            conexion.commit()
-            return {"mensaje": "Materia eliminada correctamente"}
         finally:
             cursor.close()
             conexion.close()
