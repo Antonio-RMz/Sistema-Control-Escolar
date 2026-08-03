@@ -130,3 +130,45 @@ class GruposService:
         finally:
             cursor.close()
             conexion.close()
+    @staticmethod
+    def update(id_grupo, data):
+        conexion = get_connection()
+        cursor = conexion.cursor()
+        try:
+            fecha_inicio_str = data.get("fechaInicio")
+            fecha_fin = data.get("fechaFin")
+
+            query = """
+                UPDATE tb_grupos 
+                SET
+                    clave = %s,
+                    fechaCreacion = %s,
+                    fechaInicio = %s,
+                    fechaFin = %s,
+                    id_centroTrabajo = %s,
+                    id_tipoPeriodo = %s,
+                    id_planEstudios = %s,
+                    modalidadHorario = %s
+                WHERE id = %s
+            """
+            values = (
+                data.get("clave"),
+                data.get("fechaCreacion"),
+                fecha_inicio_str,
+                fecha_fin,
+                data.get("id_centroTrabajo"),
+                data.get("id_tipoPeriodo"),
+                data.get("id_planEstudios"),
+                data.get("modalidadHorario"),
+                id_grupo
+            )
+            cursor.execute(query, values)
+                    
+            conexion.commit()
+            return {"mensaje": "Grupo actualizado correctamente", "idGrupo": id_grupo}
+        except Exception as e:
+            conexion.rollback()
+            return {"error": str(e)}
+        finally:
+            cursor.close()
+            conexion.close()

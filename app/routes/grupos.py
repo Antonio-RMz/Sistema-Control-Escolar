@@ -27,3 +27,14 @@ def create_grupo():
         return jsonify(resultado)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+@grupos_bp.route("/updateGrupo/<int:id_grupo>", methods=["PUT"])
+def update_grupo(id_grupo):
+    try:
+        data = request.json
+        if not data.get("clave") or not data.get("fechaCreacion"):
+            return jsonify({"error": "Faltan datos"}), 400
+        resultado = GruposService.update(id_grupo, data)
+        return jsonify(resultado)   
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
