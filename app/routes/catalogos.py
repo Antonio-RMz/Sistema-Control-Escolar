@@ -51,7 +51,7 @@ def create_tipo_periodo():
         data = request.json
         if not data.get("nombrePeriodo") or not data.get("descripcionPeriodo"):
             return jsonify({"error": "Faltan datos"}), 400
-        return jsonify(CatalogosService.create_tipo_periodocreate_tipo_periodo(data))
+        return jsonify(CatalogosService.create_tipo_periodo(data))
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -169,10 +169,6 @@ def create_alumno_grupo():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-        return jsonify(CatalogosService.create_alumno_grupo(data))
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
 
 @catalogos_bp.route("/createCursoExtra", methods=["POST"])
 def create_curso_extracurricular():
@@ -203,5 +199,19 @@ def create_horario_grupo():
         if not data.get("id_grupo") or not data.get("id_materia") or not data.get("id_docente") or not data.get("diaSemana") or not data.get("horaInicio") or not data.get("horaFin"):
             return jsonify({"error": "Faltan datos"}), 400
         return jsonify(CatalogosService.create_horario_grupo(data))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@catalogos_bp.route("/getHorariosGrupo/<int:id_grupo>", methods=["GET"])
+def getHorariosGrupo(id_grupo):
+    try:
+        return jsonify(CatalogosService.getHorariosGrupo(id_grupo))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@catalogos_bp.route("/deleteHorarioGrupo/<int:id_horario>", methods=["DELETE"])
+def delete_horario_grupo(id_horario):
+    try:
+        return jsonify(CatalogosService.deleteHorarioGrupo(id_horario))
     except Exception as e:
         return jsonify({"error": str(e)}), 500

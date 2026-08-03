@@ -521,4 +521,39 @@ class CatalogosService:
         finally:
             cursor.close()
             conexion.close()
-        
+    @staticmethod
+    def getHorariosGrupo(id_grupo):
+        conexion = get_connection()
+        cursor = conexion.cursor()
+        try:
+            sql = """
+                SELECT
+                    id_horario AS id,
+                    id_grupo,
+                    id_materia,
+                    id_docente,
+                    diaSemana,
+                    TIME_FORMAT(horaInicio, '%%H:%%i:%%s') AS horaInicio,
+                    TIME_FORMAT(horaFin, '%%H:%%i:%%s') AS horaFin
+                FROM tb_horarios
+                WHERE id_grupo = %s
+                ORDER BY diaSemana, horaInicio
+            """
+            cursor.execute(sql, (id_grupo,))
+            horarios = cursor.fetchall()
+            return horarios
+        finally:
+            cursor.close()
+            conexion.close()
+
+    @staticmethod
+    def deleteHorarioGrupo(id_horario):
+        conexion = get_connection()
+        cursor = conexion.cursor()
+        try:
+            cursor.execute("DELETE FROM tb_horarios WHERE id_horario = %s", (id_horario,))
+            conexion.commit()
+            return {"mensaje": "Horario de grupo eliminado correctamente"}
+        finally:
+            cursor.close()
+            conexion.close()
