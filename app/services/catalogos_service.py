@@ -467,7 +467,7 @@ class CatalogosService:
         cursor = conexion.cursor()
         try:
             # Eliminar relaciones en tablas secundarias para evitar errores de llave foránea
-            cursor.execute("DELETE FROM tb_horarios WHERE idDocente = %s", (idDocente,))
+            cursor.execute("DELETE FROM tb_horarios WHERE id_docente = %s", (idDocente,))
             cursor.execute("DELETE FROM tb_materiadocente WHERE idDocente = %s", (idDocente,))
             
             # Eliminar el docente
