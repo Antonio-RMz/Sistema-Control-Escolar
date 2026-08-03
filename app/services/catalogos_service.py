@@ -117,7 +117,7 @@ class CatalogosService:
 
     # Método para crear un nuevo tipo de periodo
     @staticmethod
-    def get_materias(page=1, limit=50, search=""):
+    def get_materias(page=1, limit=50, search="", id_materia=None):
         conexion = get_connection()
         cursor = conexion.cursor(pymysql.cursors.DictCursor)
         try:
@@ -130,13 +130,19 @@ class CatalogosService:
 
             offset = (page - 1) * limit
             
-            where = ""
+            conditions = []
             params = []
             
+            if id_materia:
+                conditions.append("m.id = %s")
+                params.append(id_materia)
+            
             if search:
-                where = "WHERE m.nombreMateria LIKE %s OR m.descripcionMateria LIKE %s OR m.clave LIKE %s"
+                conditions.append("(m.nombreMateria LIKE %s OR m.descripcionMateria LIKE %s OR m.clave LIKE %s)")
                 like = f"%{search}%"
                 params.extend([like, like, like])
+                
+            where = "WHERE " + " AND ".join(conditions) if conditions else ""
                 
             # Primero obtener el total
             sql_total = f"SELECT COUNT(DISTINCT m.id) AS total FROM tb_materias m {where}"
@@ -202,6 +208,15 @@ class CatalogosService:
         conexion = get_connection()
         cursor = conexion.cursor()
         try:
+            # Sanitizar estatusMateria para que coincida con el ENUM ('ACTIVA', 'INACTIVA')
+            estatus = str(data.get("estatusMateria", "")).strip().upper()
+            if estatus in ["ACTIVO", "ACTIVA"]:
+                estatus = "ACTIVA"
+            elif estatus in ["INACTIVO", "INACTIVA"]:
+                estatus = "INACTIVA"
+            else:
+                estatus = "ACTIVA"
+
             # 🧱 Insertar materia
             query = """
             INSERT INTO tb_materias 
@@ -214,7 +229,7 @@ class CatalogosService:
                 (
                     data.get("nombreMateria"),
                     data.get("descripcionMateria"),
-                    data.get("estatusMateria"),
+                    estatus,
                     data.get("clave"),
                 ),
             )
@@ -277,6 +292,15 @@ class CatalogosService:
         conexion = get_connection()
         cursor = conexion.cursor()
         try:
+            # Sanitizar estatusMateria para que coincida con el ENUM ('ACTIVA', 'INACTIVA')
+            estatus = str(data.get("estatusMateria", "")).strip().upper()
+            if estatus in ["ACTIVO", "ACTIVA"]:
+                estatus = "ACTIVA"
+            elif estatus in ["INACTIVO", "INACTIVA"]:
+                estatus = "INACTIVA"
+            else:
+                estatus = "ACTIVA"
+
             # 🧱 Actualizar datos básicos de la materia
             cursor.execute(
                 """
@@ -287,7 +311,7 @@ class CatalogosService:
                 (
                     data.get("nombreMateria"),
                     data.get("descripcionMateria"),
-                    data.get("estatusMateria"),
+                    estatus,
                     data.get("clave"),
                     id_materia,
                 ),

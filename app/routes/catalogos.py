@@ -62,8 +62,9 @@ def get_materias():
         page = int(request.args.get("page", 1))
         limit = int(request.args.get("limit", 50))
         search = request.args.get("search", "").strip()
+        id_materia = request.args.get("id_materia")
 
-        resultado = CatalogosService.get_materias(page, limit, search)
+        resultado = CatalogosService.get_materias(page, limit, search, id_materia)
         return jsonify(resultado)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
