@@ -317,7 +317,7 @@ class CatalogosService:
                 ),
             )
 
-            # 🔗 Actualizar docentes relacionados (Sincronización)
+            #  Actualizar docentes relacionados (Sincronización)
             # Primero eliminamos todas las asignaciones existentes de la materia
             cursor.execute("DELETE FROM tb_materiadocente WHERE idMateria = %s", (id_materia,))
             
@@ -428,6 +428,55 @@ class CatalogosService:
             )
             conexion.commit()
             return {"mensaje": "Docente creado correctamente"}
+        finally:
+            cursor.close()
+            conexion.close()
+    @staticmethod
+    def update_docente(data):
+        conexion = get_connection()
+        cursor = conexion.cursor()
+        try:
+            query = """
+                UPDATE tb_docentes 
+                SET nombreDocente = %s, apPaternoDocente = %s, apMaternoDocente = %s, correoDocente = %s, telefonoDocente = %s, statusDocente = %s, observacionesDocente = %s, nivelEstudios = %s, fechaNacimiento = %s
+                WHERE idDocente = %s
+            """
+            cursor.execute(
+                query,
+                (
+                    data.get("nombreDocente"),
+                    data.get("apPaternoDocente"),
+                    data.get("apMaternoDocente"),
+                    data.get("correoDocente"),
+                    data.get("telefonoDocente"),
+                    data.get("statusDocente"),
+                    data.get("observacionesDocente"),
+                    data.get("nivelEstudios"),
+                    data.get("fechaNacimiento"),
+                    data.get("idDocente"),
+                ),
+            )
+            conexion.commit()
+            return {"mensaje": "Docente actualizado correctamente"}
+        finally:
+            cursor.close()
+            conexion.close()
+    @staticmethod
+    def delete_docente(idDocente):
+        conexion = get_connection()
+        cursor = conexion.cursor()
+        try:
+            # Eliminar relaciones en tablas secundarias para evitar errores de llave foránea
+            cursor.execute("DELETE FROM tb_horarios WHERE idDocente = %s", (idDocente,))
+            cursor.execute("DELETE FROM tb_materiadocente WHERE idDocente = %s", (idDocente,))
+            
+            # Eliminar el docente
+            cursor.execute("DELETE FROM tb_docentes WHERE idDocente = %s", (idDocente,))
+            conexion.commit()
+            return {"mensaje": "Docente eliminado correctamente"}
+        except Exception as e:
+            conexion.rollback()
+            return {"error": str(e)}
         finally:
             cursor.close()
             conexion.close()

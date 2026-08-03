@@ -159,7 +159,25 @@ def get_docentes():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-
+@catalogos_bp.route("/updateDocente", methods=["PUT"])
+def update_docente():
+    try:
+        data = request.json
+        if (
+            not data.get("idDocente")
+            or not data.get("nombreDocente")
+            or not data.get("statusDocente")
+        ):
+            return jsonify({"error": "Faltan datos"}), 400
+        return jsonify(CatalogosService.update_docente(data))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+@catalogos_bp.route("/deleteDocente/<int:idDocente>", methods=["DELETE"])
+def delete_docente(idDocente):
+    try:
+        return jsonify(CatalogosService.delete_docente(idDocente))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 @catalogos_bp.route("/createPlanEstudios", methods=["POST"])
 def create_plan_estudios():
     try:
