@@ -432,13 +432,15 @@ class CatalogosService:
             cursor.close()
             conexion.close()
     @staticmethod
-    def update_docente(data):
+    def update_docente(id_docente, data):
         conexion = get_connection()
         cursor = conexion.cursor()
         try:
             query = """
                 UPDATE tb_docentes 
-                SET nombreDocente = %s, apPaternoDocente = %s, apMaternoDocente = %s, correoDocente = %s, telefonoDocente = %s, statusDocente = %s, observacionesDocente = %s, nivelEstudios = %s, fechaNacimiento = %s
+                SET nombreDocente = %s, apPaternoDocente = %s, apMaternoDocente = %s, 
+                    correoDocente = %s, telefonoDocente = %s, statusDocente = %s, 
+                    observacionesDocente = %s, nivelEstudios = %s, fechaNacimiento = %s
                 WHERE idDocente = %s
             """
             cursor.execute(
@@ -453,11 +455,14 @@ class CatalogosService:
                     data.get("observacionesDocente"),
                     data.get("nivelEstudios"),
                     data.get("fechaNacimiento"),
-                    data.get("idDocente"),
+                    id_docente,
                 ),
             )
             conexion.commit()
             return {"mensaje": "Docente actualizado correctamente"}
+        except Exception as e:
+            conexion.rollback()
+            return {"error": str(e)}
         finally:
             cursor.close()
             conexion.close()
