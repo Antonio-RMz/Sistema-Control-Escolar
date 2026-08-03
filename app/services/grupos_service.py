@@ -79,9 +79,9 @@ class GruposService:
             query = """
                 INSERT INTO tb_grupos (
                     clave, fechaCreacion, fechaInicio, fechaFin, 
-                    id_centroTrabajo, id_tipoPeriodo, id_planEstudios
+                    id_centroTrabajo, id_tipoPeriodo, id_planEstudios,modalidadHorario
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             """
             values = (
                 data.get("clave"),
@@ -91,6 +91,7 @@ class GruposService:
                 data.get("id_centroTrabajo"),
                 data.get("id_tipoPeriodo"),
                 data.get("id_planEstudios"),
+                data.get("modalidadHorario")
             )
             cursor.execute(query, values)
             
