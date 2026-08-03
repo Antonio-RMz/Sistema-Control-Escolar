@@ -498,3 +498,27 @@ class CatalogosService:
         finally:
             cursor.close()
             conexion.close()
+
+    @staticmethod
+    def create_horario_grupo(data):
+        conexion = get_connection()
+        cursor = conexion.cursor()
+        try:
+            query = "INSERT INTO tb_horarios (id_grupo, id_materia, id_docente, diaSemana, horaInicio, horaFin) VALUES (%s, %s, %s, %s, %s, %s)"
+            cursor.execute(
+                query,
+                (
+                    data.get("id_grupo"),
+                    data.get("id_materia"),
+                    data.get("id_docente"),
+                    data.get("diaSemana"),
+                    data.get("horaInicio"),
+                    data.get("horaFin"),
+                ),
+            )
+            conexion.commit()
+            return {"mensaje": "Horario de grupo creado correctamente"}
+        finally:
+            cursor.close()
+            conexion.close()
+        
