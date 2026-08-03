@@ -86,6 +86,12 @@ def create_materia():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@catalogos_bp.route("/deleteMateria/<int:id_materia>", methods=["DELETE"])
+def delete_materia(id_materia):
+    try:
+        return jsonify(CatalogosService.delete_materia(id_materia))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 # Métodos get para docentes
 @catalogos_bp.route("/createDocentes", methods=["POST"])

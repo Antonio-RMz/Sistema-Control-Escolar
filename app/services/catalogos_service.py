@@ -251,7 +251,17 @@ class CatalogosService:
         finally:
             cursor.close()
             conexion.close()
-
+    @staticmethod
+    def delete_materia(id_materia):
+        conexion = get_connection()
+        cursor = conexion.cursor()
+        try:
+            cursor.execute("DELETE FROM tb_materias WHERE id = %s", (id_materia,))
+            conexion.commit()
+            return {"mensaje": "Materia eliminada correctamente"}
+        finally:
+            cursor.close()
+            conexion.close()
     # Métodos get para docentes
     @staticmethod
     def get_docentes(page, limit, search, status):
@@ -554,6 +564,18 @@ class CatalogosService:
             cursor.execute("DELETE FROM tb_horarios WHERE id_horario = %s", (id_horario,))
             conexion.commit()
             return {"mensaje": "Horario de grupo eliminado correctamente"}
+        finally:
+            cursor.close()
+            conexion.close()
+
+    @staticmethod
+    def delete_materia(id_materia):
+        conexion = get_connection()
+        cursor = conexion.cursor()
+        try:
+            cursor.execute("DELETE FROM tb_materias WHERE id = %s", (id_materia,))
+            conexion.commit()
+            return {"mensaje": "Materia eliminada correctamente"}
         finally:
             cursor.close()
             conexion.close()
