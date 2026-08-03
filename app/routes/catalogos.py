@@ -93,6 +93,23 @@ def delete_materia(id_materia):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
+@catalogos_bp.route("/updateMateria/<int:id_materia>", methods=["PUT"])
+def update_materia(id_materia):
+    try:
+        data = request.json
+
+        if not data.get("nombreMateria") or not data.get("estatusMateria"):
+            return jsonify({"error": "Faltan datos obligatorios"}), 400
+
+        # Validar que docentes sea una lista si está presente
+        if "docentes" in data and not isinstance(data.get("docentes"), list):
+            return jsonify({"error": "docentes debe ser una lista"}), 400
+
+        return jsonify(CatalogosService.update_materia(id_materia, data))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 # Métodos get para docentes
 @catalogos_bp.route("/createDocentes", methods=["POST"])
 def create_docente():

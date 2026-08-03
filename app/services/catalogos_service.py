@@ -271,6 +271,56 @@ class CatalogosService:
         finally:
             cursor.close()
             conexion.close()
+
+    @staticmethod
+    def update_materia(id_materia, data):
+        conexion = get_connection()
+        cursor = conexion.cursor()
+        try:
+            # 🧱 Actualizar datos básicos de la materia
+            cursor.execute(
+                """
+                UPDATE tb_materias 
+                SET nombreMateria = %s, descripcionMateria = %s, estatusMateria = %s, clave = %s
+                WHERE id = %s
+                """,
+                (
+                    data.get("nombreMateria"),
+                    data.get("descripcionMateria"),
+                    data.get("estatusMateria"),
+                    data.get("clave"),
+                    id_materia,
+                ),
+            )
+
+            # 🔗 Actualizar docentes relacionados (Sincronización)
+            # Primero eliminamos todas las asignaciones existentes de la materia
+            cursor.execute("DELETE FROM tb_materiadocente WHERE idMateria = %s", (id_materia,))
+            
+            # Insertamos las nuevas asignaciones si existen
+            docentes = data.get("docentes", [])
+            if docentes:
+                query_rel = """
+                INSERT INTO tb_materiadocente (idMateria, idDocente)
+                VALUES (%s, %s)
+                """
+                for doc in docentes:
+                    if isinstance(doc, dict):
+                        id_docente = doc.get("idDocente")
+                    else:
+                        id_docente = doc  # compatibilidad con formato simple
+                    
+                    if id_docente:
+                        cursor.execute(query_rel, (id_materia, id_docente))
+
+            conexion.commit()
+            return {"mensaje": "Materia actualizada correctamente"}
+        except Exception as e:
+            conexion.rollback()
+            return {"error": str(e)}
+        finally:
+            cursor.close()
+            conexion.close()
     # Métodos get para docentes
     @staticmethod
     def get_docentes(page, limit, search, status):
