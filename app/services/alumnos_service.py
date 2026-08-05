@@ -393,7 +393,7 @@ class AlumnosService:
 
             ##obtener alumnos por grupo
     @staticmethod
-    def get_alumnos_by_grupo(idGrupo):
+    def get_alumnos_grupo(idGrupo):
         conexion = get_connection()
         cursor = conexion.cursor()
         try:
