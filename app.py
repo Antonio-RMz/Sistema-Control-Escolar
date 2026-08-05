@@ -24,6 +24,10 @@ def create_app():
     app.register_blueprint(catalogos_bp)
     app.register_blueprint(frontend_bp)
 
+    # Iniciar programador de tareas diario (7:00 AM)
+    from app.utils.scheduler import iniciar_scheduler
+    iniciar_scheduler(app)
+
     return app
 
 

@@ -182,14 +182,31 @@ class GruposService:
     @staticmethod
     #para obtener la informacion de un solo grupo
     def get_grupo(id_grupo):
+        import pymysql
         conexion = get_connection()
-        cursor = conexion.cursor()
+        cursor = conexion.cursor(pymysql.cursors.DictCursor)
         try:
             query = """
-                SELECT * FROM tb_grupos WHERE id = %s
+                SELECT g.*, n.nombre AS nombre_nivel
+                FROM tb_grupos g
+                LEFT JOIN tb_niveles_academicos n ON g.id_nivel_academico = n.id
+                WHERE g.id = %s
             """
             cursor.execute(query, (id_grupo,))
-            return cursor.fetchone()
+            grupo = cursor.fetchone()
+            
+            if grupo:
+                try:
+                    from app.services.periodos_academico import PeriodoAcademicoService
+                    periodo_info = PeriodoAcademicoService.calcularNivelGrupo(id_grupo)
+                    if periodo_info:
+                        # Convertir fechas a string para serialización JSON segura
+                        grupo["fechaInicioNivel"] = periodo_info["fechaInicioNivel"].strftime("%Y-%m-%d") if isinstance(periodo_info["fechaInicioNivel"], datetime.date) else periodo_info["fechaInicioNivel"]
+                        grupo["fechaFinNivel"] = periodo_info["fechaFinNivel"].strftime("%Y-%m-%d") if isinstance(periodo_info["fechaFinNivel"], datetime.date) else periodo_info["fechaFinNivel"]
+                except Exception as e:
+                    print(f"Error calculating level period: {e}")
+                    
+            return grupo
         finally:
             cursor.close()
             conexion.close()
