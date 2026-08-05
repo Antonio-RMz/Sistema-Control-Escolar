@@ -657,7 +657,7 @@ class CatalogosService:
             horaInicio = data.get("horaInicio") or data.get("horainicio")
             horaFin = data.get("horaFin") or data.get("horafin")
             id_docente = data.get("id_docente")
-            
+            aula = data.get("aula")
             # Soporta tanto un arreglo de IDs en 'materias' como una sola materia 'id_materia'
             materias = data.get("materias", [])
             if not materias:
@@ -667,7 +667,7 @@ class CatalogosService:
             if not materias or not id_docente:
                 return {"error": "Faltan datos de la materia o docente"}, 400
 
-            query = "INSERT INTO tb_horarios (id_grupo, id_materia, id_docente, diaSemana, horaInicio, horaFin) VALUES (%s, %s, %s, %s, %s, %s)"
+            query = "INSERT INTO tb_horarios (id_grupo, id_materia, id_docente, diaSemana, horaInicio, horaFin, aula) VALUES (%s, %s, %s, %s, %s, %s,%s)"
             
             # Insertar todas las materias para el mismo docente de forma atómica
             for id_materia in materias:
@@ -679,7 +679,8 @@ class CatalogosService:
                         id_docente,
                         diaSemana,
                         horaInicio,
-                        horaFin
+                        horaFin,
+                        aula
                     )
                 )
             conexion.commit()

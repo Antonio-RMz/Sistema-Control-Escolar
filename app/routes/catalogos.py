@@ -239,7 +239,7 @@ def create_horario_grupo():
         data = request.json
         hora_inicio = data.get("horaInicio") or data.get("horainicio")
         hora_fin = data.get("horaFin") or data.get("horafin")
-        if not data.get("id_grupo") or (not data.get("id_materia") and not data.get("materias")) or not data.get("id_docente") or not data.get("diaSemana") or not hora_inicio or not hora_fin:
+        if not data.get("id_grupo") or (not data.get("id_materia") and not data.get("materias")) or not data.get("id_docente") or not data.get("diaSemana") or not hora_inicio or not hora_fin or not data.get("aula"):
             return jsonify({"error": "Faltan datos"}), 400
         return jsonify(CatalogosService.create_horario_grupo(data))
     except Exception as e:
