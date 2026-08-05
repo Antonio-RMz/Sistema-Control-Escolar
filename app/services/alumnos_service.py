@@ -390,3 +390,18 @@ class AlumnosService:
         finally:
             cursor.close()
             conexion.close()
+
+            ##obtener alumnos por grupo
+    @staticmethod
+    def get_alumnos_by_grupo(idGrupo):
+        conexion = get_connection()
+        cursor = conexion.cursor()
+        try:
+            cursor.execute("SELECT * FROM tb_alumnos WHERE idGrupo = %s", (idGrupo,))
+            alumnos = cursor.fetchall()
+            return {"data": alumnos}
+        except Exception as e:
+            return {"error": str(e)}
+        finally:
+            cursor.close()
+            conexion.close()
