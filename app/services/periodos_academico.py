@@ -56,14 +56,8 @@ class PeriodoAcademicoService:
 
                 duracion_semanas = nivel_row["duracionSemanas"]
                 
-                # Alinear fechas: el primer nivel mantiene la fecha de inicio tal cual.
-                # Los siguientes niveles se desplazan (empiezan en el día siguiente de la fecha de fin anterior)
-                if id_nivel in (1, 11):
-                    # El primer periodo dura exactamente weeks * 7 días inclusive
-                    fecha_fin_nivel = fecha_inicio_nivel + datetime.timedelta(weeks=duracion_semanas)
-                else:
-                    # Los periodos subsecuentes duran weeks * 7 - 1 días para mantener la terminación de sábado/domingo
-                    fecha_fin_nivel = fecha_inicio_nivel + datetime.timedelta(weeks=duracion_semanas) - datetime.timedelta(days=1)
+                # Todos los periodos duran exactamente (weeks - 1) * 7 días inclusive (por ejemplo, de Domingo a Domingo)
+                fecha_fin_nivel = fecha_inicio_nivel + datetime.timedelta(weeks=duracion_semanas - 1)
 
                 # Si hoy se encuentra dentro del rango de este nivel, hemos encontrado el actual
                 if today <= fecha_fin_nivel:
@@ -76,8 +70,8 @@ class PeriodoAcademicoService:
                 if not cursor.fetchone():
                     break
 
-                # El siguiente periodo empieza al día siguiente del fin del actual
-                fecha_inicio_nivel = fecha_fin_nivel + datetime.timedelta(days=1)
+                # El siguiente periodo empieza una semana después del fin del actual (día de la siguiente clase)
+                fecha_inicio_nivel = fecha_fin_nivel + datetime.timedelta(weeks=1)
                 id_nivel = next_id_nivel
 
             cambio = (id_nivel != id_nivel_actual_db)

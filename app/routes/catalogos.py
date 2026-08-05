@@ -266,7 +266,8 @@ def validacionHorario():
 @catalogos_bp.route("/getHorariosGrupo/<int:id_grupo>", methods=["GET"])
 def getHorariosGrupo(id_grupo):
     try:
-        return jsonify(CatalogosService.getHorariosGrupo(id_grupo))
+        agrupado = request.args.get("agrupado", "false").lower() == "true"
+        return jsonify(CatalogosService.getHorariosGrupo(id_grupo, agrupado))
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

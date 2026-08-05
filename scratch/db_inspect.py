@@ -9,11 +9,11 @@ def inspect():
     conn = get_connection()
     try:
         with conn.cursor() as cursor:
-            cursor.execute("SELECT * FROM tb_grupos LIMIT 5")
-            groups = cursor.fetchall()
-            print("\n--- GROUPS ---")
-            for g in groups:
-                print(g)
+            cursor.execute("DESCRIBE tb_horarios")
+            columns = cursor.fetchall()
+            print("\n--- COLUMNS IN tb_horarios ---")
+            for col in columns:
+                print(col)
     finally:
         conn.close()
 

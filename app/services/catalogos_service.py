@@ -652,44 +652,94 @@ class CatalogosService:
         conexion = get_connection()
         cursor = conexion.cursor()
         try:
+            id_grupo = data.get("id_grupo")
+            diaSemana = data.get("diaSemana")
+            horaInicio = data.get("horaInicio")
+            horaFin = data.get("horaFin")
+            
+            # Soporta tanto un arreglo de clases como una sola clase tradicional en la raíz
+            clases = data.get("clases", [])
+            if not clases:
+                if data.get("id_materia") and data.get("id_docente"):
+                    clases = [{
+                        "id_materia": data.get("id_materia"),
+                        "id_docente": data.get("id_docente")
+                    }]
+
+            if not clases:
+                return {"error": "Faltan datos de la materia o docente"}, 400
+
             query = "INSERT INTO tb_horarios (id_grupo, id_materia, id_docente, diaSemana, horaInicio, horaFin) VALUES (%s, %s, %s, %s, %s, %s)"
-            cursor.execute(
-                query,
-                (
-                    data.get("id_grupo"),
-                    data.get("id_materia"),
-                    data.get("id_docente"),
-                    data.get("diaSemana"),
-                    data.get("horaInicio"),
-                    data.get("horaFin"),
-                ),
-            )
+            
+            # Insertar todas las materias/clases de forma atómica
+            for clase in clases:
+                cursor.execute(
+                    query,
+                    (
+                        id_grupo,
+                        clase.get("id_materia"),
+                        clase.get("id_docente"),
+                        diaSemana,
+                        horaInicio,
+                        horaFin
+                    )
+                )
             conexion.commit()
             return {"mensaje": "Horario de grupo creado correctamente"}
+        except Exception as e:
+            conexion.rollback()
+            raise e
         finally:
             cursor.close()
             conexion.close()
     @staticmethod
-    def getHorariosGrupo(id_grupo):
+    def getHorariosGrupo(id_grupo, agrupado=False):
         conexion = get_connection()
-        cursor = conexion.cursor()
+        cursor = conexion.cursor(pymysql.cursors.DictCursor)
         try:
             sql = """
                 SELECT
-                    id_horario AS id,
-                    id_grupo,
-                    id_materia,
-                    id_docente,
-                    diaSemana,
-                    TIME_FORMAT(horaInicio, '%%H:%%i:%%s') AS horaInicio,
-                    TIME_FORMAT(horaFin, '%%H:%%i:%%s') AS horaFin
-                FROM tb_horarios
-                WHERE id_grupo = %s
-                ORDER BY diaSemana, horaInicio
+                    h.id_horario AS id,
+                    h.id_grupo,
+                    h.id_materia,
+                    h.id_docente,
+                    h.diaSemana,
+                    TIME_FORMAT(h.horaInicio, '%%H:%%i:%%s') AS horaInicio,
+                    TIME_FORMAT(h.horaFin, '%%H:%%i:%%s') AS horaFin,
+                    m.nombreMateria AS materia_nombre,
+                    CONCAT(d.nombreDocente, ' ', d.apPaternoDocente, ' ', d.apMaternoDocente) AS docente_nombre
+                FROM tb_horarios h
+                LEFT JOIN tb_materias m ON h.id_materia = m.id
+                LEFT JOIN tb_docentes d ON h.id_docente = d.idDocente
+                WHERE h.id_grupo = %s
+                ORDER BY h.diaSemana, h.horaInicio
             """
             cursor.execute(sql, (id_grupo,))
             horarios = cursor.fetchall()
-            return horarios
+
+            if not agrupado:
+                return horarios
+
+            # Agrupar por día y rango de hora
+            grouped = {}
+            for h in horarios:
+                key = (h["diaSemana"], h["horaInicio"], h["horaFin"])
+                if key not in grouped:
+                    grouped[key] = {
+                        "diaSemana": h["diaSemana"],
+                        "horaInicio": h["horaInicio"],
+                        "horaFin": h["horaFin"],
+                        "clases": []
+                    }
+                grouped[key]["clases"].append({
+                    "id_horario": h["id"],
+                    "id_materia": h["id_materia"],
+                    "materia_nombre": h["materia_nombre"],
+                    "id_docente": h["id_docente"],
+                    "docente_nombre": h["docente_nombre"]
+                })
+
+            return list(grouped.values())
         finally:
             cursor.close()
             conexion.close()
