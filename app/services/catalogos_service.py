@@ -695,31 +695,40 @@ class CatalogosService:
             conexion.close()
     @staticmethod
     def validacionHorario(id_grupo, id_materia, id_docente, diaSemana, horaInicio, horaFin):
+        import pymysql
         conexion = get_connection()
-        cursor = conexion.cursor()
+        cursor = conexion.cursor(pymysql.cursors.DictCursor)
         try:
+            day_map = {
+                "lunes": 1, "martes": 2, "miercoles": 3, "miércoles": 3,
+                "jueves": 4, "viernes": 5, "sabado": 6, "sábado": 6,
+                "domingo": 7
+            }
+            if isinstance(diaSemana, str):
+                dia_semana_val = day_map.get(diaSemana.lower(), diaSemana)
+            else:
+                dia_semana_val = diaSemana
+
+            # Buscamos si el docente tiene otra clase en ese mismo día y hora en un GRUPO DIFERENTE
             cursor.execute("""
                 SELECT 
-                id_grupo,
-                id_materia,
-                id_docente,
-                diaSemana,
-                horaInicio,
-                horaFin
-                FROM tb_horarios
-                WHERE id_grupo = %s
-                AND id_materia = %s
-                AND id_docente = %s
-                AND diaSemana = %s
-                AND horaInicio = %s
-                AND horaFin = %s
-            """, (id_grupo, id_materia, id_docente, diaSemana, horaInicio, horaFin))
+                    h.id_grupo,
+                    g.clave AS grupo_clave,
+                    m.nombreMateria AS materia_nombre
+                FROM tb_horarios h
+                LEFT JOIN tb_grupos g ON h.id_grupo = g.id
+                LEFT JOIN tb_materias m ON h.id_materia = m.id
+                WHERE h.id_docente = %s
+                AND h.diaSemana = %s
+                AND h.horaInicio = %s
+                AND h.id_grupo != %s
+            """, (id_docente, dia_semana_val, horaInicio, id_grupo))
             existe_empalme = cursor.fetchone()
             
             if existe_empalme:
                 return {
                     "success": False,
-                    "mensaje": "El docente ya tiene una clase asignada en ese horario."
+                    "mensaje": f"El docente ya tiene una clase asignada en el grupo '{existe_empalme['grupo_clave']}' con la materia '{existe_empalme['materia_nombre']}' en este horario."
                 }
             return {
                 "success": True,
