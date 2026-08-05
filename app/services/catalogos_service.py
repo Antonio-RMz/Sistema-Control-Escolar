@@ -703,6 +703,7 @@ class CatalogosService:
                     h.id_materia,
                     h.id_docente,
                     h.diaSemana,
+                    h.aula,
                     TIME_FORMAT(h.horaInicio, '%%H:%%i:%%s') AS horaInicio,
                     TIME_FORMAT(h.horaFin, '%%H:%%i:%%s') AS horaFin,
                     m.nombreMateria AS materia_nombre,
@@ -719,10 +720,10 @@ class CatalogosService:
             if not agrupado:
                 return horarios
 
-            # Agrupar por día, rango de hora y docente
+            # Agrupar por día, rango de hora, docente y aula
             grouped = {}
             for h in horarios:
-                key = (h["diaSemana"], h["horaInicio"], h["horaFin"], h["id_docente"])
+                key = (h["diaSemana"], h["horaInicio"], h["horaFin"], h["id_docente"], h["aula"])
                 if key not in grouped:
                     grouped[key] = {
                         "diaSemana": h["diaSemana"],
@@ -730,6 +731,7 @@ class CatalogosService:
                         "horaFin": h["horaFin"],
                         "id_docente": h["id_docente"],
                         "docente_nombre": h["docente_nombre"],
+                        "aula": h["aula"],
                         "clases": []
                     }
                 grouped[key]["clases"].append({
