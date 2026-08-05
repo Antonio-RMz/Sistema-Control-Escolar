@@ -232,7 +232,7 @@ def get_cursos_extracurriculares():
         return jsonify(CatalogosService.get_cursos_extracurriculares())
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
+####----------------------HORARIO---------------------
 @catalogos_bp.route("/createHorarioGrupo", methods=["POST"])
 def create_horario_grupo():
     try:
@@ -242,6 +242,19 @@ def create_horario_grupo():
         return jsonify(CatalogosService.create_horario_grupo(data))
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+        
+@catalogos_bp.route("/validacionHorario", methods=["POST"])
+def validacionHorario():
+    try:
+        data = request.json
+        if not data.get("id_grupo") or not data.get("id_materia") or not data.get("id_docente") or not data.get("diaSemana") or not data.get("horaInicio") or not data.get("horaFin"):
+            return jsonify({"error": "Faltan datos"}), 400
+        return jsonify(CatalogosService.validacionHorario(data))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+####-----------------GRUPOS
 
 @catalogos_bp.route("/getHorariosGrupo/<int:id_grupo>", methods=["GET"])
 def getHorariosGrupo(id_grupo):

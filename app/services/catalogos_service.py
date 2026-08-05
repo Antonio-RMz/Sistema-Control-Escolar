@@ -346,6 +346,7 @@ class CatalogosService:
             cursor.close()
             conexion.close()
     # Métodos get para docentes
+    #### -------------------- MATERIAS -------------------
     @staticmethod
     def get_docentes(page, limit, search, status):
         conexion = get_connection()
@@ -645,7 +646,7 @@ class CatalogosService:
         finally:
             cursor.close()
             conexion.close()
-
+###-----HORARIOS----------
     @staticmethod
     def create_horario_grupo(data):
         conexion = get_connection()
@@ -692,7 +693,32 @@ class CatalogosService:
         finally:
             cursor.close()
             conexion.close()
-
+    @staticmethod
+    def validacionHorario(id_grupo, id_materia, id_docente, diaSemana, horaInicio, horaFin):
+        conexion = get_connection()
+        cursor = conexion.cursor()
+        try:
+            cursor.execute("""
+                SELECT 
+                id_grupo,
+                id_materia,
+                id_docente,
+                diaSemana,
+                horaInicio,
+                horaFin
+                FROM tb_horarios
+                WHERE id_grupo = %s
+                AND id_materia = %s
+                AND id_docente = %s
+                AND diaSemana = %s
+                AND horaInicio = %s
+                AND horaFin = %s
+            """, (id_grupo, id_materia, id_docente, diaSemana, horaInicio, horaFin))
+            horarios = cursor.fetchall()
+            return horarios
+        finally:
+            cursor.close()
+            conexion.close()
     @staticmethod
     def deleteHorarioGrupo(id_horario):
         conexion = get_connection()
