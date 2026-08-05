@@ -32,10 +32,12 @@ class GruposService:
             # Obtener los datos paginados
             sql_datos = f"""
                 SELECT g.id, g.clave, g.fechaCreacion, g.fechaInicio, g.fechaFin,
-                g.id_centroTrabajo, g.id_tipoPeriodo, g.id_planEstudios,
+                g.id_centroTrabajo, g.id_tipoPeriodo, g.id_planEstudios, g.id_nivel_academico,
+                n.nombre AS nombre_nivel,
                 IFNULL(GROUP_CONCAT(gd.dia), '') AS diasClase
                 FROM tb_grupos g
                 LEFT JOIN tb_grupodias gd ON g.id = gd.idGrupo
+                LEFT JOIN tb_niveles_academicos n ON g.id_nivel_academico = n.id
                 {where}
                 GROUP BY g.id
                 ORDER BY g.id DESC
@@ -79,9 +81,9 @@ class GruposService:
             query = """
                 INSERT INTO tb_grupos (
                     clave, fechaCreacion, fechaInicio, fechaFin, 
-                    id_centroTrabajo, id_tipoPeriodo, id_planEstudios,modalidadHorario
+                    id_centroTrabajo, id_tipoPeriodo, id_planEstudios, modalidadHorario, id_nivel_academico
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             """
             values = (
                 data.get("clave"),
@@ -91,7 +93,8 @@ class GruposService:
                 data.get("id_centroTrabajo"),
                 data.get("id_tipoPeriodo"),
                 data.get("id_planEstudios"),
-                data.get("modalidadHorario")
+                data.get("modalidadHorario"),
+                data.get("id_nivel_academico")
             )
             cursor.execute(query, values)
             
