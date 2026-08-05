@@ -276,3 +276,13 @@ def delete_horario_grupo(id_horario):
         return jsonify(CatalogosService.deleteHorarioGrupo(id_horario))
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+
+    ######3---------------------nivel academico-----------#
+@catalogos_bp.route("/getNivelAcademico", methods=["GET"])
+def get_nivel_academico():
+    try:
+        return jsonify(CatalogosService.get_nivel_academico())
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500

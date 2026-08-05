@@ -748,3 +748,14 @@ class CatalogosService:
         finally:
             cursor.close()
             conexion.close()
+#metodo para obtener el niveles academicos 
+    @staticmethod
+    def get_nivel_academico():
+        conexion = get_connection()
+        cursor = conexion.cursor(pymysql.cursors.DictCursor)
+        try:
+            cursor.execute("SELECT * FROM tb_niveles_academicos")
+            return cursor.fetchall()
+        finally:
+            cursor.close()
+            conexion.close()

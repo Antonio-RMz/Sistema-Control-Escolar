@@ -130,7 +130,7 @@ class GruposService:
         finally:
             cursor.close()
             conexion.close()
-   #para obtener los datos de un grupo
+   #para actualizar los datos de un grupo
     @staticmethod
     def update(id_grupo, data):
         conexion = get_connection()
@@ -149,7 +149,8 @@ class GruposService:
                     id_centroTrabajo = %s,
                     id_tipoPeriodo = %s,
                     id_planEstudios = %s,
-                    modalidadHorario = %s
+                    modalidadHorario = %s,
+                    id_nivel_academico = %s
                 WHERE id = %s
             """
             values = (
@@ -161,6 +162,7 @@ class GruposService:
                 data.get("id_tipoPeriodo"),
                 data.get("id_planEstudios"),
                 data.get("modalidadHorario"),
+                data.get("id_nivel_academico"),
                 id_grupo
             )
             cursor.execute(query, values)
