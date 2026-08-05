@@ -358,6 +358,30 @@ class AlumnosService:
                 id_alumno,
             )
             cursor.execute(query, values)
+            
+            # Sincronizar tb_alumnoGrupo
+            id_grupo = data.get("idGrupo") or data.get("id_Grupo")
+            if id_grupo:
+                # Verificar si ya existe una relación para este alumno
+                cursor.execute("SELECT id FROM tb_alumnoGrupo WHERE idAlumno = %s", (id_alumno,))
+                relacion = cursor.fetchone()
+                if relacion:
+                    # Si existe, actualizamos la relación
+                    cursor.execute("""
+                        UPDATE tb_alumnoGrupo 
+                        SET idGrupo = %s 
+                        WHERE idAlumno = %s
+                    """, (id_grupo, id_alumno))
+                else:
+                    # Si no existe, creamos la relación
+                    cursor.execute("""
+                        INSERT INTO tb_alumnoGrupo (idAlumno, idGrupo) 
+                        VALUES (%s, %s)
+                    """, (id_alumno, id_grupo))
+            else:
+                # Si idGrupo es None o vacío, eliminamos cualquier relación existente
+                cursor.execute("DELETE FROM tb_alumnoGrupo WHERE idAlumno = %s", (id_alumno,))
+
             conexion.commit()
             return {"mensaje": "Alumno actualizado correctamente", "idAlumno": id_alumno}
         except Exception as e:
