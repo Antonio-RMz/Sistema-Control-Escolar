@@ -237,7 +237,9 @@ def get_cursos_extracurriculares():
 def create_horario_grupo():
     try:
         data = request.json
-        if not data.get("id_grupo") or not data.get("id_materia") or not data.get("id_docente") or not data.get("diaSemana") or not data.get("horaInicio") or not data.get("horaFin"):
+        hora_inicio = data.get("horaInicio") or data.get("horainicio")
+        hora_fin = data.get("horaFin") or data.get("horafin")
+        if not data.get("id_grupo") or (not data.get("id_materia") and not data.get("materias")) or not data.get("id_docente") or not data.get("diaSemana") or not hora_inicio or not hora_fin:
             return jsonify({"error": "Faltan datos"}), 400
         return jsonify(CatalogosService.create_horario_grupo(data))
     except Exception as e:

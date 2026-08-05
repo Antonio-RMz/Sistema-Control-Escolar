@@ -654,8 +654,8 @@ class CatalogosService:
         try:
             id_grupo = data.get("id_grupo")
             diaSemana = data.get("diaSemana")
-            horaInicio = data.get("horaInicio")
-            horaFin = data.get("horaFin")
+            horaInicio = data.get("horaInicio") or data.get("horainicio")
+            horaFin = data.get("horaFin") or data.get("horafin")
             id_docente = data.get("id_docente")
             
             # Soporta tanto un arreglo de IDs en 'materias' como una sola materia 'id_materia'

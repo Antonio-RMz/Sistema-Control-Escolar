@@ -62,16 +62,17 @@ def run_test():
             print(f"Docente: {doc1_id}")
 
             # 2. Probar creación de horarios múltiples en un mismo bloque (un solo docente, múltiples materias)
+            # USANDO 'horainicio' (minúscula) como viene del frontend
             payload = {
                 "id_grupo": id_grupo,
                 "diaSemana": 2, # Martes
-                "horaInicio": "15:00:00",
+                "horainicio": "15:00:00",
                 "horaFin": "16:00:00",
                 "id_docente": doc1_id,
                 "materias": [mat1_id, mat2_id]
             }
 
-            print("\nCreando horario con múltiples materias y un único docente...")
+            print("\nCreando horario con múltiples materias y un único docente (con horainicio)...")
             res_create = CatalogosService.create_horario_grupo(payload)
             print("Resultado creación:", res_create)
 
