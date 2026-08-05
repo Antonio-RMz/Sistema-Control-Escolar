@@ -243,14 +243,21 @@ def create_horario_grupo():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-        
+
 @catalogos_bp.route("/validacionHorario", methods=["POST"])
 def validacionHorario():
     try:
         data = request.json
         if not data.get("id_grupo") or not data.get("id_materia") or not data.get("id_docente") or not data.get("diaSemana") or not data.get("horaInicio") or not data.get("horaFin"):
             return jsonify({"error": "Faltan datos"}), 400
-        return jsonify(CatalogosService.validacionHorario(data))
+        return jsonify(CatalogosService.validacionHorario(
+            data.get("id_grupo"),
+            data.get("id_materia"),
+            data.get("id_docente"),
+            data.get("diaSemana"),
+            data.get("horaInicio"),
+            data.get("horaFin")
+        ))
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
