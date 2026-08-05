@@ -26,7 +26,7 @@ def get_alumno(idAlumno):
         return jsonify(resultado)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
+#PARA CONSULTAR SOLO UN ALUMNO
 @alumnos_bp.route("/<int:idGrupo>/alumnos", methods=["GET"])
 def get_alumnos_by_grupo(idGrupo):
     try:
@@ -84,6 +84,16 @@ def importar_alumnos_hoja():
 def delete_alumno(id_alumno):
     try:
         resultado = AlumnosService.delete_alumno(id_alumno)
+        return jsonify(resultado)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+#actualiza solo elumnos y grupos
+@alumnos_bp.route("/updateAlumno/<int:id_alumno>", methods=["PUT"])
+def update_alumno(id_alumno):
+    try:
+        data = request.json
+        resultado = AlumnosService.update_alumno(id_alumno, data)
         return jsonify(resultado)
     except Exception as e:
         return jsonify({"error": str(e)}), 500

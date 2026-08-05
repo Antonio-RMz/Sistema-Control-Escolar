@@ -170,7 +170,7 @@ class AlumnosService:
         finally:
             cursor.close()
             conexion.close()
-
+#PARA IMPORTAR ALUMNOS
     @staticmethod
     def importar_alumnos_hoja(
         sheet_index=37,
@@ -291,7 +291,7 @@ class AlumnosService:
         finally:
             cursor.close()
             conexion.close()
-
+#PARA TRAERSE TODOS LOS ALUMNOS
     @staticmethod
     def get_alumno(id_alumno):
         conexion = get_connection()
@@ -305,3 +305,64 @@ class AlumnosService:
         finally:
             cursor.close()
             conexion.close()
+#PARA ACTUALIZAR ALUMNOS 
+@staticmethod
+def update_alumno(id_alumno, data):
+    conexion = get_connection()
+    cursor = conexion.cursor()
+    try:
+        query = """
+            UPDATE tb_alumnos 
+            SET
+                nombre = %s,
+                apPaterno = %s,
+                apMaterno = %s,
+                fechaNacimiento = %s,
+                tutor = %s,
+                parentesco = %s,
+                calle = %s,
+                colonia = %s,
+                localidad = %s,
+                municipio = %s,
+                telefonoTutor = %s,
+                celularAlumno = %s,
+                correoAlumno = %s,
+                escuelaProcedencia = %s,
+                observaciones = %s,
+                idGeneracion = %s,
+                idGrupo = %s,
+                equivalencia = %s,
+                numeroControl = %s
+            WHERE idAlumno = %s
+        """
+        values = (
+            data.get("nombre"),
+            data.get("apPaterno"),
+            data.get("apMaterno"),
+            data.get("fechaNacimiento"),
+            data.get("tutor"),
+            data.get("parentesco"),
+            data.get("calle"),
+            data.get("colonia"),
+            data.get("localidad"),
+            data.get("municipio"),
+            data.get("telefonoTutor"),
+            data.get("celularAlumno"),
+            data.get("correoAlumno"),
+            data.get("escuelaProcedencia"),
+            data.get("observaciones"),
+            data.get("idGeneracion"),
+            data.get("idGrupo"),
+            data.get("equivalencia"),
+            data.get("numeroControl"),
+            id_alumno,
+        )
+        cursor.execute(query, values)
+        conexion.commit()
+        return {"mensaje": "Alumno actualizado correctamente", "idAlumno": id_alumno}
+    except Exception as e:
+        conexion.rollback()
+        return {"error": str(e)}
+    finally:
+        cursor.close()
+        conexion.close()
