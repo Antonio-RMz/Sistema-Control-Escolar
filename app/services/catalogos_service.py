@@ -714,8 +714,17 @@ class CatalogosService:
                 AND horaInicio = %s
                 AND horaFin = %s
             """, (id_grupo, id_materia, id_docente, diaSemana, horaInicio, horaFin))
-            horarios = cursor.fetchall()
-            return horarios
+            existe_empalme = cursor.fetchone()
+            
+            if existe_empalme:
+                return {
+                    "success": False,
+                    "mensaje": "El docente ya tiene una clase asignada en ese horario."
+                }
+            return {
+                "success": True,
+                "mensaje": "El docente está disponible para ese horario."
+            }
         finally:
             cursor.close()
             conexion.close()
