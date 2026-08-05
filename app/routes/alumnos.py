@@ -99,9 +99,9 @@ def update_alumno(id_alumno):
         return jsonify({"error": str(e)}), 500
 
 @alumnos_bp.route("/alumnos_by_grupo/<int:idGrupo>", methods=["GET"])
-def get_alumnos_by_grupo(idGrupo):
+def get_alumnos_grupo(idGrupo):
     try:
-        resultado = AlumnosService.get_alumnos_by_grupo(idGrupo)
+        resultado = AlumnosService.get_alumnos_grupo(idGrupo)
         return jsonify(resultado)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
