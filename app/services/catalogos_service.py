@@ -656,29 +656,27 @@ class CatalogosService:
             diaSemana = data.get("diaSemana")
             horaInicio = data.get("horaInicio")
             horaFin = data.get("horaFin")
+            id_docente = data.get("id_docente")
             
-            # Soporta tanto un arreglo de clases como una sola clase tradicional en la raíz
-            clases = data.get("clases", [])
-            if not clases:
-                if data.get("id_materia") and data.get("id_docente"):
-                    clases = [{
-                        "id_materia": data.get("id_materia"),
-                        "id_docente": data.get("id_docente")
-                    }]
+            # Soporta tanto un arreglo de IDs en 'materias' como una sola materia 'id_materia'
+            materias = data.get("materias", [])
+            if not materias:
+                if data.get("id_materia"):
+                    materias = [data.get("id_materia")]
 
-            if not clases:
+            if not materias or not id_docente:
                 return {"error": "Faltan datos de la materia o docente"}, 400
 
             query = "INSERT INTO tb_horarios (id_grupo, id_materia, id_docente, diaSemana, horaInicio, horaFin) VALUES (%s, %s, %s, %s, %s, %s)"
             
-            # Insertar todas las materias/clases de forma atómica
-            for clase in clases:
+            # Insertar todas las materias para el mismo docente de forma atómica
+            for id_materia in materias:
                 cursor.execute(
                     query,
                     (
                         id_grupo,
-                        clase.get("id_materia"),
-                        clase.get("id_docente"),
+                        id_materia,
+                        id_docente,
                         diaSemana,
                         horaInicio,
                         horaFin
@@ -720,23 +718,23 @@ class CatalogosService:
             if not agrupado:
                 return horarios
 
-            # Agrupar por día y rango de hora
+            # Agrupar por día, rango de hora y docente
             grouped = {}
             for h in horarios:
-                key = (h["diaSemana"], h["horaInicio"], h["horaFin"])
+                key = (h["diaSemana"], h["horaInicio"], h["horaFin"], h["id_docente"])
                 if key not in grouped:
                     grouped[key] = {
                         "diaSemana": h["diaSemana"],
                         "horaInicio": h["horaInicio"],
                         "horaFin": h["horaFin"],
+                        "id_docente": h["id_docente"],
+                        "docente_nombre": h["docente_nombre"],
                         "clases": []
                     }
                 grouped[key]["clases"].append({
                     "id_horario": h["id"],
                     "id_materia": h["id_materia"],
-                    "materia_nombre": h["materia_nombre"],
-                    "id_docente": h["id_docente"],
-                    "docente_nombre": h["docente_nombre"]
+                    "materia_nombre": h["materia_nombre"]
                 })
 
             return list(grouped.values())

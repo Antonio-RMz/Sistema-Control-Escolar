@@ -291,3 +291,17 @@ class AlumnosService:
         finally:
             cursor.close()
             conexion.close()
+
+    @staticmethod
+    def get_alumno(id_alumno):
+        conexion = get_connection()
+        cursor = conexion.cursor()
+        try:
+            cursor.execute("SELECT * FROM tb_alumnos WHERE idAlumno = %s", (id_alumno,))
+            alumno = cursor.fetchone()
+            return {"data": alumno}
+        except Exception as e:
+            return {"error": str(e)}
+        finally:
+            cursor.close()
+            conexion.close()

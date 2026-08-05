@@ -19,7 +19,13 @@ def get_alumnos():
         return jsonify(resultado)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
+@alumnos_bp.route("/alumno/<int:idAlumno>", methods=["GET"])
+def get_alumno(idAlumno):
+    try:
+        resultado = AlumnosService.get_alumno(idAlumno)
+        return jsonify(resultado)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @alumnos_bp.route("/<int:idGrupo>/alumnos", methods=["GET"])
 def get_alumnos_by_grupo(idGrupo):

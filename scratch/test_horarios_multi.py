@@ -1,5 +1,6 @@
 import sys
 import os
+import datetime
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
@@ -40,14 +41,13 @@ def run_test():
             cursor.execute("SELECT idDocente FROM tb_docentes LIMIT 2")
             docentes = cursor.fetchall()
             created_docentes = []
-            if len(docentes) < 2:
-                print("Creando docentes temporales...")
-                for i in range(2 - len(docentes)):
-                    cursor.execute("""
-                        INSERT INTO tb_docentes (nombreDocente, apPaternoDocente, apMaternoDocente, correoDocente, statusDocente)
-                        VALUES (%s, 'Test', 'Test', %s, 1)
-                    """, (f"Docente Test {i+1}", f"test{i+1}@test.com"))
-                    created_docentes.append(cursor.lastrowid)
+            if len(docentes) < 1:
+                print("Creando docente temporal...")
+                cursor.execute("""
+                    INSERT INTO tb_docentes (nombreDocente, apPaternoDocente, apMaternoDocente, correoDocente, statusDocente)
+                    VALUES ('Docente Test', 'Test', 'Test', 'test@test.com', 1)
+                """)
+                created_docentes.append(cursor.lastrowid)
                 conn.commit()
                 # Volver a cargar docentes
                 cursor.execute("SELECT idDocente FROM tb_docentes LIMIT 2")
@@ -56,25 +56,22 @@ def run_test():
             mat1_id = materias[0]['id']
             mat2_id = materias[1]['id']
             doc1_id = docentes[0]['idDocente']
-            doc2_id = docentes[1]['idDocente']
 
             print(f"Usando Grupo ID={id_grupo}")
             print(f"Materia 1: {mat1_id}, Materia 2: {mat2_id}")
-            print(f"Docente 1: {doc1_id}, Docente 2: {doc2_id}")
+            print(f"Docente: {doc1_id}")
 
-            # 2. Probar creación de horarios múltiples en un mismo bloque
+            # 2. Probar creación de horarios múltiples en un mismo bloque (un solo docente, múltiples materias)
             payload = {
                 "id_grupo": id_grupo,
                 "diaSemana": 2, # Martes
                 "horaInicio": "15:00:00",
                 "horaFin": "16:00:00",
-                "clases": [
-                    {"id_materia": mat1_id, "id_docente": doc1_id},
-                    {"id_materia": mat2_id, "id_docente": doc2_id}
-                ]
+                "id_docente": doc1_id,
+                "materias": [mat1_id, mat2_id]
             }
 
-            print("\nCreando horario con múltiples materias...")
+            print("\nCreando horario con múltiples materias y un único docente...")
             res_create = CatalogosService.create_horario_grupo(payload)
             print("Resultado creación:", res_create)
 
