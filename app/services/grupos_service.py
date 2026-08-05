@@ -112,7 +112,7 @@ class GruposService:
         finally:
             cursor.close()
             conexion.close()
-
+#para obtener los alumnos por grupo
     @staticmethod
     def get_alumnos_by_grupo(id_grupo):
         conexion = get_connection()
@@ -130,6 +130,7 @@ class GruposService:
         finally:
             cursor.close()
             conexion.close()
+   #para obtener los datos de un grupo
     @staticmethod
     def update(id_grupo, data):
         conexion = get_connection()
@@ -172,3 +173,19 @@ class GruposService:
         finally:
             cursor.close()
             conexion.close()
+
+    @staticmethod
+    #para obtener la informacion de un solo grupo
+    def get_grupo(id_grupo):
+        conexion = get_connection()
+        cursor = conexion.cursor()
+        try:
+            query = """
+                SELECT * FROM tb_grupos WHERE id = %s
+            """
+            cursor.execute(query, (id_grupo,))
+            return cursor.fetchone()
+        finally:
+            cursor.close()
+            conexion.close()
+    

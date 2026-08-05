@@ -38,3 +38,11 @@ def update_grupo(id_grupo):
         return jsonify(resultado)   
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+@grupos_bp.route("/getGrupo/<int:id_grupo>", methods=["GET"])
+def get_grupo(id_grupo):
+    try:
+        resultado = GruposService.get_grupo(id_grupo)
+        return jsonify(resultado)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500

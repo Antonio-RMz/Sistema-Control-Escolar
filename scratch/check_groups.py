@@ -1,23 +1,17 @@
-import pymysql
-import os
 from app.config.conexion import get_connection
 
-def check_table():
+def check_groups():
     try:
         connection = get_connection()
         cursor = connection.cursor()
         cursor.execute("SELECT * FROM tb_grupos")
         result = cursor.fetchall()
-        print("--- REGISTROS EN tb_grupos ---")
+        print("\n--- VOLCADO COMPLETO tb_grupos ---")
         for row in result:
             print(row)
-            
-        cursor.execute("DESCRIBE tb_grupos")
-        result_desc = cursor.fetchall()
-        print("\n--- ESTRUCTURA tb_grupos ---")
-        for row in result_desc:
-            print(row)
+        print("----------------------------------\n")
     except Exception as e:
         print(f"Error: {e}")
 
-check_table()
+if __name__ == "__main__":
+    check_groups()
