@@ -105,3 +105,29 @@ def get_alumnos_grupo(idGrupo):
         return jsonify(resultado)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@alumnos_bp.route("/test_latest_alumno", methods=["GET"])
+def test_latest_alumno():
+    from app.config.conexion import get_connection
+    import pymysql
+    conexion = get_connection()
+    cursor = conexion.cursor(pymysql.cursors.DictCursor)
+    try:
+        cursor.execute("""
+            SELECT idAlumno, nombre, apPaterno, curp, folioCertificado, fechaRecogioCertificado, recogioCertificado
+            FROM tb_alumnos
+            ORDER BY idAlumno DESC
+            LIMIT 1
+        """)
+        row = cursor.fetchone()
+        if row:
+            for k, v in list(row.items()):
+                if not isinstance(v, (str, int, float)) and v is not None:
+                    row[k] = str(v)
+        return jsonify(row)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cursor.close()
+        conexion.close()
