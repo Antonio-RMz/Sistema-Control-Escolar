@@ -112,9 +112,14 @@ def test_parse_direct():
         xls = pd.ExcelFile(latest_file)
         sheet_name = None
         for name in xls.sheet_names:
-            if "asistencia" in name.lower() or "reporte" in name.lower():
+            if "asistencia" in name.lower():
                 sheet_name = name
                 break
+        if not sheet_name:
+            for name in xls.sheet_names:
+                if "reporte" in name.lower():
+                    sheet_name = name
+                    break
         if not sheet_name:
             sheet_name = xls.sheet_names[0]
             
