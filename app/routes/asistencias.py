@@ -291,6 +291,3 @@ def test_get_asistencias():
         return jsonify(res)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-    finally:
-        cursor.close()
-        conexion.close()
