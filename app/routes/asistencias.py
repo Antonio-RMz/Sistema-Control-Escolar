@@ -269,6 +269,7 @@ def test_print_excel():
         return jsonify({
             "file": os.path.basename(latest_file),
             "sheet": sheet_name,
+            "all_sheets": xls.sheet_names,
             "total_rows": len(df),
             "total_cols": len(df.columns),
             "dump": dump
