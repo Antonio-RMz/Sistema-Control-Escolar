@@ -75,7 +75,8 @@ class AlumnosService:
                     a.idGeneracion,
                     a.idGrupo,
                     a.equivalencia,
-                    g.generacion AS nombreGeneracionTexto
+                    g.generacion AS nombreGeneracionTexto,
+                    a.numeroControl,
                     a.statusAlumno
                 FROM tb_alumnos a
                 LEFT JOIN tb_generaciones g ON a.idGeneracion = g.id
