@@ -812,3 +812,161 @@ class CatalogosService:
         finally:
             cursor.close()
             conexion.close()
+
+    @staticmethod
+    def get_horas_docentes(fecha_inicio_str, fecha_fin_str):
+        import datetime
+        from datetime import timedelta
+        
+        try:
+            d_inicio = datetime.datetime.strptime(fecha_inicio_str, "%Y-%m-%d").date()
+            d_fin = datetime.datetime.strptime(fecha_fin_str, "%Y-%m-%d").date()
+        except ValueError:
+            raise ValueError("Las fechas deben tener el formato YYYY-MM-DD")
+
+        if d_inicio > d_fin:
+            raise ValueError("La fecha de inicio debe ser menor o igual a la fecha de fin")
+
+        conexion = get_connection()
+        cursor = conexion.cursor(pymysql.cursors.DictCursor)
+        try:
+            # 1. Obtener todos los docentes activos
+            cursor.execute("""
+                SELECT 
+                    idDocente, 
+                    CONCAT(nombreDocente, ' ', COALESCE(apPaternoDocente, ''), ' ', COALESCE(apMaternoDocente, '')) AS docente
+                FROM tb_docentes
+                WHERE statusDocente = 'ACTIVO'
+                ORDER BY nombreDocente, apPaternoDocente, apMaternoDocente
+            """)
+            docentes = cursor.fetchall()
+
+            if not docentes:
+                return []
+
+            # 2. Obtener los horarios de grupos vigentes dentro del rango solicitado
+            cursor.execute("""
+                SELECT 
+                    h.id_docente,
+                    h.diaSemana,
+                    h.horaInicio,
+                    h.horaFin,
+                    g.fechaInicio,
+                    g.fechaFin
+                FROM tb_horarios h
+                JOIN tb_grupos g ON h.id_grupo = g.id
+                WHERE g.fechaInicio <= %s AND g.fechaFin >= %s
+            """, (fecha_fin_str, fecha_inicio_str))
+            horarios = cursor.fetchall()
+
+            # Organizar horarios por docente
+            horarios_por_docente = {}
+            for h in horarios:
+                id_doc = h['id_docente']
+                if id_doc not in horarios_por_docente:
+                    horarios_por_docente[id_doc] = []
+                horarios_por_docente[id_doc].append(h)
+
+            # Generar la lista de fechas en el rango
+            dias_rango = []
+            curr = d_inicio
+            while curr <= d_fin:
+                dias_rango.append(curr)
+                curr += timedelta(days=1)
+
+            resultado = []
+
+            for doc in docentes:
+                id_docente = doc['idDocente']
+                docente_nombre = doc['docente'].strip()
+                slots_docente = horarios_por_docente.get(id_docente, [])
+
+                dias_reporte = []
+                for d in dias_rango:
+                    db_weekday = d.weekday() + 1
+                    fecha_str = d.strftime("%Y-%m-%d")
+
+                    # Filtrar horarios del docente activos en este día de la semana y vigentes en esta fecha
+                    slots_dia = []
+                    for h in slots_docente:
+                        # Convertir fechas de mysql a date de python si vienen como datetime.date
+                        h_fecha_inicio = h['fechaInicio']
+                        h_fecha_fin = h['fechaFin']
+                        if isinstance(h_fecha_inicio, datetime.datetime):
+                            h_fecha_inicio = h_fecha_inicio.date()
+                        if isinstance(h_fecha_fin, datetime.datetime):
+                            h_fecha_fin = h_fecha_fin.date()
+
+                        if h['diaSemana'] == db_weekday and h_fecha_inicio <= d <= h_fecha_fin:
+                            slots_dia.append(h)
+
+                    if not slots_dia:
+                        dias_reporte.append({
+                            "fecha": fecha_str,
+                            "total": 0,
+                            "real": 0
+                        })
+                        continue
+
+                    # Calcular total de horas
+                    total_minutos = 0
+                    intervals = []
+                    for s in slots_dia:
+                        start_td = s['horaInicio']
+                        end_td = s['horaFin']
+                        
+                        if isinstance(start_td, str):
+                            h, m, s_val = map(int, start_td.split(':'))
+                            start_td = timedelta(hours=h, minutes=m, seconds=s_val)
+                        elif isinstance(start_td, datetime.time):
+                            start_td = timedelta(hours=start_td.hour, minutes=start_td.minute, seconds=start_td.second)
+                            
+                        if isinstance(end_td, str):
+                            h, m, s_val = map(int, end_td.split(':'))
+                            end_td = timedelta(hours=h, minutes=m, seconds=s_val)
+                        elif isinstance(end_td, datetime.time):
+                            end_td = timedelta(hours=end_td.hour, minutes=end_td.minute, seconds=end_td.second)
+
+                        diff_min = (end_td - start_td).total_seconds() / 60.0
+                        total_minutos += diff_min
+                        intervals.append((start_td.total_seconds() / 60.0, end_td.total_seconds() / 60.0))
+
+                    total_horas = total_minutos / 60.0
+
+                    # Calcular real de horas (unión de intervalos)
+                    intervals.sort(key=lambda x: x[0])
+                    merged = []
+                    for start, end in intervals:
+                        if not merged:
+                            merged.append([start, end])
+                        else:
+                            prev_start, prev_end = merged[-1]
+                            if start <= prev_end:
+                                merged[-1][1] = max(prev_end, end)
+                            else:
+                                merged.append([start, end])
+                    
+                    real_minutos = sum(end - start for start, end in merged)
+                    real_horas = real_minutos / 60.0
+
+                    def format_hours(h):
+                        h_round = round(h, 2)
+                        return int(h_round) if h_round.is_integer() else h_round
+
+                    dias_reporte.append({
+                        "fecha": fecha_str,
+                        "total": format_hours(total_horas),
+                        "real": format_hours(real_horas)
+                    })
+
+                resultado.append({
+                    "id_docente": id_docente,
+                    "docente": docente_nombre,
+                    "dias": dias_reporte
+                })
+
+            return resultado
+
+        finally:
+            cursor.close()
+            conexion.close()

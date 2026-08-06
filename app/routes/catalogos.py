@@ -282,10 +282,25 @@ def delete_horario_grupo(id_horario):
 
 
 
-    ######3---------------------nivel academico-----------#
 @catalogos_bp.route("/getNivelAcademico", methods=["GET"])
 def get_nivel_academico():
     try:
         return jsonify(CatalogosService.get_nivel_academico())
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@catalogos_bp.route("/horasDocentes", methods=["GET"])
+def get_horas_docentes():
+    try:
+        fecha_inicio = request.args.get("fecha_inicio")
+        fecha_fin = request.args.get("fecha_fin")
+        if not fecha_inicio or not fecha_fin:
+            return jsonify({"error": "Faltan parámetros fecha_inicio o fecha_fin"}), 400
+        
+        resultado = CatalogosService.get_horas_docentes(fecha_inicio, fecha_fin)
+        return jsonify(resultado)
+    except ValueError as ve:
+        return jsonify({"error": str(ve)}), 400
     except Exception as e:
         return jsonify({"error": str(e)}), 500
