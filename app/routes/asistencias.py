@@ -80,6 +80,10 @@ def get_asistencias():
                     r[k] = float(v)
                     
         return jsonify(resultado)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @asistencias_bp.route("/test_alejandro_sched", methods=["GET"])
 def test_alejandro_sched():
     from app.config.conexion import get_connection
