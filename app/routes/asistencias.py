@@ -84,31 +84,5 @@ def get_asistencias():
         return jsonify({"error": str(e)}), 500
 
 
-@asistencias_bp.route("/test_alejandro_sched", methods=["GET"])
-def test_alejandro_sched():
-    from app.config.conexion import get_connection
-    import pymysql
-    conexion = get_connection()
-    cursor = conexion.cursor(pymysql.cursors.DictCursor)
-    try:
-        cursor.execute("""
-            SELECT h.*, g.clave 
-            FROM tb_horarios h
-            JOIN tb_grupos g ON h.id_grupo = g.id
-            WHERE h.id_docente = 7 AND h.diaSemana = 6
-        """)
-        rows = cursor.fetchall()
-        for r in rows:
-            for k, v in list(r.items()):
-                if not isinstance(v, (str, int, float)) and v is not None:
-                    r[k] = str(v)
-        return jsonify(rows)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-    finally:
-        cursor.close()
-        conexion.close()
-
-
 
 

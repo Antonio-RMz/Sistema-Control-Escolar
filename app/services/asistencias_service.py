@@ -260,12 +260,14 @@ class AsistenciasService:
                             has_checks_any_block = False
                             retardos_lista = []
                             salidas_anticipadas_lista = []
+                            bloques_sin_marcajes = []
 
                             for B_start, B_end in blocks:
                                 # Ventana de tolerancia: +/- 45 minutos del bloque
                                 block_checks = [t for t in check_tds if (B_start - timedelta(minutes=45)) <= t <= (B_end + timedelta(minutes=45))]
                                 
                                 if not block_checks:
+                                    bloques_sin_marcajes.append((B_start, B_end))
                                     continue
                                 
                                 has_checks_any_block = True
@@ -318,7 +320,11 @@ class AsistenciasService:
                                 horas_trabajadas = round(real_minutos / 60.0, 2)
                                 
                                 # Clasificar estado y observaciones
-                                if all_missing_transitions:
+                                if bloques_sin_marcajes:
+                                    estado = "Parcial/Retardo"
+                                    missing_blocks_strs = [f"{str_from_td(bs)[:5]}-{str_from_td(be)[:5]}" for bs, be in bloques_sin_marcajes]
+                                    observaciones = f"Faltó a bloque(s) de clase: {', '.join(missing_blocks_strs)}."
+                                elif all_missing_transitions:
                                     estado = "Advertencia"
                                     missing_strs = [str_from_td(b)[:5] for b in all_missing_transitions]
                                     observaciones = f"No registró por hora: faltan marcajes intermedios en transición(es) de las {', '.join(missing_strs)}."
