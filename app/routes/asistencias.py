@@ -233,47 +233,4 @@ def test_parse_direct():
         return jsonify({"error": str(e)}), 500
 
 
-@asistencias_bp.route("/test_print_excel", methods=["GET"])
-def test_print_excel():
-    import glob
-    import os
-    try:
-        upload_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "uploads")
-        files = glob.glob(os.path.join(upload_dir, "*.xlsx"))
-        if not files:
-            return jsonify({"error": "No se encontraron archivos en uploads"}), 404
-        
-        latest_file = max(files, key=os.path.getmtime)
-        
-        import pandas as pd
-        xls = pd.ExcelFile(latest_file)
-        sheet_name = None
-        for name in xls.sheet_names:
-            if "asistencia" in name.lower() or "reporte" in name.lower():
-                sheet_name = name
-                break
-        if not sheet_name:
-            sheet_name = xls.sheet_names[0]
-            
-        df = pd.read_excel(xls, sheet_name=sheet_name, header=None)
-        
-        # Dump first 15 rows and all columns
-        dump = []
-        for r in range(min(15, len(df))):
-            row_data = {}
-            for c in range(len(df.columns)):
-                val = df.iloc[r, c]
-                row_data[f"Col_{c}"] = str(val) if not pd.isna(val) else ""
-            dump.append({f"Row_{r+1}": row_data})
-            
-        return jsonify({
-            "file": os.path.basename(latest_file),
-            "sheet": sheet_name,
-            "all_sheets": xls.sheet_names,
-            "total_rows": len(df),
-            "total_cols": len(df.columns),
-            "dump": dump
-        })
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
 

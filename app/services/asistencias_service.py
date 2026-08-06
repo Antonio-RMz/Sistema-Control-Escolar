@@ -21,10 +21,17 @@ class AsistenciasService:
         # 1. Leer el archivo Excel en memoria usando pandas
         xls = pd.ExcelFile(file_stream)
         sheet_name = None
+        # Buscar primero hojas que tengan "asistencia" en su nombre
         for name in xls.sheet_names:
-            if "asistencia" in name.lower() or "reporte" in name.lower():
+            if "asistencia" in name.lower():
                 sheet_name = name
                 break
+        # Si no se encuentra, buscar hojas con "reporte"
+        if not sheet_name:
+            for name in xls.sheet_names:
+                if "reporte" in name.lower():
+                    sheet_name = name
+                    break
         if not sheet_name:
             sheet_name = xls.sheet_names[0]
             
