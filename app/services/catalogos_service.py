@@ -366,7 +366,8 @@ class CatalogosService:
                     statusDocente, 
                     observacionesDocente,
                     nivelEstudios,
-                    fechaNacimiento
+                    fechaNacimiento,
+                    idBiometrico
                 FROM tb_docentes
                 WHERE 1=1
             """
@@ -410,8 +411,8 @@ class CatalogosService:
         cursor = conexion.cursor()
         try:
             query = """
-                INSERT INTO tb_docentes (nombreDocente, apPaternoDocente, apMaternoDocente, correoDocente, telefonoDocente, statusDocente, observacionesDocente,nivelEstudios, fechaNacimiento)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO tb_docentes (nombreDocente, apPaternoDocente, apMaternoDocente, correoDocente, telefonoDocente, statusDocente, observacionesDocente,nivelEstudios, fechaNacimiento, idBiometrico)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """
             cursor.execute(
                 query,
@@ -425,6 +426,7 @@ class CatalogosService:
                     data.get("observacionesDocente"),
                     data.get("nivelEstudios"),
                     data.get("fechaNacimiento"),
+                    data.get("idBiometrico"),
                 ),
             )
             conexion.commit()
@@ -441,7 +443,8 @@ class CatalogosService:
                 UPDATE tb_docentes 
                 SET nombreDocente = %s, apPaternoDocente = %s, apMaternoDocente = %s, 
                     correoDocente = %s, telefonoDocente = %s, statusDocente = %s, 
-                    observacionesDocente = %s, nivelEstudios = %s, fechaNacimiento = %s
+                    observacionesDocente = %s, nivelEstudios = %s, fechaNacimiento = %s,
+                    idBiometrico = %s
                 WHERE idDocente = %s
             """
             cursor.execute(
@@ -456,6 +459,7 @@ class CatalogosService:
                     data.get("observacionesDocente"),
                     data.get("nivelEstudios"),
                     data.get("fechaNacimiento"),
+                    data.get("idBiometrico"),
                     id_docente,
                 ),
             )

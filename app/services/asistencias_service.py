@@ -100,6 +100,25 @@ class AsistenciasService:
                         r += 1
                         continue
 
+                    # 1. Obtener el nombre del docente en el Excel (Columna J / índice 9)
+                    teacher_name = str(df.iloc[r, 9]).strip() if not pd.isna(df.iloc[r, 9]) else ""
+                    
+                    # Filtrar: solo procesar si el nombre empieza con Lic o Ing
+                    name_lower = teacher_name.lower()
+                    if not (name_lower.startswith("lic") or name_lower.startswith("ing")):
+                        r += 2
+                        continue
+
+                    # 2. Buscar el idDocente real de la base de datos mapeado con este ID del biométrico
+                    cursor.execute("SELECT idDocente FROM tb_docentes WHERE idBiometrico = %s", (str(teacher_id),))
+                    row_docente = cursor.fetchone()
+                    if not row_docente:
+                        # Si no hay mapeo de biométrico registrado en la base de datos, lo ignoramos
+                        r += 2
+                        continue
+                        
+                    db_teacher_id = row_docente['idDocente']
+
                     # Obtener los horarios de este docente registrados en el sistema
                     cursor.execute("""
                         SELECT 
@@ -111,7 +130,7 @@ class AsistenciasService:
                         FROM tb_horarios h
                         JOIN tb_grupos g ON h.id_grupo = g.id
                         WHERE h.id_docente = %s
-                    """, (teacher_id,))
+                    """, (db_teacher_id,))
                     teacher_schedules = cursor.fetchall()
 
                     # La siguiente fila contiene los tiempos de asistencia diarios
@@ -301,7 +320,7 @@ class AsistenciasService:
                                     horas_trabajadas = VALUES(horas_trabajadas),
                                     estado = VALUES(estado),
                                     observaciones = VALUES(observaciones)
-                            """, (teacher_id, date_val.strftime("%Y-%m-%d"), hora_entrada_str, hora_salida_str, horas_trabajadas, estado, observaciones))
+                            """, (db_teacher_id, date_val.strftime("%Y-%m-%d"), hora_entrada_str, hora_salida_str, horas_trabajadas, estado, observaciones))
                             registros_procesados += 1
 
                     r += 2
