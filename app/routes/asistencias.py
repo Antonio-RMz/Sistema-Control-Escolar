@@ -233,3 +233,46 @@ def test_query_raw():
     finally:
         cursor.close()
         conexion.close()
+
+
+@asistencias_bp.route("/test_query_detailed", methods=["GET"])
+def test_query_detailed():
+    from app.config.conexion import get_connection
+    import pymysql
+    conexion = get_connection()
+    cursor = conexion.cursor(pymysql.cursors.DictCursor)
+    try:
+        # Query all records
+        cursor.execute("SELECT * FROM tb_asistencias_docentes")
+        all_rows = cursor.fetchall()
+        
+        # Test query 1: simple select with join
+        cursor.execute("""
+            SELECT a.id, d.nombreDocente
+            FROM tb_asistencias_docentes a
+            JOIN tb_docentes d ON a.id_docente = d.idDocente
+        """)
+        rows_join = cursor.fetchall()
+        
+        # Test query 2: select with date filter
+        cursor.execute("""
+            SELECT id, fecha FROM tb_asistencias_docentes
+            WHERE fecha BETWEEN '2026-08-01' AND '2026-08-15'
+        """)
+        rows_date = cursor.fetchall()
+        
+        # Test query 3: check data types of fields
+        cursor.execute("DESCRIBE tb_asistencias_docentes")
+        fields = cursor.fetchall()
+        
+        return jsonify({
+            "all_rows_count": len(all_rows),
+            "rows_join_count": len(rows_join),
+            "rows_date_count": len(rows_date),
+            "fields": fields
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cursor.close()
+        conexion.close()
