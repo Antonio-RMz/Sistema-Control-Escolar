@@ -887,7 +887,8 @@ class CatalogosService:
                     fecha_str = d.strftime("%Y-%m-%d")
 
                     # Filtrar horarios del docente activos en este día de la semana y vigentes en esta fecha
-                    slots_dia = []
+                    # Agrupamos por (horaInicio, horaFin) para evitar contar múltiples materias en la misma hora
+                    slots_dia_map = {}
                     for h in slots_docente:
                         # Convertir fechas de mysql a date de python si vienen como datetime.date
                         h_fecha_inicio = h['fechaInicio']
@@ -898,9 +899,10 @@ class CatalogosService:
                             h_fecha_fin = h_fecha_fin.date()
 
                         if h['diaSemana'] == db_weekday and h_fecha_inicio <= d <= h_fecha_fin:
-                            slots_dia.append(h)
+                            key = (h['horaInicio'], h['horaFin'])
+                            slots_dia_map[key] = h
 
-                    if not slots_dia:
+                    if not slots_dia_map:
                         dias_reporte.append({
                             "fecha": fecha_str,
                             "total": 0,
@@ -911,9 +913,7 @@ class CatalogosService:
                     # Calcular total de horas
                     total_minutos = 0
                     intervals = []
-                    for s in slots_dia:
-                        start_td = s['horaInicio']
-                        end_td = s['horaFin']
+                    for start_td, end_td in slots_dia_map.keys():
                         
                         if isinstance(start_td, str):
                             h, m, s_val = map(int, start_td.split(':'))

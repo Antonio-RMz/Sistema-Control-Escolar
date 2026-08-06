@@ -28,19 +28,24 @@ def run_test():
             id_grupo = cursor.lastrowid
             print(f"Grupo temporal creado con ID: {id_grupo}")
 
-            # 3. Crear una materia temporal
+            # 3. Crear materias temporales
             cursor.execute("""
                 INSERT INTO tb_materias (nombreMateria, estatusMateria)
-                VALUES ('MATERIA_PRUEBA_H', 1)
+                VALUES ('MATERIA_PRUEBA_H1', 1)
             """)
             id_materia = cursor.lastrowid
-            print(f"Materia temporal creada con ID: {id_materia}")
+            cursor.execute("""
+                INSERT INTO tb_materias (nombreMateria, estatusMateria)
+                VALUES ('MATERIA_PRUEBA_H2', 1)
+            """)
+            id_materia2 = cursor.lastrowid
+            print(f"Materias temporales creadas: {id_materia}, {id_materia2}")
 
             # 4. Crear horarios para el docente:
             # - Lunes (diaSemana=1): 09:00:00 a 11:00:00 (2 horas)
             # - Lunes (diaSemana=1): 10:30:00 a 12:30:00 (2 horas) -> Total = 4.0, Real = 3.5 (09:00 a 12:30)
-            # - Martes (diaSemana=2): 14:00:00 a 18:00:00 (4 horas) -> Total = 4.0, Real = 4.0
-            # Usar inserts directos
+            # - Martes (diaSemana=2): 14:00:00 a 18:00:00 (4 horas, Materia 1)
+            # - Martes (diaSemana=2): 14:00:00 a 18:00:00 (4 horas, Materia 2) -> Total = 4, Real = 4 (no se duplica por materia)
             cursor.execute("""
                 INSERT INTO tb_horarios (id_grupo, id_materia, id_docente, diaSemana, horaInicio, horaFin, aula)
                 VALUES (%s, %s, %s, 1, '09:00:00', '11:00:00', 'Aula A')
@@ -53,6 +58,10 @@ def run_test():
                 INSERT INTO tb_horarios (id_grupo, id_materia, id_docente, diaSemana, horaInicio, horaFin, aula)
                 VALUES (%s, %s, %s, 2, '14:00:00', '18:00:00', 'Aula C')
             """, (id_grupo, id_materia, id_docente))
+            cursor.execute("""
+                INSERT INTO tb_horarios (id_grupo, id_materia, id_docente, diaSemana, horaInicio, horaFin, aula)
+                VALUES (%s, %s, %s, 2, '14:00:00', '18:00:00', 'Aula C')
+            """, (id_grupo, id_materia2, id_docente))
             
             conn.commit()
             print("Horarios temporales creados exitosamente.")
@@ -79,12 +88,12 @@ def run_test():
             assert domingo['total'] == 0, f"Domingo total esperado 0, obtenido {domingo['total']}"
             assert domingo['real'] == 0, f"Domingo real esperado 0, obtenido {domingo['real']}"
             
-            # 2026-08-17 (Lunes) -> Total: 4.0, Real: 3.5
+            # 2026-08-17 (Lunes) -> Total: 4.0, Real: 3.5 (distintos bloques)
             lunes = next(d for d in dias if d['fecha'] == '2026-08-17')
             assert lunes['total'] == 4.0, f"Lunes total esperado 4.0, obtenido {lunes['total']}"
             assert lunes['real'] == 3.5, f"Lunes real esperado 3.5, obtenido {lunes['real']}"
             
-            # 2026-08-18 (Martes) -> Total: 4, Real: 4
+            # 2026-08-18 (Martes) -> Total: 4, Real: 4 (se deduplicó la hora idéntica de las dos materias)
             martes = next(d for d in dias if d['fecha'] == '2026-08-18')
             assert martes['total'] == 4, f"Martes total esperado 4, obtenido {martes['total']}"
             assert martes['real'] == 4, f"Martes real esperado 4, obtenido {martes['real']}"
@@ -94,7 +103,7 @@ def run_test():
             # 6. Limpieza
             print("\nLimpiando base de datos...")
             cursor.execute("DELETE FROM tb_horarios WHERE id_grupo = %s", (id_grupo,))
-            cursor.execute("DELETE FROM tb_materias WHERE id = %s", (id_materia,))
+            cursor.execute("DELETE FROM tb_materias WHERE id IN (%s, %s)", (id_materia, id_materia2))
             cursor.execute("DELETE FROM tb_grupos WHERE id = %s", (id_grupo,))
             cursor.execute("DELETE FROM tb_docentes WHERE idDocente = %s", (id_docente,))
             conn.commit()
@@ -104,8 +113,8 @@ def run_test():
         # En caso de error, intentar limpiar para no dejar datos basura
         try:
             with conn.cursor() as cursor:
-                cursor.execute("DELETE FROM tb_horarios WHERE id_materia IN (SELECT id FROM tb_materias WHERE nombreMateria = 'MATERIA_PRUEBA_H')")
-                cursor.execute("DELETE FROM tb_materias WHERE nombreMateria = 'MATERIA_PRUEBA_H'")
+                cursor.execute("DELETE FROM tb_horarios WHERE id_materia IN (SELECT id FROM tb_materias WHERE nombreMateria LIKE 'MATERIA_PRUEBA_H%%')")
+                cursor.execute("DELETE FROM tb_materias WHERE nombreMateria LIKE 'MATERIA_PRUEBA_H%%'")
                 cursor.execute("DELETE FROM tb_grupos WHERE clave = 'GRP_PRUEB_H'")
                 cursor.execute("DELETE FROM tb_docentes WHERE nombreDocente = 'DOCENTE_PRUEBA_HORAS'")
                 conn.commit()
