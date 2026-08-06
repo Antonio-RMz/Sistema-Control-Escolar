@@ -207,11 +207,18 @@ def test_parse_direct():
 def test_query_raw():
     from app.config.conexion import get_connection
     import pymysql
+    import datetime
     conexion = get_connection()
     cursor = conexion.cursor(pymysql.cursors.DictCursor)
     try:
         cursor.execute("SELECT * FROM tb_asistencias_docentes")
         rows = cursor.fetchall()
+        
+        # Serialize timedeltas and dates
+        for r in rows:
+            for k, v in list(r.items()):
+                if isinstance(v, (datetime.timedelta, datetime.date)):
+                    r[k] = str(v)
         
         cursor.execute("SELECT COUNT(*) AS total FROM tb_docentes")
         docentes_count = cursor.fetchone()
