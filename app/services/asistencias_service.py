@@ -86,17 +86,26 @@ class AsistenciasService:
             while r < len(df):
                 val_col0 = str(df.iloc[r, 0]).strip()
                 if "ID:" in val_col0 or val_col0 == "ID":
-                    # Extraer ID del docente de la columna 1 o 2 (índice 1 o 2)
-                    teacher_id_raw = df.iloc[r, 1]
-                    if pd.isna(teacher_id_raw) or str(teacher_id_raw).strip() == "":
-                        teacher_id_raw = df.iloc[r, 2]
-                    
+                    # 1. Buscar de forma dinámica el ID del docente en la fila
+                    teacher_id_raw = None
+                    for c_idx in range(len(df.columns)):
+                        val_cell = str(df.iloc[r, c_idx]).strip()
+                        if "ID:" in val_cell or val_cell.lower() == "id":
+                            for next_c in range(c_idx + 1, len(df.columns)):
+                                val_next = df.iloc[r, next_c]
+                                if not pd.isna(val_next) and str(val_next).strip() != "":
+                                    teacher_id_raw = val_next
+                                    break
+                            break
+
+                    if not teacher_id_raw:
+                        r += 1
+                        continue
+
                     try:
-                        # Convertir primero a float y luego a int por si viene como "14.0" o similar
                         teacher_id = int(float(str(teacher_id_raw).strip()))
                     except ValueError:
                         try:
-                            # Si tiene texto (ej: "ID: 14"), cortamos en el punto decimal primero
                             clean_str = str(teacher_id_raw).split('.')[0]
                             id_clean = "".join(re.findall(r'\d+', clean_str))
                             teacher_id = int(id_clean)
@@ -107,9 +116,18 @@ class AsistenciasService:
                         r += 1
                         continue
 
-                    # 1. Obtener el nombre del docente en el Excel (Columna J / índice 9)
-                    teacher_name = str(df.iloc[r, 9]).strip() if not pd.isna(df.iloc[r, 9]) else ""
-                    
+                    # 2. Buscar de forma dinámica el nombre del docente en la fila
+                    teacher_name = ""
+                    for c_idx in range(len(df.columns)):
+                        val_cell = str(df.iloc[r, c_idx]).strip()
+                        if "Nombre:" in val_cell or val_cell.lower() == "nombre":
+                            for next_c in range(c_idx + 1, len(df.columns)):
+                                val_next = df.iloc[r, next_c]
+                                if not pd.isna(val_next) and str(val_next).strip() != "":
+                                    teacher_name = str(val_next).strip()
+                                    break
+                            break
+
                     # Filtrar: solo procesar si el nombre empieza con Lic o Ing
                     name_lower = teacher_name.lower()
                     if not (name_lower.startswith("lic") or name_lower.startswith("ing")):

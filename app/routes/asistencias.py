@@ -162,7 +162,23 @@ def test_parse_direct():
             while r < len(df):
                 val_col0 = str(df.iloc[r, 0]).strip()
                 if "ID:" in val_col0 or val_col0 == "ID":
-                    teacher_id_raw = df.iloc[r, 1]
+                    # 1. Buscar de forma dinámica el ID del docente en la fila
+                    teacher_id_raw = None
+                    for c_idx in range(len(df.columns)):
+                        val_cell = str(df.iloc[r, c_idx]).strip()
+                        if "ID:" in val_cell or val_cell.lower() == "id":
+                            for next_c in range(c_idx + 1, len(df.columns)):
+                                val_next = df.iloc[r, next_c]
+                                if not pd.isna(val_next) and str(val_next).strip() != "":
+                                    teacher_id_raw = val_next
+                                    break
+                            break
+
+                    if not teacher_id_raw:
+                        logs.append(f"Fila {r+1}: No se pudo encontrar celda de valor para el ID")
+                        r += 1
+                        continue
+
                     try:
                         teacher_id = int(float(str(teacher_id_raw).strip()))
                     except Exception as e:
@@ -172,8 +188,18 @@ def test_parse_direct():
                         
                     logs.append(f"Docente detectado en Excel - ID: {teacher_id}")
                     
-                    # 1. Obtener el nombre del docente en el Excel (Columna J / índice 9)
-                    teacher_name = str(df.iloc[r, 9]).strip() if not pd.isna(df.iloc[r, 9]) else ""
+                    # 2. Buscar de forma dinámica el nombre del docente en la fila
+                    teacher_name = ""
+                    for c_idx in range(len(df.columns)):
+                        val_cell = str(df.iloc[r, c_idx]).strip()
+                        if "Nombre:" in val_cell or val_cell.lower() == "nombre":
+                            for next_c in range(c_idx + 1, len(df.columns)):
+                                val_next = df.iloc[r, next_c]
+                                if not pd.isna(val_next) and str(val_next).strip() != "":
+                                    teacher_name = str(val_next).strip()
+                                    break
+                            break
+
                     logs.append(f"  Nombre en Excel: {teacher_name}")
                     
                     name_lower = teacher_name.lower()
