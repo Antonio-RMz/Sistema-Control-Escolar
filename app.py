@@ -5,6 +5,7 @@ from app.routes.grupos import grupos_bp
 from app.routes.generaciones import generaciones_bp
 from app.routes.catalogos import catalogos_bp
 from app.routes.frontend import frontend_bp
+from app.routes.asistencias import asistencias_bp
 
 
 def create_app():
@@ -23,6 +24,7 @@ def create_app():
     app.register_blueprint(generaciones_bp)
     app.register_blueprint(catalogos_bp)
     app.register_blueprint(frontend_bp)
+    app.register_blueprint(asistencias_bp)
 
     # Iniciar programador de tareas diario (7:00 AM)
     from app.utils.scheduler import iniciar_scheduler
