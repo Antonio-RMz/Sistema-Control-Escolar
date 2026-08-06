@@ -737,7 +737,9 @@ class CatalogosService:
                 grouped[key]["clases"].append({
                     "id_horario": h["id"],
                     "id_materia": h["id_materia"],
-                    "materia_nombre": h["materia_nombre"]
+                    "materia_nombre": h["materia_nombre"],
+                    "id_docente": h["id_docente"],
+                    "docente_nombre": h["docente_nombre"]
                 })
 
             return list(grouped.values())
