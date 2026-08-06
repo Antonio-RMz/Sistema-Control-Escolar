@@ -342,4 +342,28 @@ def test_check_db():
         conexion.close()
 
 
+@asistencias_bp.route("/test_run_upload", methods=["GET"])
+def test_run_upload():
+    import glob
+    import os
+    try:
+        upload_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "uploads")
+        files = glob.glob(os.path.join(upload_dir, "*.xlsx"))
+        if not files:
+            return jsonify({"error": "No se encontraron archivos en uploads"}), 404
+        
+        latest_file = max(files, key=os.path.getmtime)
+        
+        with open(latest_file, "rb") as f:
+            inserted = AsistenciasService.procesar_excel(f)
+            
+        return jsonify({
+            "status": "success",
+            "file_processed": os.path.basename(latest_file),
+            "inserted_records": inserted
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 
