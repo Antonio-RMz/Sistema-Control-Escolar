@@ -304,3 +304,19 @@ def get_horas_docentes():
         return jsonify({"error": str(ve)}), 400
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@catalogos_bp.route("/detalleHorasDocente", methods=["GET"])
+def get_detalle_horas_docente():
+    try:
+        fecha = request.args.get("fecha")
+        id_docente = request.args.get("id_docente")
+        if not fecha or not id_docente:
+            return jsonify({"error": "Faltan parámetros fecha o id_docente"}), 400
+        
+        resultado = CatalogosService.get_detalle_horas_docente(id_docente, fecha)
+        return jsonify(resultado)
+    except ValueError as ve:
+        return jsonify({"error": str(ve)}), 400
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500

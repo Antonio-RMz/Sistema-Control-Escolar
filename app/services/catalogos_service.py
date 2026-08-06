@@ -970,3 +970,95 @@ class CatalogosService:
         finally:
             cursor.close()
             conexion.close()
+
+    @staticmethod
+    def get_detalle_horas_docente(id_docente, fecha_str):
+        import datetime
+        from datetime import timedelta
+        
+        try:
+            d_fecha = datetime.datetime.strptime(fecha_str, "%Y-%m-%d").date()
+        except ValueError:
+            raise ValueError("La fecha debe tener el formato YYYY-MM-DD")
+
+        # diaSemana: 1 (Lunes) a 7 (Domingo)
+        db_weekday = d_fecha.weekday() + 1
+
+        conexion = get_connection()
+        cursor = conexion.cursor(pymysql.cursors.DictCursor)
+        try:
+            # Consultar los horarios vigentes para el docente en este día de la semana y fecha
+            # Un grupo está vigente si g.fechaInicio <= d_fecha <= g.fechaFin
+            cursor.execute("""
+                SELECT 
+                    m.nombreMateria AS materia,
+                    g.clave AS grupo,
+                    h.aula,
+                    h.horaInicio,
+                    h.horaFin
+                FROM tb_horarios h
+                JOIN tb_grupos g ON h.id_grupo = g.id
+                JOIN tb_materias m ON h.id_materia = m.id
+                WHERE h.id_docente = %s 
+                  AND h.diaSemana = %s
+                  AND g.fechaInicio <= %s 
+                  AND g.fechaFin >= %s
+                ORDER BY h.horaInicio, m.nombreMateria
+            """, (id_docente, db_weekday, fecha_str, fecha_str))
+            
+            rows = cursor.fetchall()
+            
+            resultado = []
+            for r in rows:
+                start_td = r['horaInicio']
+                end_td = r['horaFin']
+                
+                # Convertir time/timedelta/string a timedelta para calcular duracion
+                if isinstance(start_td, str):
+                    h, m, s_val = map(int, start_td.split(':'))
+                    start_td = timedelta(hours=h, minutes=m, seconds=s_val)
+                    start_str = r['horaInicio']
+                elif isinstance(start_td, datetime.time):
+                    start_str = start_td.strftime("%H:%M:%S")
+                    start_td = timedelta(hours=start_td.hour, minutes=start_td.minute, seconds=start_td.second)
+                else: # timedelta
+                    tot_sec = int(start_td.total_seconds())
+                    hrs = tot_sec // 3600
+                    mins = (tot_sec % 3600) // 60
+                    secs = tot_sec % 60
+                    start_str = f"{hrs:02d}:{mins:02d}:{secs:02d}"
+
+                if isinstance(end_td, str):
+                    h, m, s_val = map(int, end_td.split(':'))
+                    end_td = timedelta(hours=h, minutes=m, seconds=s_val)
+                    end_str = r['horaFin']
+                elif isinstance(end_td, datetime.time):
+                    end_str = end_td.strftime("%H:%M:%S")
+                    end_td = timedelta(hours=end_td.hour, minutes=end_td.minute, seconds=end_td.second)
+                else: # timedelta
+                    tot_sec = int(end_td.total_seconds())
+                    hrs = tot_sec // 3600
+                    mins = (tot_sec % 3600) // 60
+                    secs = tot_sec % 60
+                    end_str = f"{hrs:02d}:{mins:02d}:{secs:02d}"
+
+                diff_hours = (end_td - start_td).total_seconds() / 3600.0
+                
+                def format_hours(h):
+                    h_round = round(h, 2)
+                    return int(h_round) if h_round.is_integer() else h_round
+
+                resultado.append({
+                    "materia": r['materia'],
+                    "grupo": r['grupo'],
+                    "aula": r['aula'],
+                    "hora_inicio": start_str,
+                    "hora_fin": end_str,
+                    "duracion": format_hours(diff_hours)
+                })
+
+            return resultado
+
+        finally:
+            cursor.close()
+            conexion.close()
