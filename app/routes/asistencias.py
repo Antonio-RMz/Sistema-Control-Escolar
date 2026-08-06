@@ -84,5 +84,22 @@ def get_asistencias():
         return jsonify({"error": str(e)}), 500
 
 
+@asistencias_bp.route("/clear_asistencias", methods=["DELETE"])
+def clear_asistencias():
+    from app.config.conexion import get_connection
+    import pymysql
+    conexion = get_connection()
+    cursor = conexion.cursor()
+    try:
+        cursor.execute("DELETE FROM tb_asistencias_docentes")
+        conexion.commit()
+        return jsonify({"success": True, "message": "Datos de asistencia limpiados correctamente."})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cursor.close()
+        conexion.close()
+
+
 
 
