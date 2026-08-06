@@ -59,6 +59,33 @@ def upload_asistencias():
         return jsonify({"error": str(e)}), 500
 
 
+@asistencias_bp.route("/test_list_groups", methods=["GET"])
+def test_list_groups():
+    from app.config.conexion import get_connection
+    import pymysql
+    import datetime
+    conexion = get_connection()
+    cursor = conexion.cursor(pymysql.cursors.DictCursor)
+    try:
+        cursor.execute("""
+            SELECT g.id, g.clave, g.fechaInicio, g.fechaFin, g.id_nivel_academico, n.nombre AS nombre_nivel 
+            FROM tb_grupos g
+            LEFT JOIN tb_niveles_academicos n ON g.id_nivel_academico = n.id
+            ORDER BY g.id DESC
+        """)
+        rows = cursor.fetchall()
+        for r in rows:
+            for k, v in list(r.items()):
+                if isinstance(v, (datetime.date, datetime.datetime)):
+                    r[k] = str(v)
+        return jsonify(rows)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cursor.close()
+        conexion.close()
+
+
 @asistencias_bp.route("/asistencias", methods=["GET"])
 def get_asistencias():
     try:
