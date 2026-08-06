@@ -139,3 +139,47 @@ class AsistenciasService:
         finally:
             cursor.close()
             conexion.close()
+
+    @staticmethod
+    def get_asistencias(fecha_inicio_str, fecha_fin_str, id_docente=None):
+        import datetime
+        try:
+            datetime.datetime.strptime(fecha_inicio_str, "%Y-%m-%d")
+            datetime.datetime.strptime(fecha_fin_str, "%Y-%m-%d")
+        except ValueError:
+            raise ValueError("Las fechas deben tener el formato YYYY-MM-DD")
+
+        conexion = get_connection()
+        cursor = conexion.cursor(pymysql.cursors.DictCursor)
+        try:
+            sql = """
+                SELECT 
+                    a.id,
+                    a.id_docente,
+                    CONCAT(d.nombreDocente, ' ', COALESCE(d.apPaternoDocente, ''), ' ', COALESCE(d.apMaternoDocente, '')) AS docente,
+                    DATE_FORMAT(a.fecha, '%%Y-%%m-%%d') AS fecha,
+                    TIME_FORMAT(a.hora_entrada, '%%H:%%i:%%s') AS hora_entrada,
+                    TIME_FORMAT(a.hora_salida, '%%H:%%i:%%s') AS hora_salida,
+                    a.horas_trabajadas
+                FROM tb_asistencias_docentes a
+                JOIN tb_docentes d ON a.id_docente = d.idDocente
+                WHERE a.fecha BETWEEN %s AND %s
+            """
+            params = [fecha_inicio_str, fecha_fin_str]
+            if id_docente:
+                sql += " AND a.id_docente = %s"
+                params.append(id_docente)
+
+            sql += " ORDER BY a.fecha DESC, docente ASC"
+            cursor.execute(sql, params)
+            
+            rows = cursor.fetchall()
+            for r in rows:
+                if r['horas_trabajadas'] is not None:
+                    h_val = float(r['horas_trabajadas'])
+                    r['horas_trabajadas'] = int(h_val) if h_val.is_integer() else h_val
+
+            return rows
+        finally:
+            cursor.close()
+            conexion.close()

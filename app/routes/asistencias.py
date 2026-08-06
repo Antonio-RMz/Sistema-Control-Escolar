@@ -25,14 +25,48 @@ def upload_asistencias():
         if not file or not allowed_file(file.filename):
             return jsonify({"error": "Formato de archivo no permitido. Solo se aceptan archivos Excel (.xlsx, .xls)"}), 400
         
-        # Procesar el archivo en memoria directamente
-        registros_procesados = AsistenciasService.procesar_excel(file.stream)
+        import datetime
+        from werkzeug.utils import secure_filename
+        
+        # Formatear el nombre del archivo: YYYYMMDD_HHMMSS_nombre_original.xlsx
+        now = datetime.datetime.now()
+        timestamp = now.strftime("%Y%m%d_%H%M%S")
+        original_name = secure_filename(file.filename)
+        if not original_name:
+            original_name = "archivo_biometrico.xlsx"
+            
+        filename = f"{timestamp}_{original_name}"
+        
+        # Directorio de almacenamiento
+        upload_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "uploads")
+        os.makedirs(upload_dir, exist_ok=True)
+        
+        file_path = os.path.join(upload_dir, filename)
+        file.save(file_path)
         
         return jsonify({
-            "mensaje": "Asistencias procesadas y guardadas correctamente",
-            "registros_procesados": registros_procesados
+            "mensaje": "Archivo recibido y guardado correctamente",
+            "filename": filename
         }), 200
         
+    except ValueError as ve:
+        return jsonify({"error": str(ve)}), 400
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@asistencias_bp.route("/asistencias", methods=["GET"])
+def get_asistencias():
+    try:
+        fecha_inicio = request.args.get("fecha_inicio")
+        fecha_fin = request.args.get("fecha_fin")
+        id_docente = request.args.get("id_docente")
+        
+        if not fecha_inicio or not fecha_fin:
+            return jsonify({"error": "Faltan parámetros fecha_inicio o fecha_fin"}), 400
+            
+        resultado = AsistenciasService.get_asistencias(fecha_inicio, fecha_fin, id_docente)
+        return jsonify(resultado)
     except ValueError as ve:
         return jsonify({"error": str(ve)}), 400
     except Exception as e:
