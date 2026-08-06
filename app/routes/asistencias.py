@@ -314,4 +314,32 @@ def test_print_excel():
         return jsonify({"error": str(e)}), 500
 
 
+@asistencias_bp.route("/test_check_db", methods=["GET"])
+def test_check_db():
+    from app.config.conexion import get_connection
+    import pymysql
+    import datetime
+    conexion = get_connection()
+    cursor = conexion.cursor(pymysql.cursors.DictCursor)
+    try:
+        cursor.execute("""
+            SELECT a.*, d.nombreDocente 
+            FROM tb_asistencias_docentes a
+            JOIN tb_docentes d ON a.id_docente = d.idDocente
+            ORDER BY a.fecha DESC, a.id_docente ASC
+            LIMIT 100
+        """)
+        rows = cursor.fetchall()
+        for r in rows:
+            for k, v in list(r.items()):
+                if isinstance(v, (datetime.timedelta, datetime.date, datetime.datetime)):
+                    r[k] = str(v)
+        return jsonify(rows)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cursor.close()
+        conexion.close()
+
+
 
