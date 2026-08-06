@@ -201,3 +201,28 @@ def test_parse_direct():
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@asistencias_bp.route("/test_query_raw", methods=["GET"])
+def test_query_raw():
+    from app.config.conexion import get_connection
+    import pymysql
+    conexion = get_connection()
+    cursor = conexion.cursor(pymysql.cursors.DictCursor)
+    try:
+        cursor.execute("SELECT * FROM tb_asistencias_docentes")
+        rows = cursor.fetchall()
+        
+        cursor.execute("SELECT COUNT(*) AS total FROM tb_docentes")
+        docentes_count = cursor.fetchone()
+        
+        return jsonify({
+            "asistencias_count": len(rows),
+            "asistencias": rows,
+            "docentes_total": docentes_count
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cursor.close()
+        conexion.close()
