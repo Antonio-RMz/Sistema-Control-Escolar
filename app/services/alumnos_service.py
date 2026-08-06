@@ -76,6 +76,7 @@ class AlumnosService:
                     a.idGrupo,
                     a.equivalencia,
                     g.generacion AS nombreGeneracionTexto
+                    a.statusAlumno
                 FROM tb_alumnos a
                 LEFT JOIN tb_generaciones g ON a.idGeneracion = g.id
                 {where_sql}
@@ -98,7 +99,7 @@ class AlumnosService:
         finally:
             cursor.close()
             conexion.close()
-
+##CREAR ALUMNOOOO
     @staticmethod
     def create_alumno(data):
         conexion = get_connection()
@@ -110,9 +111,9 @@ class AlumnosService:
                     parentesco, calle, colonia, localidad, municipio, 
                     telefonoTutor, celularAlumno, correoAlumno, 
                     escuelaProcedencia, observaciones, idGeneracion, idGrupo,
-                    equivalencia, numeroControl
+                    equivalencia, numeroControl, statusAlumno
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """
             # Extraer idGeneracion e idGrupo considerando ambas posibles nomenclaturas
             id_generacion = data.get("idGeneracion") or data.get("id_Generacion")
@@ -138,6 +139,7 @@ class AlumnosService:
                 id_grupo,
                 data.get("equivalencia"),
                 data.get("numeroControl"),
+                data.get("statusAlumno")
             )
             cursor.execute(query, values)
 
@@ -332,7 +334,8 @@ class AlumnosService:
                     idGeneracion = %s,
                     idGrupo = %s,
                     equivalencia = %s,
-                    numeroControl = %s
+                    numeroControl = %s,
+                    statusAlumno = %s
                 WHERE idAlumno = %s
             """
             values = (
@@ -355,6 +358,7 @@ class AlumnosService:
                 data.get("idGrupo"),
                 data.get("equivalencia"),
                 data.get("numeroControl"),
+                data.get("statusAlumno"),
                 id_alumno,
             )
             cursor.execute(query, values)
