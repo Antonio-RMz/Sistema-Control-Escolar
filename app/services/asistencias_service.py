@@ -36,6 +36,24 @@ class AsistenciasService:
             for c in range(len(df.columns)):
                 val = str(df.iloc[r, c])
                 if "Periodo:" in val:
+                    # Intentar buscar las fechas en la misma celda
+                    dates = re.findall(r'\d{4}-\d{2}-\d{2}', val)
+                    if len(dates) == 2:
+                        period_str = val
+                        break
+                    # Si no, buscar en las celdas adyacentes de la misma fila
+                    row_vals = []
+                    for next_c in range(c, min(c + 4, len(df.columns))):
+                        cell_val = df.iloc[r, next_c]
+                        if not pd.isna(cell_val):
+                            row_vals.append(str(cell_val).strip())
+                    combined_str = " ".join(row_vals)
+                    dates_combined = re.findall(r'\d{4}-\d{2}-\d{2}', combined_str)
+                    if len(dates_combined) == 2:
+                        period_str = combined_str
+                        break
+                    
+                    # Fallback general
                     period_str = val
                     break
             if period_str:

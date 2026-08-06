@@ -44,6 +44,10 @@ def upload_asistencias():
         file_path = os.path.join(upload_dir, filename)
         file.save(file_path)
         
+        # Procesar e importar el archivo recién guardado
+        with open(file_path, "rb") as f:
+            AsistenciasService.procesar_excel(f)
+        
         return jsonify({
             "mensaje": "Archivo recibido y guardado correctamente",
             "filename": filename
