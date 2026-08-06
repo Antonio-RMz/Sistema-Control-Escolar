@@ -203,8 +203,8 @@ class AsistenciasService:
                             # Parsear marcajes del docente en el Excel para este día
                             cell_str = str(cell_value).strip() if not pd.isna(cell_value) else ""
                             
-                            # Separar los marcajes por salto de línea y DEDUPLICAR del mismo minuto usando set
-                            times = [t.strip() for t in cell_str.split("\n") if t.strip()]
+                            # Extraer marcajes usando expresión regular para tolerar cualquier tipo de concatenación sin delimitadores
+                            times = re.findall(r'\d{2}:\d{2}', cell_str)
                             times = sorted(list(set(times)))
 
                             # Convertir los marcajes en objetos timedelta
