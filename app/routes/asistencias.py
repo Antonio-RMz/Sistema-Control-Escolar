@@ -276,3 +276,21 @@ def test_query_detailed():
     finally:
         cursor.close()
         conexion.close()
+
+
+@asistencias_bp.route("/test_get_asistencias", methods=["GET"])
+def test_get_asistencias():
+    import datetime
+    try:
+        res = AsistenciasService.get_asistencias("2026-08-01", "2026-08-15")
+        # Serialize timedeltas and dates
+        for r in res:
+            for k, v in list(r.items()):
+                if isinstance(v, (datetime.timedelta, datetime.date)):
+                    r[k] = str(v)
+        return jsonify(res)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cursor.close()
+        conexion.close()
