@@ -293,9 +293,9 @@ def test_print_excel():
             
         df = pd.read_excel(xls, sheet_name=sheet_name, header=None)
         
-        # Dump first 15 rows and all columns
+        # Dump first 50 rows and all columns
         dump = []
-        for r in range(min(15, len(df))):
+        for r in range(min(50, len(df))):
             row_data = {}
             for c in range(len(df.columns)):
                 val = df.iloc[r, c]
