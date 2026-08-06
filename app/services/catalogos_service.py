@@ -476,11 +476,17 @@ class CatalogosService:
         conexion = get_connection()
         cursor = conexion.cursor()
         try:
-            # Eliminar relaciones en tablas secundarias para evitar errores de llave foránea
+            # 1. Desvincular materias asociadas al docente (poner a NULL) para no eliminarlas
+            cursor.execute("UPDATE tb_materias SET idDocente = NULL WHERE idDocente = %s", (idDocente,))
+            
+            # 2. Eliminar relaciones en tablas secundarias para evitar errores de llave foránea
+            cursor.execute("DELETE FROM tb_asistencias_docentes WHERE id_docente = %s", (idDocente,))
+            cursor.execute("DELETE FROM tb_cursoextracurricular WHERE idDocente = %s", (idDocente,))
+            cursor.execute("DELETE FROM tb_grupodocentes WHERE idDocente = %s", (idDocente,))
             cursor.execute("DELETE FROM tb_horarios WHERE id_docente = %s", (idDocente,))
             cursor.execute("DELETE FROM tb_materiadocente WHERE idDocente = %s", (idDocente,))
             
-            # Eliminar el docente
+            # 3. Eliminar el docente
             cursor.execute("DELETE FROM tb_docentes WHERE idDocente = %s", (idDocente,))
             conexion.commit()
             return {"mensaje": "Docente eliminado correctamente"}
