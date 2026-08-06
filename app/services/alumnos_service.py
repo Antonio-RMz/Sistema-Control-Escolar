@@ -79,7 +79,11 @@ class AlumnosService:
                     g.generacion AS nombreGeneracionTexto,
                     gr.clave AS nombreGrupoTexto,
                     a.numeroControl,
-                    a.statusAlumno
+                    a.statusAlumno,
+                    a.folioCertificado,
+                    a.curp,
+                    a.fechaRecogioCertificado,
+                    a.recogioCertificado
                 FROM tb_alumnos a
                 LEFT JOIN tb_generaciones g ON a.idGeneracion = g.id
                 LEFT JOIN tb_grupos gr ON a.idGrupo = gr.id
@@ -115,9 +119,10 @@ class AlumnosService:
                     parentesco, calle, colonia, localidad, municipio, 
                     telefonoTutor, celularAlumno, correoAlumno, 
                     escuelaProcedencia, observaciones, idGeneracion, idGrupo,
-                    equivalencia, numeroControl, statusAlumno
+                    equivalencia, numeroControl, statusAlumno, 
+                    folioCertificado, curp, fechaRecogioCertificado, recogioCertificado
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """
             # Extraer idGeneracion e idGrupo considerando ambas posibles nomenclaturas
             id_generacion = data.get("idGeneracion") or data.get("id_Generacion")
@@ -143,7 +148,11 @@ class AlumnosService:
                 id_grupo,
                 data.get("equivalencia"),
                 data.get("numeroControl"),
-                data.get("statusAlumno")
+                data.get("statusAlumno"),
+                data.get("folioCertificado"),
+                data.get("curp"),
+                data.get("fechaRecogioCertificado"),
+                data.get("recogioCertificado")
             )
             cursor.execute(query, values)
 
@@ -339,7 +348,11 @@ class AlumnosService:
                     idGrupo = %s,
                     equivalencia = %s,
                     numeroControl = %s,
-                    statusAlumno = %s
+                    statusAlumno = %s,
+                    folioCertificado = %s,
+                    curp = %s,
+                    fechaRecogioCertificado = %s,
+                    recogioCertificado = %s
                 WHERE idAlumno = %s
             """
             values = (
@@ -363,6 +376,10 @@ class AlumnosService:
                 data.get("equivalencia"),
                 data.get("numeroControl"),
                 data.get("statusAlumno"),
+                data.get("folioCertificado"),
+                data.get("curp"),
+                data.get("fechaRecogioCertificado"),
+                data.get("recogioCertificado"),
                 id_alumno,
             )
             cursor.execute(query, values)
@@ -429,7 +446,11 @@ class AlumnosService:
                     g.generacion AS nombreGeneracionTexto,
                     gr.clave AS nombreGrupoTexto,
                     a.numeroControl,
-                    a.statusAlumno
+                    a.statusAlumno,
+                    a.folioCertificado,
+                    a.curp,
+                    a.fechaRecogioCertificado,
+                    a.recogioCertificado
                 FROM tb_alumnos a
                 LEFT JOIN tb_generaciones g ON a.idGeneracion = g.id
                 LEFT JOIN tb_grupos gr ON a.idGrupo = gr.id
