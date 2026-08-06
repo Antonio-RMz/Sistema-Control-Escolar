@@ -34,11 +34,11 @@ class AlumnosService:
 
                 for palabra in palabras:
                     where.append(
-                        "(a.nombre LIKE %s OR a.apPaterno LIKE %s OR a.apMaterno LIKE %s)"
+                        "(a.nombre LIKE %s OR a.apPaterno LIKE %s OR a.apMaterno LIKE %s OR gr.clave LIKE %s OR a.numeroControl LIKE %s)"
                     )
 
                     like = f"%{palabra}%"
-                    valores.extend([like, like, like])
+                    valores.extend([like, like, like, like, like])
 
             where_sql = "WHERE " + " AND ".join(where) if where else ""
 
@@ -47,6 +47,7 @@ class AlumnosService:
                 SELECT COUNT(*) AS total
                 FROM tb_alumnos a
                 LEFT JOIN tb_generaciones g ON a.idGeneracion = g.id
+                LEFT JOIN tb_grupos gr ON a.idGrupo = gr.id
                 {where_sql}
             """
 
@@ -76,10 +77,12 @@ class AlumnosService:
                     a.idGrupo,
                     a.equivalencia,
                     g.generacion AS nombreGeneracionTexto,
+                    gr.clave AS nombreGrupoTexto,
                     a.numeroControl,
                     a.statusAlumno
                 FROM tb_alumnos a
                 LEFT JOIN tb_generaciones g ON a.idGeneracion = g.id
+                LEFT JOIN tb_grupos gr ON a.idGrupo = gr.id
                 {where_sql}
                 ORDER BY a.idAlumno ASC
                 LIMIT %s OFFSET %s
@@ -402,7 +405,37 @@ class AlumnosService:
         conexion = get_connection()
         cursor = conexion.cursor()
         try:
-            cursor.execute("SELECT * FROM tb_alumnos WHERE idGrupo = %s", (idGrupo,))
+            query = """
+                SELECT 
+                    a.idAlumno,
+                    a.nombre,
+                    a.apPaterno,
+                    a.apMaterno,
+                    a.fechaNacimiento,
+                    a.tutor,
+                    a.parentesco,
+                    a.calle,
+                    a.colonia,
+                    a.localidad,
+                    a.municipio,
+                    a.telefonoTutor,
+                    a.celularAlumno,
+                    a.correoAlumno,
+                    a.escuelaProcedencia,
+                    a.observaciones,
+                    a.idGeneracion,
+                    a.idGrupo,
+                    a.equivalencia,
+                    g.generacion AS nombreGeneracionTexto,
+                    gr.clave AS nombreGrupoTexto,
+                    a.numeroControl,
+                    a.statusAlumno
+                FROM tb_alumnos a
+                LEFT JOIN tb_generaciones g ON a.idGeneracion = g.id
+                LEFT JOIN tb_grupos gr ON a.idGrupo = gr.id
+                WHERE a.idGrupo = %s
+            """
+            cursor.execute(query, (idGrupo,))
             alumnos = cursor.fetchall()
             return {"data": alumnos}
         except Exception as e:
