@@ -70,6 +70,16 @@ def get_asistencias():
             return jsonify({"error": "Faltan parámetros fecha_inicio o fecha_fin"}), 400
             
         resultado = AsistenciasService.get_asistencias(fecha_inicio, fecha_fin, id_docente)
+        
+        import datetime
+        import decimal
+        for r in resultado:
+            for k, v in list(r.items()):
+                if isinstance(v, (datetime.timedelta, datetime.date, datetime.datetime)):
+                    r[k] = str(v)
+                elif isinstance(v, decimal.Decimal):
+                    r[k] = float(v)
+                    
         return jsonify(resultado)
     except ValueError as ve:
         return jsonify({"error": str(ve)}), 400
