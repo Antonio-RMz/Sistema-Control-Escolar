@@ -3,9 +3,16 @@ from flask_cors import CORS
 from app.routes.alumnos import alumnos_bp
 from app.routes.grupos import grupos_bp
 from app.routes.generaciones import generaciones_bp
-from app.routes.catalogos import catalogos_bp
 from app.routes.frontend import frontend_bp
 from app.routes.asistencias import asistencias_bp
+from app.routes.docentes import docentes_bp
+from app.routes.materias import materias_bp
+from app.routes.planes_estudio import planes_estudio_bp
+from app.routes.horarios import horarios_bp
+from app.routes.cursos_extra import cursos_extra_bp
+from app.routes.centros_trabajo import centros_trabajo_bp
+from app.routes.tipos_periodo import tipos_periodo_bp
+from app.routes.niveles_academicos import niveles_academicos_bp
 
 
 def create_app():
@@ -22,9 +29,16 @@ def create_app():
     app.register_blueprint(alumnos_bp)
     app.register_blueprint(grupos_bp)
     app.register_blueprint(generaciones_bp)
-    app.register_blueprint(catalogos_bp)
     app.register_blueprint(frontend_bp)
     app.register_blueprint(asistencias_bp)
+    app.register_blueprint(docentes_bp)
+    app.register_blueprint(materias_bp)
+    app.register_blueprint(planes_estudio_bp)
+    app.register_blueprint(horarios_bp)
+    app.register_blueprint(cursos_extra_bp)
+    app.register_blueprint(centros_trabajo_bp)
+    app.register_blueprint(tipos_periodo_bp)
+    app.register_blueprint(niveles_academicos_bp)
 
     # Iniciar programador de tareas diario (7:00 AM)
     from app.utils.scheduler import iniciar_scheduler

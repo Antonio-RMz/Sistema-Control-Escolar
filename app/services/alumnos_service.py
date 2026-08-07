@@ -464,3 +464,83 @@ class AlumnosService:
         finally:
             cursor.close()
             conexion.close()
+
+    @staticmethod
+    def get_alumno_equivalencia(page=1, limit=50, search=""):
+        conexion = get_connection()
+        cursor = conexion.cursor()
+        try:
+            if page < 1:
+                page = 1
+            if limit < 1:
+                limit = 50
+            if limit > 200:
+                limit = 200
+
+            offset = (page - 1) * limit
+            where = ["UPPER(a.equivalencia) = 'SI'"]
+            valores = []
+
+            if search:
+                palabras = search.strip().split()
+                for palabra in palabras:
+                    where.append(
+                        "(a.nombre LIKE %s OR a.apPaterno LIKE %s OR a.apMaterno LIKE %s)"
+                    )
+                    like = f"%{palabra}%"
+                    valores.extend([like, like, like])
+
+            where_sql = "WHERE " + " AND ".join(where)
+
+            # Total de registros
+            sql_total = f"SELECT COUNT(*) AS total FROM tb_alumnos a {where_sql}"
+            cursor.execute(sql_total, valores)
+            total = cursor.fetchone()["total"]
+
+            # Consulta paginada
+            sql_datos = f"""
+                SELECT 
+                    a.idAlumno, a.nombre, a.apPaterno, a.apMaterno, a.fechaNacimiento,
+                    a.tutor, a.parentesco, a.calle, a.colonia, a.localidad, a.municipio,
+                    a.telefonoTutor, a.celularAlumno, a.correoAlumno,
+                    a.escuelaProcedencia, a.observaciones, a.idGeneracion, a.idGrupo, a.equivalencia,
+                    g.generacion AS nombreGeneracionTexto
+                FROM tb_alumnos a
+                LEFT JOIN tb_generaciones g ON a.idGeneracion = g.id
+                {where_sql}
+                ORDER BY a.idAlumno ASC
+                LIMIT %s OFFSET %s
+            """
+            cursor.execute(sql_datos, valores + [limit, offset])
+            data = cursor.fetchall()
+
+            return {
+                "page": page,
+                "limit": limit,
+                "total": total,
+                "total_pages": (total + limit - 1) // limit if limit > 0 else 0,
+                "search": search,
+                "data": data,
+            }
+        finally:
+            cursor.close()
+            conexion.close()
+
+    @staticmethod
+    def create_alumno_grupo(data):
+        conexion = get_connection()
+        cursor = conexion.cursor()
+        try:
+            query = "INSERT INTO tb_alumnoGrupo (idAlumno, idGrupo) VALUES (%s, %s)"
+            cursor.execute(
+                query,
+                (
+                    data.get("idAlumno"),
+                    data.get("idGrupo"),
+                ),
+            )
+            conexion.commit()
+            return {"mensaje": "Alumno asignado al grupo correctamente"}
+        finally:
+            cursor.close()
+            conexion.close()

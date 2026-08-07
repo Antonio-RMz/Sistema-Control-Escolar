@@ -131,3 +131,27 @@ def test_latest_alumno():
     finally:
         cursor.close()
         conexion.close()
+
+
+@alumnos_bp.route("/getAlumnoEquivalencia", methods=["GET"])
+def get_alumno_equivalencia():
+    try:
+        page = int(request.args.get("page", 1))
+        limit = int(request.args.get("limit", 50))
+        search = request.args.get("search", "").strip()
+
+        resultado = AlumnosService.get_alumno_equivalencia(page, limit, search)
+        return jsonify(resultado)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@alumnos_bp.route("/createAlumnoGrupo", methods=["POST"])
+def create_alumno_grupo():
+    try:
+        data = request.json
+        if not data.get("idAlumno") or not data.get("idGrupo"):
+            return jsonify({"error": "Faltan datos"}), 400
+        return jsonify(AlumnosService.create_alumno_grupo(data))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
