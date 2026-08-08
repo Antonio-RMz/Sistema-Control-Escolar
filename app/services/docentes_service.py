@@ -191,6 +191,7 @@ class DocentesService:
                     h.diaSemana,
                     h.horaInicio,
                     h.horaFin,
+                    g.clave AS clave_grupo,
                     g.fechaInicio,
                     g.fechaFin
                 FROM tb_horarios h
@@ -253,7 +254,8 @@ class DocentesService:
                     # Calcular total de horas
                     total_minutos = 0
                     intervals = []
-                    for start_td, end_td in slots_dia_map.keys():
+                    for (start_td, end_td), h_item in slots_dia_map.items():
+                        is_bti = str(h_item.get('clave_grupo', '')).upper().startswith('BTI')
                         
                         if isinstance(start_td, str):
                             h, m, s_val = map(int, start_td.split(':'))
@@ -268,6 +270,10 @@ class DocentesService:
                             end_td = timedelta(hours=end_td.hour, minutes=end_td.minute, seconds=end_td.second)
 
                         diff_min = (end_td - start_td).total_seconds() / 60.0
+                        # En BTI cada módulo de clase (ej. 50 min) se considera como 1 hora completa (60 min)
+                        if is_bti and 40 <= diff_min <= 60:
+                            diff_min = 60.0
+
                         total_minutos += diff_min
                         intervals.append((start_td.total_seconds() / 60.0, end_td.total_seconds() / 60.0))
 
@@ -287,7 +293,7 @@ class DocentesService:
                                 merged.append([start, end])
                     
                     real_minutos = sum(end - start for start, end in merged)
-                    real_horas = real_minutos / 60.0
+                    real_horas = total_horas if any(str(h_item.get('clave_grupo', '')).upper().startswith('BTI') for h_item in slots_dia_map.values()) else (real_minutos / 60.0)
 
                     def format_hours(h):
                         h_round = round(h, 2)
@@ -380,6 +386,11 @@ class DocentesService:
                     end_str = f"{hrs:02d}:{mins:02d}:{secs:02d}"
 
                 diff_hours = (end_td - start_td).total_seconds() / 3600.0
+                
+                # En BTI cada módulo de clase (ej. 50 min) se considera 1 hora completa (1.0)
+                is_bti = str(r.get('grupo', '')).upper().startswith('BTI')
+                if is_bti and 0.7 <= diff_hours <= 1.05:
+                    diff_hours = 1.0
                 
                 def format_hours(h):
                     h_round = round(h, 2)
