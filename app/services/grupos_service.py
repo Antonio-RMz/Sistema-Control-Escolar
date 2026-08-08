@@ -34,7 +34,7 @@ class GruposService:
                 SELECT g.id, g.clave, g.fechaCreacion, g.fechaInicio, g.fechaFin,
                 g.id_centroTrabajo, g.id_tipoPeriodo, g.id_planEstudios, g.id_nivel_academico,
                 n.nombre AS nombre_nivel,
-                IFNULL(GROUP_CONCAT(gd.dia), '') AS diasClase
+                IFNULL(GROUP_CONCAT(gd.dia), '') AS diasClase, g.statusGrupo
                 FROM tb_grupos g
                 LEFT JOIN tb_grupodias gd ON g.id = gd.idGrupo
                 LEFT JOIN tb_niveles_academicos n ON g.id_nivel_academico = n.id
