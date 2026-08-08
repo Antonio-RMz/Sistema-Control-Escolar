@@ -81,9 +81,9 @@ class GruposService:
             query = """
                 INSERT INTO tb_grupos (
                     clave, fechaCreacion, fechaInicio, fechaFin, 
-                    id_centroTrabajo, id_tipoPeriodo, id_planEstudios, modalidadHorario, id_nivel_academico
+                    id_centroTrabajo, id_tipoPeriodo, id_planEstudios, modalidadHorario, id_nivel_academico,statusGrupo
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """
             values = (
                 data.get("clave"),
@@ -94,7 +94,8 @@ class GruposService:
                 data.get("id_tipoPeriodo"),
                 data.get("id_planEstudios"),
                 data.get("modalidadHorario"),
-                data.get("id_nivel_academico")
+                data.get("id_nivel_academico"),
+                data.get("statusGrupo")
             )
             cursor.execute(query, values)
             
@@ -153,7 +154,8 @@ class GruposService:
                     id_tipoPeriodo = %s,
                     id_planEstudios = %s,
                     modalidadHorario = %s,
-                    id_nivel_academico = %s
+                    id_nivel_academico = %s,
+                    statusGrupo = %s
                 WHERE id = %s
             """
             values = (
@@ -166,6 +168,7 @@ class GruposService:
                 data.get("id_planEstudios"),
                 data.get("modalidadHorario"),
                 data.get("id_nivel_academico"),
+                data.get("statusGrupo"),
                 id_grupo
             )
             cursor.execute(query, values)
