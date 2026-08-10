@@ -3,17 +3,34 @@ from app.config.conexion import get_connection
 
 class GeneracionesService:
     @staticmethod
-    def get_all():
+    def get_all(id_centro_trabajo=None):
         conexion = get_connection()
         cursor = conexion.cursor()
         try:
-            cursor.execute(
-                """
-                SELECT id, nombreGeneracion, mesInicio, mesFin, 
-                       anioInicio, aniofin, generacion , modalidad
-                FROM tb_generaciones
+            where = []
+            params = []
+            if id_centro_trabajo:
+                where.append("g.id_centroTrabajo = %s")
+                params.append(id_centro_trabajo)
+
+            where_sql = "WHERE " + " AND ".join(where) if where else ""
+            query = f"""
+                SELECT 
+                    g.id, 
+                    g.id_centroTrabajo, 
+                    c.nombre AS nombreCentroTrabajo,
+                    g.nombreGeneracion, 
+                    g.mesInicio, 
+                    g.mesFin, 
+                    g.anioInicio, 
+                    g.aniofin, 
+                    g.generacion
+                FROM tb_generaciones g
+                LEFT JOIN tb_centrotrabajo c ON c.id = g.id_centroTrabajo
+                {where_sql}
+                ORDER BY g.id DESC
             """
-            )
+            cursor.execute(query, params)
             return cursor.fetchall()
         finally:
             cursor.close()
@@ -26,20 +43,20 @@ class GeneracionesService:
         try:
             query = """
                 INSERT INTO tb_generaciones (
-                    nombreGeneracion, mesInicio, mesFin, 
-                    anioInicio, anioFin,generacion,modalidad, 
+                    id_centroTrabajo, nombreGeneracion, mesInicio, mesFin, 
+                    anioInicio, aniofin, generacion, 
                     createBy, updateBy
                 )
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             """
             values = (
+                data.get("id_centroTrabajo") or data.get("idCentroTrabajo"),
                 data.get("nombreGeneracion"),
                 data.get("mesInicio"),
                 data.get("mesFin"),
                 data.get("anioInicio"),
-                data.get("anioFin"),
+                data.get("aniofin") or data.get("anioFin"),
                 data.get("generacion"),
-                data.get("modalidad"),
                 data.get("createBy"),
                 data.get("updateBy"),
             )

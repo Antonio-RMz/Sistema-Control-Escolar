@@ -37,16 +37,14 @@ def get_alumnos_by_grupo(idGrupo):
         return jsonify({"error": str(e)}), 500
 
 
-# bloque para crar a un alumno
+# bloque para crear a un alumno (admite /crealumnos y /alumnos)
 @alumnos_bp.route("/crealumnos", methods=["POST"])
+@alumnos_bp.route("/alumnos", methods=["POST"])
 def create_alumno():
     try:
-        data = request.json
-        if not data.get("nombre") or not data.get("apPaterno"):
-            return jsonify({"error": "Faltan datos"}), 400
-
-        resultado = AlumnosService.create_alumno(data)
-        return jsonify(resultado)
+        data = request.json or {}
+        resultado, status_code = AlumnosService.create_alumno(data)
+        return jsonify(resultado), status_code
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

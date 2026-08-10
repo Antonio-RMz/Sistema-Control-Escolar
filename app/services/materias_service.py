@@ -44,6 +44,10 @@ class MateriasService:
                     m.descripcionMateria,
                     m.estatusMateria,
                     m.clave,
+                    m.idCentroTrabajo,
+                    ct.nombre AS nombreCentroTrabajo,
+                    m.id_nivel_academico,
+                    na.nombre AS nombreNivelAcademico,
                     IFNULL(
                         GROUP_CONCAT(
                             CONCAT(d.idDocente, ':', d.nombreDocente)
@@ -51,6 +55,8 @@ class MateriasService:
                         ''
                     ) AS docentes
                 FROM tb_materias m
+                LEFT JOIN tb_centrotrabajo ct ON m.idCentroTrabajo = ct.id
+                LEFT JOIN tb_niveles_academicos na ON m.id_nivel_academico = na.id
                 LEFT JOIN tb_materiadocente md ON m.id = md.idMateria
                 LEFT JOIN tb_docentes d ON md.idDocente = d.idDocente
                 {where}
@@ -103,11 +109,14 @@ class MateriasService:
             else:
                 estatus = "ACTIVA"
 
+            id_cct = data.get("idCentroTrabajo") if data.get("idCentroTrabajo") not in ["", None, "null"] else None
+            id_nivel = data.get("id_nivel_academico") if data.get("id_nivel_academico") not in ["", None, "null"] else None
+
             # 🧱 Insertar materia
             query = """
             INSERT INTO tb_materias 
-            (nombreMateria, descripcionMateria, estatusMateria, clave)
-            VALUES (%s, %s, %s, %s)
+            (nombreMateria, descripcionMateria, estatusMateria, clave, idCentroTrabajo, id_nivel_academico)
+            VALUES (%s, %s, %s, %s, %s, %s)
             """
 
             cursor.execute(
@@ -117,6 +126,8 @@ class MateriasService:
                     data.get("descripcionMateria"),
                     estatus,
                     data.get("clave"),
+                    id_cct,
+                    id_nivel,
                 ),
             )
 
@@ -188,11 +199,14 @@ class MateriasService:
             else:
                 estatus = "ACTIVA"
 
+            id_cct = data.get("idCentroTrabajo") if data.get("idCentroTrabajo") not in ["", None, "null"] else None
+            id_nivel = data.get("id_nivel_academico") if data.get("id_nivel_academico") not in ["", None, "null"] else None
+
             # 🧱 Actualizar datos básicos de la materia
             cursor.execute(
                 """
                 UPDATE tb_materias 
-                SET nombreMateria = %s, descripcionMateria = %s, estatusMateria = %s, clave = %s
+                SET nombreMateria = %s, descripcionMateria = %s, estatusMateria = %s, clave = %s, idCentroTrabajo = %s, id_nivel_academico = %s
                 WHERE id = %s
                 """,
                 (
@@ -200,6 +214,8 @@ class MateriasService:
                     data.get("descripcionMateria"),
                     estatus,
                     data.get("clave"),
+                    id_cct,
+                    id_nivel,
                     id_materia,
                 ),
             )

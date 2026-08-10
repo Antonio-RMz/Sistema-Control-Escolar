@@ -7,7 +7,8 @@ generaciones_bp = Blueprint("generaciones", __name__)
 @generaciones_bp.route("/generaciones", methods=["GET"])
 def get_generaciones():
     try:
-        resultado = GeneracionesService.get_all()
+        id_centro_trabajo = request.args.get("idCentroTrabajo") or request.args.get("id_centroTrabajo")
+        resultado = GeneracionesService.get_all(id_centro_trabajo)
         return jsonify(resultado)
     except Exception as e:
         return jsonify({"error": str(e)}), 500

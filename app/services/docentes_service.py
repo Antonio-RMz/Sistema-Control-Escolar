@@ -20,6 +20,8 @@ class DocentesService:
                     apPaternoDocente, 
                     apMaternoDocente, 
                     correoDocente, 
+                    usuario,
+                    IF(password IS NOT NULL AND password != '', 1, 0) AS tiene_password,
                     telefonoDocente, 
                     statusDocente, 
                     observacionesDocente,
@@ -407,6 +409,62 @@ class DocentesService:
 
             return resultado
 
+        finally:
+            cursor.close()
+            conexion.close()
+
+    @staticmethod
+    def actualizar_credenciales(id_docente, usuario, password_hash=None):
+        conexion = get_connection()
+        cursor = conexion.cursor()
+        try:
+            # Validar que el usuario no esté duplicado en otro docente
+            cursor.execute("SELECT idDocente FROM tb_docentes WHERE usuario = %s AND idDocente != %s", (usuario, id_docente))
+            dup = cursor.fetchone()
+            if dup:
+                return {"error": "El nombre de usuario ya está asignado a otro docente"}
+
+            if password_hash:
+                cursor.execute("""
+                    UPDATE tb_docentes 
+                    SET usuario = %s, password = %s, updateAt = CURRENT_TIMESTAMP
+                    WHERE idDocente = %s
+                """, (usuario, password_hash, id_docente))
+            else:
+                cursor.execute("""
+                    UPDATE tb_docentes 
+                    SET usuario = %s, updateAt = CURRENT_TIMESTAMP
+                    WHERE idDocente = %s
+                """, (usuario, id_docente))
+            conexion.commit()
+            return {"success": True, "mensaje": "Credenciales del docente actualizadas correctamente"}
+        except Exception as e:
+            conexion.rollback()
+            return {"error": str(e)}
+        finally:
+            cursor.close()
+            conexion.close()
+
+    @staticmethod
+    def get_docente_by_username(usuario):
+        conexion = get_connection()
+        cursor = conexion.cursor()
+        try:
+            cursor.execute("""
+                SELECT 
+                    idDocente, 
+                    nombreDocente, 
+                    apPaternoDocente, 
+                    apMaternoDocente, 
+                    correoDocente, 
+                    usuario, 
+                    password, 
+                    statusDocente
+                FROM tb_docentes
+                WHERE (usuario = %s OR correoDocente = %s) AND statusDocente = 'ACTIVO'
+                LIMIT 1
+            """, (usuario, usuario))
+            return cursor.fetchone()
         finally:
             cursor.close()
             conexion.close()

@@ -12,6 +12,17 @@ def get_centro_trabajo():
         return jsonify({"error": str(e)}), 500
 
 
+@centros_trabajo_bp.route("/centroTrabajo/<int:id_cct>", methods=["GET"])
+def get_centro_trabajo_by_id(id_cct):
+    try:
+        cct = CentrosTrabajoService.get_by_id(id_cct)
+        if not cct:
+            return jsonify({"error": "Centro de trabajo no encontrado"}), 404
+        return jsonify(cct)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @centros_trabajo_bp.route("/createCentroTrabajo", methods=["POST"])
 def create_centro_trabajo():
     try:

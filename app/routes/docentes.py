@@ -105,3 +105,32 @@ def get_detalle_horas_docente():
         return jsonify({"error": str(ve)}), 400
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@docentes_bp.route("/docentes/<int:idDocente>/credenciales", methods=["POST"])
+def actualizar_credenciales_docente(idDocente):
+    try:
+        data = request.get_json() or {}
+        usuario = data.get("usuario")
+        password = data.get("password")
+
+        if not usuario:
+            return jsonify({"error": "El nombre de usuario es obligatorio"}), 400
+
+        resultado = DocentesService.actualizar_credenciales(idDocente, usuario, password)
+        if "error" in resultado:
+            return jsonify(resultado), 400
+        return jsonify(resultado)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@docentes_bp.route("/docentes/by-username/<string:username>", methods=["GET"])
+def get_docente_by_username(username):
+    try:
+        docente = DocentesService.get_docente_by_username(username)
+        if not docente:
+            return jsonify({"error": "Docente no encontrado"}), 404
+        return jsonify({"success": True, "data": docente})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500

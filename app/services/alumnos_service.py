@@ -62,13 +62,6 @@ class AlumnosService:
                     a.apPaterno,
                     a.apMaterno,
                     a.fechaNacimiento,
-                    a.tutor,
-                    a.parentesco,
-                    a.calle,
-                    a.colonia,
-                    a.localidad,
-                    a.municipio,
-                    a.telefonoTutor,
                     a.celularAlumno,
                     a.correoAlumno,
                     a.escuelaProcedencia,
@@ -76,17 +69,33 @@ class AlumnosService:
                     a.idGeneracion,
                     a.idGrupo,
                     a.equivalencia,
-                    g.generacion AS nombreGeneracionTexto,
-                    gr.clave AS nombreGrupoTexto,
                     a.numeroControl,
                     a.statusAlumno,
-                    a.folioCertificado,
                     a.curp,
-                    a.fechaRecogioCertificado,
-                    a.recogioCertificado
+                    g.generacion AS nombreGeneracionTexto,
+                    gr.clave AS nombreGrupoTexto,
+                    d.calle,
+                    d.colonia,
+                    d.localidad,
+                    d.municipio,
+                    d.numeroExterior,
+                    d.numeroInterior,
+                    cert.folioCertificado,
+                    cert.recogioCertificado,
+                    cert.fechaRecogioCertificado,
+                    CONCAT_WS(' ', c.nombre, c.apPaterno, c.apMaterno) AS tutor,
+                    ac.parentesco,
+                    COALESCE(c.telefono, c.celular) AS telefonoTutor
                 FROM tb_alumnos a
                 LEFT JOIN tb_generaciones g ON a.idGeneracion = g.id
                 LEFT JOIN tb_grupos gr ON a.idGrupo = gr.id
+                LEFT JOIN tb_direcciones_alumno d ON a.idAlumno = d.idAlumno
+                LEFT JOIN tb_certificados_alumno cert ON a.idAlumno = cert.idAlumno
+                LEFT JOIN tb_alumno_contacto ac ON ac.id = (
+                    SELECT MIN(ac2.id) FROM tb_alumno_contacto ac2 
+                    WHERE ac2.idAlumno = a.idAlumno AND (ac2.esTutor = 1 OR ac2.esPrincipal = 1)
+                )
+                LEFT JOIN tb_contactos c ON ac.idContacto = c.idContacto
                 {where_sql}
                 ORDER BY a.idAlumno ASC
                 LIMIT %s OFFSET %s
@@ -107,67 +116,226 @@ class AlumnosService:
         finally:
             cursor.close()
             conexion.close()
-##CREAR ALUMNOOOO
+    ## CREAR ALUMNO - NUEVO FLUJO DINÁMICO CON VALIDACIONES V1-V8
     @staticmethod
     def create_alumno(data):
         conexion = get_connection()
         cursor = conexion.cursor()
         try:
-            query = """
-                INSERT INTO tb_alumnos (
-                    nombre, apPaterno, apMaterno, fechaNacimiento, tutor, 
-                    parentesco, calle, colonia, localidad, municipio, 
-                    telefonoTutor, celularAlumno, correoAlumno, 
-                    escuelaProcedencia, observaciones, idGeneracion, idGrupo,
-                    equivalencia, numeroControl, statusAlumno, 
-                    folioCertificado, curp, fechaRecogioCertificado, recogioCertificado
-                )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """
-            # Extraer idGeneracion e idGrupo considerando ambas posibles nomenclaturas
-            id_generacion = data.get("idGeneracion") or data.get("id_Generacion")
-            id_grupo = data.get("idGrupo") or data.get("id_Grupo")
+            # 1. Normalizar payload (soporta formato estructurado o plano)
+            alumno_data = data.get("alumno") if isinstance(data.get("alumno"), dict) else data
+            academico_data = data.get("academico") if isinstance(data.get("academico"), dict) else data
+            equiv_data = data.get("equivalencia") if isinstance(data.get("equivalencia"), dict) else {}
 
-            values = (
-                data.get("nombre"),
-                data.get("apPaterno"),
-                data.get("apMaterno"),
-                data.get("fechaNacimiento"),
-                data.get("tutor"),
-                data.get("parentesco"),
-                data.get("calle"),
-                data.get("colonia"),
-                data.get("localidad"),
-                data.get("municipio"),
-                data.get("telefonoTutor"),
-                data.get("celularAlumno"),
-                data.get("correoAlumno"),
-                data.get("escuelaProcedencia"),
-                data.get("observaciones"),
-                id_generacion,
-                id_grupo,
-                data.get("equivalencia"),
-                data.get("numeroControl"),
-                data.get("statusAlumno"),
-                data.get("folioCertificado"),
-                data.get("curp"),
-                data.get("fechaRecogioCertificado"),
-                data.get("recogioCertificado")
+            nombre = (alumno_data.get("nombre") or "").strip()
+            ap_paterno = (alumno_data.get("apPaterno") or "").strip()
+            ap_materno = (alumno_data.get("apMaterno") or "").strip()
+            curp = (alumno_data.get("curp") or "").strip() or None
+            fecha_nacimiento = alumno_data.get("fechaNacimiento") or None
+            celular_alumno = alumno_data.get("celularAlumno") or None
+            correo_alumno = alumno_data.get("correoAlumno") or None
+            escuela_procedencia = alumno_data.get("escuelaProcedencia") or None
+            observaciones = alumno_data.get("observaciones") or None
+            numero_control = alumno_data.get("numeroControl") or None
+            status_alumno = alumno_data.get("statusAlumno") or "ACTIVO"
+            create_by = data.get("createBy") or alumno_data.get("createBy")
+
+            # Equivalencia
+            equivalencia = (
+                equiv_data.get("requiereEquivalencia") 
+                if "requiereEquivalencia" in equiv_data 
+                else alumno_data.get("equivalencia")
             )
-            cursor.execute(query, values)
+            if isinstance(equivalencia, bool):
+                equivalencia = 1 if equivalencia else 0
 
-            # Obtener el ID del alumno insertado
-            id_alumno = cursor.lastrowid
+            # Datos académicos
+            id_centro_trabajo = academico_data.get("idCentroTrabajo") or academico_data.get("id_centroTrabajo")
+            id_nivel_academico = academico_data.get("idNivelAcademico") or academico_data.get("id_nivel_academico") or academico_data.get("idPeriodo")
+            id_generacion = academico_data.get("idGeneracion") or academico_data.get("id_generacion")
+            id_grupo = academico_data.get("idGrupo") or academico_data.get("id_grupo")
 
-            # Insertar la relación alumno-grupo si se proporcionó un idGrupo
-            if id_grupo:
-                query_grupo = (
-                    "INSERT INTO tb_alumnoGrupo (idAlumno, idGrupo) VALUES (%s, %s)"
+            # Validación requeridos básicos de alumno
+            if not nombre or not ap_paterno:
+                return {"error": "El nombre y apellido paterno del alumno son obligatorios."}, 400
+
+            # --- VALIDACIÓN 1: CCT existente ---
+            id_programa = None
+            cct_tipo_periodo = None
+            if id_centro_trabajo:
+                cursor.execute(
+                    "SELECT id, nombre, idPrograma, idTipoPeriodo FROM tb_centrotrabajo WHERE id = %s",
+                    (id_centro_trabajo,)
                 )
-                cursor.execute(query_grupo, (id_alumno, id_grupo))
+                cct_row = cursor.fetchone()
+                if not cct_row:
+                    return {"error": f"El Centro de Trabajo con ID {id_centro_trabajo} no existe."}, 400
+                id_programa = cct_row.get("idPrograma")
+                cct_tipo_periodo = cct_row.get("idTipoPeriodo")
 
-            # Insertar los cursos extracurriculares si vienen en el arreglo
-            cursos = data.get("cursos")
+            # --- VALIDACIÓN 2: Programa asociado válido ---
+            if id_programa:
+                cursor.execute(
+                    "SELECT id, nombrePrograma FROM tb_programas WHERE id = %s",
+                    (id_programa,)
+                )
+                prog_row = cursor.fetchone()
+                if not prog_row:
+                    return {"error": f"El programa asociado (ID {id_programa}) no existe en el catálogo de programas."}, 400
+
+            # --- VALIDACIÓN 3: Periodo / Nivel Académico corresponde al CCT ---
+            if id_nivel_academico:
+                cursor.execute(
+                    "SELECT id, nombre, tipo, id_tipoPeriodo FROM tb_niveles_academicos WHERE id = %s",
+                    (id_nivel_academico,)
+                )
+                nivel_row = cursor.fetchone()
+                if not nivel_row:
+                    return {"error": f"El nivel académico con ID {id_nivel_academico} no existe."}, 400
+                
+                if cct_tipo_periodo and nivel_row.get("id_tipoPeriodo") and int(nivel_row.get("id_tipoPeriodo")) != int(cct_tipo_periodo):
+                    return {
+                        "error": f"El nivel académico '{nivel_row.get('nombre')}' no es compatible con el esquema de periodicidad del Centro de Trabajo seleccionado."
+                    }, 400
+
+            # --- VALIDACIÓN 4 & 5: Grupo compatible con CCT y Nivel ---
+            if id_grupo:
+                cursor.execute(
+                    "SELECT id, clave, id_centroTrabajo, id_tipoPeriodo, id_nivel_academico, idGeneracion FROM tb_grupos WHERE id = %s",
+                    (id_grupo,)
+                )
+                grupo_row = cursor.fetchone()
+                if not grupo_row:
+                    return {"error": f"El grupo con ID {id_grupo} no existe."}, 400
+
+                if id_centro_trabajo and grupo_row.get("id_centroTrabajo") and int(grupo_row["id_centroTrabajo"]) != int(id_centro_trabajo):
+                    return {"error": "El grupo seleccionado no pertenece al Centro de Trabajo indicado."}, 400
+
+                if id_nivel_academico and grupo_row.get("id_nivel_academico") and int(grupo_row["id_nivel_academico"]) != int(id_nivel_academico):
+                    return {"error": "El grupo seleccionado no corresponde al nivel académico seleccionado."}, 400
+
+                # Si no se pasó idGeneracion explícito pero el grupo tiene uno, tomar la del grupo
+                if not id_generacion and grupo_row.get("idGeneracion"):
+                    id_generacion = grupo_row.get("idGeneracion")
+
+            # --- VALIDACIÓN 6: Generación existente ---
+            if id_generacion:
+                cursor.execute(
+                    "SELECT id, nombreGeneracion FROM tb_generaciones WHERE id = %s",
+                    (id_generacion,)
+                )
+                gen_row = cursor.fetchone()
+                if not gen_row:
+                    return {"error": f"La generación con ID {id_generacion} no existe."}, 400
+
+            # --- VALIDACIÓN 8: Multi-trayectoria / Alumno existente ---
+            id_alumno = None
+            es_nuevo_alumno = True
+
+            if curp:
+                cursor.execute(
+                    "SELECT idAlumno, nombre, apPaterno, apMaterno FROM tb_alumnos WHERE curp = %s",
+                    (curp,)
+                )
+                alumno_existente = cursor.fetchone()
+                if alumno_existente:
+                    id_alumno = alumno_existente["idAlumno"]
+                    es_nuevo_alumno = False
+
+            if not id_alumno:
+                # Insertar en tb_alumnos
+                query_alumno = """
+                    INSERT INTO tb_alumnos (
+                        nombre, apPaterno, apMaterno, fechaNacimiento, celularAlumno,
+                        correoAlumno, escuelaProcedencia, observaciones, idGeneracion,
+                        idGrupo, equivalencia, numeroControl, statusAlumno, curp, createBy
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """
+                cursor.execute(
+                    query_alumno,
+                    (
+                        nombre,
+                        ap_paterno,
+                        ap_materno,
+                        fecha_nacimiento,
+                        celular_alumno,
+                        correo_alumno,
+                        escuela_procedencia,
+                        observaciones,
+                        id_generacion,
+                        id_grupo,
+                        equivalencia,
+                        numero_control,
+                        status_alumno,
+                        curp,
+                        create_by,
+                    ),
+                )
+                id_alumno = cursor.lastrowid
+            else:
+                # Alumno existente: actualizar campos complementarios si se proporcionaron
+                update_fields = []
+                update_values = []
+                if celular_alumno:
+                    update_fields.append("celularAlumno = %s")
+                    update_values.append(celular_alumno)
+                if correo_alumno:
+                    update_fields.append("correoAlumno = %s")
+                    update_values.append(correo_alumno)
+                if update_fields:
+                    update_values.append(id_alumno)
+                    cursor.execute(
+                        f"UPDATE tb_alumnos SET {', '.join(update_fields)} WHERE idAlumno = %s",
+                        update_values
+                    )
+
+            # --- INSERTAR TRAYECTORIA EN tb_alumnoprograma ---
+            id_alumno_programa = None
+            if id_programa:
+                cursor.execute(
+                    "SELECT idAlumnoPrograma, estatusAlumnoPrograma FROM tb_alumnoprograma WHERE idAlumno = %s AND idPrograma = %s",
+                    (id_alumno, id_programa)
+                )
+                prog_reg = cursor.fetchone()
+                if not prog_reg:
+                    cursor.execute(
+                        """
+                        INSERT INTO tb_alumnoprograma (
+                            idAlumno, idPrograma, fechaInscripcion, estatusAlumnoPrograma, createBy
+                        )
+                        VALUES (%s, %s, CURRENT_DATE, 'INSCRITO', %s)
+                        """,
+                        (id_alumno, id_programa, create_by)
+                    )
+                    id_alumno_programa = cursor.lastrowid
+                else:
+                    id_alumno_programa = prog_reg["idAlumnoPrograma"]
+
+            # --- INSERTAR RELACIÓN EN tb_alumnogrupo (si hay grupo) ---
+            id_alumno_grupo = None
+            if id_grupo:
+                cursor.execute(
+                    "SELECT id, estado FROM tb_alumnogrupo WHERE idAlumno = %s AND idGrupo = %s AND estado = 'ACTIVO'",
+                    (id_alumno, id_grupo)
+                )
+                ag_reg = cursor.fetchone()
+                if not ag_reg:
+                    cursor.execute(
+                        """
+                        INSERT INTO tb_alumnogrupo (
+                            idAlumno, idGrupo, fechaInicio, estado, createBy
+                        )
+                        VALUES (%s, %s, CURRENT_DATE, 'ACTIVO', %s)
+                        """,
+                        (id_alumno, id_grupo, create_by)
+                    )
+                    id_alumno_grupo = cursor.lastrowid
+                else:
+                    id_alumno_grupo = ag_reg["id"]
+
+            # Cursos extracurriculares si vienen en el payload
+            cursos = data.get("cursos") or alumno_data.get("cursos")
             if cursos and isinstance(cursos, list):
                 query_cursos = """
                     INSERT INTO tb_cursoExtraAlumno (
@@ -178,10 +346,19 @@ class AlumnosService:
                     cursor.execute(query_cursos, (id_curso, id_alumno))
 
             conexion.commit()
-            return {"mensaje": "Alumno creado correctamente", "idAlumno": id_alumno}
+            return {
+                "success": True,
+                "mensaje": "Alumno y trayectoria académica registrados correctamente" if es_nuevo_alumno else "Trayectoria académica agregada al alumno existente",
+                "idAlumno": id_alumno,
+                "idPrograma": id_programa,
+                "idAlumnoPrograma": id_alumno_programa,
+                "idGrupo": id_grupo,
+                "idAlumnoGrupo": id_alumno_grupo,
+                "esNuevoAlumno": es_nuevo_alumno,
+            }, 201
         except Exception as e:
             conexion.rollback()
-            return {"error": str(e)}
+            return {"error": str(e)}, 500
         finally:
             cursor.close()
             conexion.close()
@@ -306,13 +483,65 @@ class AlumnosService:
         finally:
             cursor.close()
             conexion.close()
-#PARA TRAERSE TODOS LOS ALUMNOS
+    # PARA TRAERSE DETALLES DE UN ALUMNO
     @staticmethod
     def get_alumno(id_alumno):
         conexion = get_connection()
         cursor = conexion.cursor()
         try:
-            cursor.execute("SELECT * FROM tb_alumnos WHERE idAlumno = %s", (id_alumno,))
+            sql = """
+                SELECT 
+                    a.idAlumno,
+                    a.nombre,
+                    a.apPaterno,
+                    a.apMaterno,
+                    a.fechaNacimiento,
+                    a.celularAlumno,
+                    a.correoAlumno,
+                    a.escuelaProcedencia,
+                    a.observaciones,
+                    a.idGeneracion,
+                    a.idGrupo,
+                    a.equivalencia,
+                    a.numeroControl,
+                    a.statusAlumno,
+                    a.curp,
+                    COALESCE(gr.id_centroTrabajo, g.id_centroTrabajo) AS id_centroTrabajo,
+                    COALESCE(gr.id_centroTrabajo, g.id_centroTrabajo) AS idCentroTrabajo,
+                    gr.id_nivel_academico,
+                    gr.modalidadHorario AS jornadaHorario,
+                    g.generacion AS nombreGeneracionTexto,
+                    g.nombreGeneracion,
+                    gr.clave AS nombreGrupoTexto,
+                    d.calle,
+                    d.colonia,
+                    d.localidad,
+                    d.municipio,
+                    d.numeroExterior,
+                    d.numeroInterior,
+                    d.estado AS estadoDireccion,
+                    d.codigoPostal,
+                    cert.folioCertificado,
+                    cert.recogioCertificado,
+                    cert.fechaRecogioCertificado,
+                    cert.estadoCertificado,
+                    cert.fechaEmision AS fechaEmisionCertificado,
+                    CONCAT_WS(' ', c.nombre, c.apPaterno, c.apMaterno) AS tutor,
+                    ac.parentesco,
+                    COALESCE(c.telefono, c.celular) AS telefonoTutor
+                FROM tb_alumnos a
+                LEFT JOIN tb_generaciones g ON a.idGeneracion = g.id
+                LEFT JOIN tb_grupos gr ON a.idGrupo = gr.id
+                LEFT JOIN tb_direcciones_alumno d ON a.idAlumno = d.idAlumno
+                LEFT JOIN tb_certificados_alumno cert ON a.idAlumno = cert.idAlumno
+                LEFT JOIN tb_alumno_contacto ac ON ac.id = (
+                    SELECT MIN(ac2.id) FROM tb_alumno_contacto ac2 
+                    WHERE ac2.idAlumno = a.idAlumno AND (ac2.esTutor = 1 OR ac2.esPrincipal = 1)
+                )
+                LEFT JOIN tb_contactos c ON ac.idContacto = c.idContacto
+                WHERE a.idAlumno = %s
+            """
+            cursor.execute(sql, (id_alumno,))
             alumno = cursor.fetchone()
             return {"data": alumno}
         except Exception as e:
@@ -320,12 +549,14 @@ class AlumnosService:
         finally:
             cursor.close()
             conexion.close()
-    #PARA ACTUALIZAR ALUMNOS 
+
+    # PARA ACTUALIZAR ALUMNOS
     @staticmethod
     def update_alumno(id_alumno, data):
         conexion = get_connection()
         cursor = conexion.cursor()
         try:
+            # 1. Actualizar tb_alumnos
             query = """
                 UPDATE tb_alumnos 
                 SET
@@ -333,13 +564,6 @@ class AlumnosService:
                     apPaterno = %s,
                     apMaterno = %s,
                     fechaNacimiento = %s,
-                    tutor = %s,
-                    parentesco = %s,
-                    calle = %s,
-                    colonia = %s,
-                    localidad = %s,
-                    municipio = %s,
-                    telefonoTutor = %s,
                     celularAlumno = %s,
                     correoAlumno = %s,
                     escuelaProcedencia = %s,
@@ -349,62 +573,117 @@ class AlumnosService:
                     equivalencia = %s,
                     numeroControl = %s,
                     statusAlumno = %s,
-                    folioCertificado = %s,
-                    curp = %s,
-                    fechaRecogioCertificado = %s,
-                    recogioCertificado = %s
+                    curp = %s
                 WHERE idAlumno = %s
             """
             values = (
                 data.get("nombre"),
                 data.get("apPaterno"),
                 data.get("apMaterno"),
-                data.get("fechaNacimiento"),
-                data.get("tutor"),
-                data.get("parentesco"),
-                data.get("calle"),
-                data.get("colonia"),
-                data.get("localidad"),
-                data.get("municipio"),
-                data.get("telefonoTutor"),
+                data.get("fechaNacimiento") or None,
                 data.get("celularAlumno"),
                 data.get("correoAlumno"),
                 data.get("escuelaProcedencia"),
                 data.get("observaciones"),
-                data.get("idGeneracion"),
-                data.get("idGrupo"),
-                data.get("equivalencia"),
+                data.get("idGeneracion") or None,
+                data.get("idGrupo") or None,
+                data.get("equivalencia") or "NO",
                 data.get("numeroControl"),
-                data.get("statusAlumno"),
-                data.get("folioCertificado"),
+                data.get("statusAlumno") or "ACTIVO",
                 data.get("curp"),
-                data.get("fechaRecogioCertificado"),
-                data.get("recogioCertificado"),
                 id_alumno,
             )
             cursor.execute(query, values)
-            
-            # Sincronizar tb_alumnoGrupo
+
+            # 2. Actualizar / Insertar dirección en tb_direcciones_alumno
+            calle = data.get("calle")
+            colonia = data.get("colonia")
+            localidad = data.get("localidad")
+            municipio = data.get("municipio")
+            if any([calle, colonia, localidad, municipio]):
+                cursor.execute("SELECT idDireccion FROM tb_direcciones_alumno WHERE idAlumno = %s", (id_alumno,))
+                dir_row = cursor.fetchone()
+                if dir_row:
+                    cursor.execute("""
+                        UPDATE tb_direcciones_alumno
+                        SET calle = %s, colonia = %s, localidad = %s, municipio = %s
+                        WHERE idAlumno = %s
+                    """, (calle, colonia, localidad, municipio, id_alumno))
+                else:
+                    cursor.execute("""
+                        INSERT INTO tb_direcciones_alumno (idAlumno, calle, colonia, localidad, municipio)
+                        VALUES (%s, %s, %s, %s, %s)
+                    """, (id_alumno, calle, colonia, localidad, municipio))
+
+            # 3. Actualizar / Insertar certificado en tb_certificados_alumno
+            folio_cert = data.get("folioCertificado")
+            recogio_cert = 1 if str(data.get("recogioCertificado", "")).upper() in ["SI", "1", "TRUE"] else 0
+            fecha_recogio = data.get("fechaRecogioCertificado") or None
+            if folio_cert or fecha_recogio or recogio_cert:
+                cursor.execute("SELECT idCertificado FROM tb_certificados_alumno WHERE idAlumno = %s", (id_alumno,))
+                cert_row = cursor.fetchone()
+                if cert_row:
+                    cursor.execute("""
+                        UPDATE tb_certificados_alumno
+                        SET folioCertificado = %s, recogioCertificado = %s, fechaRecogioCertificado = %s
+                        WHERE idAlumno = %s
+                    """, (folio_cert, recogio_cert, fecha_recogio, id_alumno))
+                else:
+                    cursor.execute("""
+                        INSERT INTO tb_certificados_alumno (idAlumno, folioCertificado, recogioCertificado, fechaRecogioCertificado)
+                        VALUES (%s, %s, %s, %s)
+                    """, (id_alumno, folio_cert, recogio_cert, fecha_recogio))
+
+            # 4. Actualizar / Insertar tutor en tb_contactos y tb_alumno_contacto
+            tutor_nombre = data.get("tutor")
+            parentesco = data.get("parentesco")
+            tel_tutor = data.get("telefonoTutor")
+            if tutor_nombre or parentesco or tel_tutor:
+                cursor.execute("""
+                    SELECT ac.id, ac.idContacto 
+                    FROM tb_alumno_contacto ac 
+                    WHERE ac.idAlumno = %s AND (ac.esTutor = 1 OR ac.esPrincipal = 1)
+                """, (id_alumno,))
+                cont_row = cursor.fetchone()
+                if cont_row and cont_row.get("idContacto"):
+                    cursor.execute("""
+                        UPDATE tb_contactos 
+                        SET nombre = %s, telefono = %s 
+                        WHERE idContacto = %s
+                    """, (tutor_nombre, tel_tutor, cont_row["idContacto"]))
+                    cursor.execute("""
+                        UPDATE tb_alumno_contacto 
+                        SET parentesco = %s 
+                        WHERE id = %s
+                    """, (parentesco, cont_row["id"]))
+                else:
+                    cursor.execute("""
+                        INSERT INTO tb_contactos (nombre, telefono) 
+                        VALUES (%s, %s)
+                    """, (tutor_nombre, tel_tutor))
+                    nuevo_id_contacto = cursor.lastrowid
+                    cursor.execute("""
+                        INSERT INTO tb_alumno_contacto (idAlumno, idContacto, parentesco, esTutor, esPrincipal) 
+                        VALUES (%s, %s, %s, 1, 1)
+                    """, (id_alumno, nuevo_id_contacto, parentesco))
+
+            # 5. Sincronizar tb_alumnoGrupo
             id_grupo = data.get("idGrupo") or data.get("id_Grupo")
             if id_grupo:
-                # Verificar si ya existe una relación para este alumno
                 cursor.execute("SELECT id FROM tb_alumnoGrupo WHERE idAlumno = %s", (id_alumno,))
                 relacion = cursor.fetchone()
                 if relacion:
-                    # Si existe, actualizamos la relación
                     cursor.execute("""
                         UPDATE tb_alumnoGrupo 
                         SET idGrupo = %s 
                         WHERE idAlumno = %s
                     """, (id_grupo, id_alumno))
                 else:
-                    # Si no existe, creamos la relación
                     cursor.execute("""
                         INSERT INTO tb_alumnoGrupo (idAlumno, idGrupo) 
                         VALUES (%s, %s)
                     """, (id_alumno, id_grupo))
             else:
-                # Si idGrupo es None o vacío, eliminamos cualquier relación existente
                 cursor.execute("DELETE FROM tb_alumnoGrupo WHERE idAlumno = %s", (id_alumno,))
 
             conexion.commit()
@@ -416,7 +695,7 @@ class AlumnosService:
             cursor.close()
             conexion.close()
 
-            ##obtener alumnos por grupo
+    # OBTENER ALUMNOS POR GRUPO
     @staticmethod
     def get_alumnos_grupo(idGrupo):
         conexion = get_connection()
@@ -429,13 +708,6 @@ class AlumnosService:
                     a.apPaterno,
                     a.apMaterno,
                     a.fechaNacimiento,
-                    a.tutor,
-                    a.parentesco,
-                    a.calle,
-                    a.colonia,
-                    a.localidad,
-                    a.municipio,
-                    a.telefonoTutor,
                     a.celularAlumno,
                     a.correoAlumno,
                     a.escuelaProcedencia,
@@ -443,18 +715,35 @@ class AlumnosService:
                     a.idGeneracion,
                     a.idGrupo,
                     a.equivalencia,
-                    g.generacion AS nombreGeneracionTexto,
-                    gr.clave AS nombreGrupoTexto,
                     a.numeroControl,
                     a.statusAlumno,
-                    a.folioCertificado,
                     a.curp,
-                    a.fechaRecogioCertificado,
-                    a.recogioCertificado
+                    g.generacion AS nombreGeneracionTexto,
+                    gr.clave AS nombreGrupoTexto,
+                    d.calle,
+                    d.colonia,
+                    d.localidad,
+                    d.municipio,
+                    d.numeroExterior,
+                    d.numeroInterior,
+                    cert.folioCertificado,
+                    cert.recogioCertificado,
+                    cert.fechaRecogioCertificado,
+                    CONCAT_WS(' ', c.nombre, c.apPaterno, c.apMaterno) AS tutor,
+                    ac.parentesco,
+                    COALESCE(c.telefono, c.celular) AS telefonoTutor
                 FROM tb_alumnos a
                 LEFT JOIN tb_generaciones g ON a.idGeneracion = g.id
                 LEFT JOIN tb_grupos gr ON a.idGrupo = gr.id
+                LEFT JOIN tb_direcciones_alumno d ON a.idAlumno = d.idAlumno
+                LEFT JOIN tb_certificados_alumno cert ON a.idAlumno = cert.idAlumno
+                LEFT JOIN tb_alumno_contacto ac ON ac.id = (
+                    SELECT MIN(ac2.id) FROM tb_alumno_contacto ac2 
+                    WHERE ac2.idAlumno = a.idAlumno AND (ac2.esTutor = 1 OR ac2.esPrincipal = 1)
+                )
+                LEFT JOIN tb_contactos c ON ac.idContacto = c.idContacto
                 WHERE a.idGrupo = %s
+                ORDER BY a.apPaterno ASC, a.apMaterno ASC, a.nombre ASC
             """
             cursor.execute(query, (idGrupo,))
             alumnos = cursor.fetchall()
@@ -500,13 +789,29 @@ class AlumnosService:
             # Consulta paginada
             sql_datos = f"""
                 SELECT 
-                    a.idAlumno, a.nombre, a.apPaterno, a.apMaterno, a.fechaNacimiento,
-                    a.tutor, a.parentesco, a.calle, a.colonia, a.localidad, a.municipio,
-                    a.telefonoTutor, a.celularAlumno, a.correoAlumno,
-                    a.escuelaProcedencia, a.observaciones, a.idGeneracion, a.idGrupo, a.equivalencia,
-                    g.generacion AS nombreGeneracionTexto
+                    a.idAlumno,
+                    a.nombre,
+                    a.apPaterno,
+                    a.apMaterno,
+                    a.fechaNacimiento,
+                    a.celularAlumno,
+                    a.correoAlumno,
+                    a.escuelaProcedencia,
+                    a.observaciones,
+                    a.idGeneracion,
+                    a.idGrupo,
+                    a.equivalencia,
+                    a.numeroControl,
+                    a.statusAlumno,
+                    a.curp,
+                    g.generacion AS nombreGeneracionTexto,
+                    d.calle,
+                    d.colonia,
+                    d.localidad,
+                    d.municipio
                 FROM tb_alumnos a
                 LEFT JOIN tb_generaciones g ON a.idGeneracion = g.id
+                LEFT JOIN tb_direcciones_alumno d ON a.idAlumno = d.idAlumno
                 {where_sql}
                 ORDER BY a.idAlumno ASC
                 LIMIT %s OFFSET %s

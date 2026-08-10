@@ -4,7 +4,7 @@ import datetime
 class GruposService:
     @staticmethod
     # para obtener todos los grupos con búsqueda y paginación
-    def get_all(page=1, limit=50, search=""):
+    def get_all(page=1, limit=50, search="", id_centro_trabajo=None, id_nivel_academico=None, id_generacion=None, status_grupo=None, modalidad_horario=None, dia=None):
         conexion = get_connection()
         cursor = conexion.cursor()
         try:
@@ -17,27 +17,102 @@ class GruposService:
                 limit = 200
 
             offset = (page - 1) * limit
-            where = ""
+            where_clauses = []
             params = []
 
             if search:
-                where = " WHERE g.clave LIKE %s "
+                where_clauses.append("g.clave LIKE %s")
                 params.append(f"%{search}%")
+            if id_centro_trabajo:
+                where_clauses.append("g.id_centroTrabajo = %s")
+                params.append(id_centro_trabajo)
+            if id_nivel_academico:
+                where_clauses.append("g.id_nivel_academico = %s")
+                params.append(id_nivel_academico)
+            if id_generacion:
+                where_clauses.append("g.idGeneracion = %s")
+                params.append(id_generacion)
+            if status_grupo:
+                where_clauses.append("g.statusGrupo = %s")
+                params.append(status_grupo)
+            if modalidad_horario:
+                where_clauses.append("g.modalidadHorario LIKE %s")
+                params.append(f"%{modalidad_horario}%")
+            if dia:
+                dia_upper = str(dia).strip().upper()
+                if any(x in dia_upper for x in ["LUNES", "VIERNES", "ESCOLARIZADO", "LV"]):
+                    where_clauses.append("""(
+                        gd.dia LIKE %s OR gd.dia LIKE %s OR gd.dia = %s
+                        OR g.clave LIKE %s OR g.clave LIKE %s 
+                        OR c.nombre LIKE %s OR c.nombre LIKE %s
+                    )""")
+                    params.extend([
+                        "%LUNES%", "%VIERNES%", "LUNES-VIERNES",
+                        "BTI%", "%LV%",
+                        "%BTI%", "%COMPUTACION%"
+                    ])
+                elif "SAB" in dia_upper or dia_upper == "S":
+                    where_clauses.append("""(
+                        gd.dia LIKE %s OR gd.dia = %s
+                        OR ((g.clave LIKE %s OR g.clave LIKE %s) AND g.clave NOT LIKE %s AND g.clave NOT LIKE %s)
+                    )""")
+                    params.extend([
+                        "%SAB%", "SABADO",
+                        "%S", "%SAB%", "%LV%", "BTI%"
+                    ])
+                elif "DOM" in dia_upper or dia_upper == "D":
+                    where_clauses.append("""(
+                        gd.dia LIKE %s OR gd.dia = %s
+                        OR ((g.clave LIKE %s OR g.clave LIKE %s) AND g.clave NOT LIKE %s)
+                    )""")
+                    params.extend([
+                        "%DOM%", "DOMINGO",
+                        "%D", "%DOM%", "BTI%"
+                    ])
+                else:
+                    where_clauses.append("(gd.dia LIKE %s OR g.clave LIKE %s)")
+                    params.extend([f"%{dia}%", f"%{dia}%"])
+
+            where = (" WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
 
             # Obtener el total para la paginación
-            sql_total = f"SELECT COUNT(DISTINCT g.id) AS total FROM tb_grupos g {where}"
+            sql_total = f"""
+                SELECT COUNT(DISTINCT g.id) AS total 
+                FROM tb_grupos g 
+                LEFT JOIN tb_centrotrabajo c ON g.id_centroTrabajo = c.id
+                LEFT JOIN tb_grupodias gd ON g.id = gd.idGrupo
+                {where}
+            """
             cursor.execute(sql_total, params)
             total = cursor.fetchone()["total"]
 
             # Obtener los datos paginados
             sql_datos = f"""
-                SELECT g.id, g.clave, g.fechaCreacion, g.fechaInicio, g.fechaFin,
-                g.id_centroTrabajo, g.id_tipoPeriodo, g.id_planEstudios, g.id_nivel_academico,
-                n.nombre AS nombre_nivel,
-                IFNULL(GROUP_CONCAT(gd.dia), '') AS diasClase, g.statusGrupo
+                SELECT 
+                    g.id, 
+                    g.clave, 
+                    g.fechaCreacion, 
+                    g.fechaInicio, 
+                    g.fechaFin,
+                    g.id_centroTrabajo, 
+                    c.nombre AS nombreCentroTrabajo,
+                    g.id_tipoPeriodo, 
+                    tp.nombrePeriodo,
+                    g.id_planEstudios, 
+                    g.id_nivel_academico,
+                    n.nombre AS nombre_nivel,
+                    g.idGeneracion,
+                    gen.nombreGeneracion,
+                    gen.generacion AS numeroGeneracion,
+                    g.modalidadHorario,
+                    g.statusGrupo,
+                    IFNULL(GROUP_CONCAT(gd.dia), '') AS diasClase
                 FROM tb_grupos g
-                LEFT JOIN tb_grupodias gd ON g.id = gd.idGrupo
+                LEFT JOIN tb_centrotrabajo c ON g.id_centroTrabajo = c.id
+                LEFT JOIN tb_tipoperiodo tp ON g.id_tipoPeriodo = tp.id
                 LEFT JOIN tb_niveles_academicos n ON g.id_nivel_academico = n.id
+                LEFT JOIN tb_generaciones gen ON g.idGeneracion = gen.id
+                LEFT JOIN tb_grupodias gd ON g.id = gd.idGrupo
                 {where}
                 GROUP BY g.id
                 ORDER BY g.id DESC
@@ -47,7 +122,7 @@ class GruposService:
             data = cursor.fetchall()
             
             for row in data:
-                dias_str = row["diasClase"]
+                dias_str = row.get("diasClase")
                 row["diasClase"] = dias_str.split(",") if dias_str else []
 
             return {
