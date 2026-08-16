@@ -66,3 +66,51 @@ class GeneracionesService:
         finally:
             cursor.close()
             conexion.close()
+
+    @staticmethod
+    def update(id_generacion, data):
+        conexion = get_connection()
+        cursor = conexion.cursor()
+        try:
+            query = """
+                UPDATE tb_generaciones
+                SET
+                    id_centroTrabajo = %s,
+                    nombreGeneracion = %s,
+                    mesInicio = %s,
+                    mesFin = %s,
+                    anioInicio = %s,
+                    aniofin = %s,
+                    generacion = %s,
+                    updateBy = %s
+                WHERE id = %s
+            """
+            values = (
+                data.get("id_centroTrabajo") or data.get("idCentroTrabajo"),
+                data.get("nombreGeneracion"),
+                data.get("mesInicio"),
+                data.get("mesFin"),
+                data.get("anioInicio"),
+                data.get("aniofin") or data.get("anioFin"),
+                data.get("generacion"),
+                data.get("updateBy"),
+                id_generacion
+            )
+            cursor.execute(query, values)
+            conexion.commit()
+            return {"mensaje": "Generación actualizada correctamente"}
+        finally:
+            cursor.close()
+            conexion.close()
+
+    @staticmethod
+    def delete(id_generacion):
+        conexion = get_connection()
+        cursor = conexion.cursor()
+        try:
+            cursor.execute("DELETE FROM tb_generaciones WHERE id = %s", (id_generacion,))
+            conexion.commit()
+            return {"mensaje": "Generación eliminada correctamente"}
+        finally:
+            cursor.close()
+            conexion.close()

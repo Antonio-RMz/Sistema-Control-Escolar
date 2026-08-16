@@ -23,6 +23,9 @@ class CalificacionesService:
                     a.curp,
                     a.idGeneracion,
                     a.idGrupo,
+                    a.equivalencia,
+                    a.id_nivel_ingreso,
+                    nei.numero AS numeroNivelIngreso,
                     COALESCE(gr.id_centroTrabajo, g.id_centroTrabajo, 3) AS id_centroTrabajo,
                     ct.nombre AS nombreCentroTrabajo,
                     ct.clave AS claveCentroTrabajo,
@@ -32,6 +35,7 @@ class CalificacionesService:
                 LEFT JOIN tb_generaciones g ON a.idGeneracion = g.id
                 LEFT JOIN tb_grupos gr ON a.idGrupo = gr.id
                 LEFT JOIN tb_centrotrabajo ct ON ct.id = COALESCE(gr.id_centroTrabajo, g.id_centroTrabajo, 3)
+                LEFT JOIN tb_niveles_academicos nei ON a.id_nivel_ingreso = nei.id
                 WHERE a.idAlumno = %s
             """, (id_alumno,))
             alumno = cursor.fetchone()
@@ -71,7 +75,14 @@ class CalificacionesService:
                     c.tipoAcreditacion,
                     c.observaciones,
                     c.fechaEvaluacion,
-                    c.idGrupo
+                    c.idGrupo,
+                    c.parcial1,
+                    c.parcial2,
+                    c.parcial3,
+                    c.semestral,
+                    c.extraordinario,
+                    c.asistencias,
+                    c.total_asistencias
                 FROM tb_materias m
                 LEFT JOIN tb_calificaciones c ON c.idMateria = m.id AND c.idAlumno = %s
                 WHERE (m.idCentroTrabajo = %s OR m.idCentroTrabajo IS NULL)
@@ -96,6 +107,11 @@ class CalificacionesService:
                     calif_val = mat.get("calificacion")
                     tiene_calif = calif_val is not None
                     
+                    is_equiv = False
+                    if alumno.get("equivalencia") == "SI" and alumno.get("numeroNivelIngreso") is not None:
+                        if int(alumno["numeroNivelIngreso"]) > int(nivel["numeroNivel"]):
+                            is_equiv = True
+                    
                     if tiene_calif:
                         c_num = float(calif_val)
                         suma_periodo += c_num
@@ -109,10 +125,18 @@ class CalificacionesService:
                         "claveMateria": mat["claveMateria"],
                         "idCalificacion": mat["idCalificacion"],
                         "calificacion": float(calif_val) if tiene_calif else None,
-                        "tipoAcreditacion": mat.get("tipoAcreditacion") or "ORDINARIO",
+                        "es_equivalencia": is_equiv,
+                        "tipoAcreditacion": mat.get("tipoAcreditacion") or ("EQUIVALENCIA" if is_equiv else "ORDINARIO"),
                         "observaciones": mat.get("observaciones"),
                         "fechaEvaluacion": str(mat["fechaEvaluacion"]) if mat.get("fechaEvaluacion") else None,
-                        "aprobada": float(calif_val) >= 6.0 if tiene_calif else False
+                        "aprobada": float(calif_val) >= 6.0 if tiene_calif else False,
+                        "parcial1": float(mat["parcial1"]) if mat.get("parcial1") is not None else None,
+                        "parcial2": float(mat["parcial2"]) if mat.get("parcial2") is not None else None,
+                        "parcial3": float(mat["parcial3"]) if mat.get("parcial3") is not None else None,
+                        "semestral": float(mat["semestral"]) if mat.get("semestral") is not None else None,
+                        "extraordinario": float(mat["extraordinario"]) if mat.get("extraordinario") is not None else None,
+                        "asistencias": int(mat["asistencias"]) if mat.get("asistencias") is not None else None,
+                        "total_asistencias": int(mat["total_asistencias"]) if mat.get("total_asistencias") is not None else None,
                     })
 
                 promedio_periodo = round(suma_periodo / evaluadas_periodo, 1) if evaluadas_periodo > 0 else None
@@ -159,7 +183,15 @@ class CalificacionesService:
                 observaciones = item.get("observaciones")
                 id_grupo = item.get("idGrupo") or None
 
-                if not id_materia or calificacion is None:
+                if not id_materia:
+                    continue
+
+                if calificacion is None:
+                    # Si la calificación se envía vacía o se revierte a equivalencia, eliminar la calificación si existe
+                    cursor.execute("""
+                        DELETE FROM tb_calificaciones 
+                        WHERE idAlumno = %s AND idMateria = %s AND tipoAcreditacion = %s
+                    """, (id_alumno, id_materia, tipo_acred))
                     continue
 
                 # Verificar si ya existe calificación para este alumno, materia y tipo de acreditación
@@ -169,18 +201,38 @@ class CalificacionesService:
                 """, (id_alumno, id_materia, tipo_acred))
                 existente = cursor.fetchone()
 
+                parcial1 = item.get("parcial1")
+                parcial2 = item.get("parcial2")
+                parcial3 = item.get("parcial3")
+                semestral = item.get("semestral")
+                extraordinario = item.get("extraordinario")
+                asistencias = item.get("asistencias")
+                total_asistencias = item.get("total_asistencias")
+
+                p1_val = float(parcial1) if (parcial1 is not None and parcial1 != "") else None
+                p2_val = float(parcial2) if (parcial2 is not None and parcial2 != "") else None
+                p3_val = float(parcial3) if (parcial3 is not None and parcial3 != "") else None
+                sem_val = float(semestral) if (semestral is not None and semestral != "") else None
+                ext_val = float(extraordinario) if (extraordinario is not None and extraordinario != "") else None
+                asist_val = int(asistencias) if (asistencias is not None and asistencias != "") else None
+                tot_asist_val = int(total_asistencias) if (total_asistencias is not None and total_asistencias != "") else None
+
                 if existente:
                     cursor.execute("""
                         UPDATE tb_calificaciones 
-                        SET calificacion = %s, id_nivel_academico = %s, idGrupo = %s, observaciones = %s, updateBy = %s, updateAt = CURRENT_TIMESTAMP
+                        SET calificacion = %s, id_nivel_academico = %s, idGrupo = %s, observaciones = %s,
+                            parcial1 = %s, parcial2 = %s, parcial3 = %s, semestral = %s, extraordinario = %s, 
+                            asistencias = %s, total_asistencias = %s,
+                            updateBy = %s, updateAt = CURRENT_TIMESTAMP
                         WHERE id = %s
-                    """, (calificacion, id_nivel, id_grupo, observaciones, create_by, existente["id"]))
+                    """, (calificacion, id_nivel, id_grupo, observaciones, p1_val, p2_val, p3_val, sem_val, ext_val, asist_val, tot_asist_val, create_by, existente["id"]))
                 else:
                     cursor.execute("""
                         INSERT INTO tb_calificaciones (
-                            idAlumno, idMateria, id_nivel_academico, idGrupo, calificacion, tipoAcreditacion, observaciones, fechaEvaluacion, createBy
-                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, CURRENT_DATE, %s)
-                    """, (id_alumno, id_materia, id_nivel, id_grupo, calificacion, tipo_acred, observaciones, create_by))
+                            idAlumno, idMateria, id_nivel_academico, idGrupo, calificacion, tipoAcreditacion, observaciones, fechaEvaluacion, createBy,
+                            parcial1, parcial2, parcial3, semestral, extraordinario, asistencias, total_asistencias
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, CURRENT_DATE, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """, (id_alumno, id_materia, id_nivel, id_grupo, calificacion, tipo_acred, observaciones, create_by, p1_val, p2_val, p3_val, sem_val, ext_val, asist_val, tot_asist_val))
 
             conexion.commit()
             return {"success": True, "message": "Calificaciones guardadas exitosamente"}
@@ -228,6 +280,7 @@ class CalificacionesService:
                     m.clave AS claveMateria,
                     m.id_nivel_academico,
                     na.nombre AS nombreNivel,
+                    na.numero AS numeroNivel,
                     h.id_docente,
                     CONCAT(d.nombreDocente, ' ', IFNULL(d.apPaternoDocente, ''), ' ', IFNULL(d.apMaternoDocente, '')) AS nombreDocente,
                     d.nivelEstudios,
@@ -250,6 +303,7 @@ class CalificacionesService:
                         m.clave AS claveMateria,
                         m.id_nivel_academico,
                         na.nombre AS nombreNivel,
+                        na.numero AS numeroNivel,
                         NULL AS id_docente,
                         'Sin docente asignado' AS nombreDocente,
                         NULL AS nivelEstudios,
@@ -258,7 +312,7 @@ class CalificacionesService:
                     LEFT JOIN tb_niveles_academicos na ON m.id_nivel_academico = na.id
                     WHERE m.idCentroTrabajo = %s OR m.idCentroTrabajo IS NULL
                     ORDER BY m.id_nivel_academico ASC, ordenMateria ASC
-                """, (grupo.get("id_centroTrabajo") or 3,))
+                """, (grupo.get("id_centroTrabajo") or grupo.get("id_centro_trabajo") or 3,))
                 materias_horario = cursor.fetchall()
 
             if not id_materia and materias_horario:
@@ -274,6 +328,16 @@ class CalificacionesService:
             # 3. Lista de alumnos del grupo con sus calificaciones en esta materia
             alumnos_califs = []
             if id_materia:
+                # Obtener el número de nivel de la materia actual
+                numero_nivel_materia = 1
+                if materia_seleccionada and materia_seleccionada.get("numeroNivel") is not None:
+                    numero_nivel_materia = int(materia_seleccionada["numeroNivel"])
+                else:
+                    cursor.execute("SELECT numero FROM tb_niveles_academicos WHERE id = (SELECT id_nivel_academico FROM tb_materias WHERE id = %s)", (id_materia,))
+                    nivel_row = cursor.fetchone()
+                    if nivel_row and nivel_row.get("numero") is not None:
+                        numero_nivel_materia = int(nivel_row["numero"])
+
                 cursor.execute("""
                     SELECT 
                         a.idAlumno,
@@ -283,16 +347,35 @@ class CalificacionesService:
                         a.apMaterno,
                         a.curp,
                         a.statusAlumno,
+                        a.equivalencia,
+                        a.id_nivel_ingreso,
+                        nei.numero AS numeroNivelIngreso,
                         c.id AS idCalificacion,
                         c.calificacion,
                         c.tipoAcreditacion,
-                        c.observaciones
+                        c.observaciones,
+                        c.parcial1,
+                        c.parcial2,
+                        c.parcial3,
+                        c.semestral,
+                        c.extraordinario,
+                        c.asistencias,
+                        c.total_asistencias
                     FROM tb_alumnos a
+                    LEFT JOIN tb_niveles_academicos nei ON a.id_nivel_ingreso = nei.id
                     LEFT JOIN tb_calificaciones c ON c.idAlumno = a.idAlumno AND c.idMateria = %s
                     WHERE a.idGrupo = %s
                     ORDER BY a.apPaterno ASC, a.apMaterno ASC, a.nombre ASC
                 """, (id_materia, id_grupo))
                 alumnos_califs = cursor.fetchall()
+
+                # Determinar si cada alumno tiene estatus de equivalencia para este periodo
+                for a in alumnos_califs:
+                    is_equiv = False
+                    if a.get("equivalencia") == "SI" and a.get("numeroNivelIngreso") is not None:
+                        if int(a["numeroNivelIngreso"]) > numero_nivel_materia:
+                            is_equiv = True
+                    a["es_equivalencia"] = is_equiv
 
             return {
                 "grupo": grupo,
@@ -322,6 +405,22 @@ class CalificacionesService:
                     continue
 
                 calif_val = float(calificacion)
+                
+                parcial1 = item.get("parcial1")
+                parcial2 = item.get("parcial2")
+                parcial3 = item.get("parcial3")
+                semestral = item.get("semestral")
+                extraordinario = item.get("extraordinario")
+                asistencias = item.get("asistencias")
+                total_asistencias = item.get("total_asistencias")
+
+                p1_val = float(parcial1) if (parcial1 is not None and parcial1 != "") else None
+                p2_val = float(parcial2) if (parcial2 is not None and parcial2 != "") else None
+                p3_val = float(parcial3) if (parcial3 is not None and parcial3 != "") else None
+                sem_val = float(semestral) if (semestral is not None and semestral != "") else None
+                ext_val = float(extraordinario) if (extraordinario is not None and extraordinario != "") else None
+                asist_val = int(asistencias) if (asistencias is not None and asistencias != "") else None
+                tot_asist_val = int(total_asistencias) if (total_asistencias is not None and total_asistencias != "") else None
 
                 cursor.execute("""
                     SELECT id FROM tb_calificaciones 
@@ -332,15 +431,19 @@ class CalificacionesService:
                 if existente:
                     cursor.execute("""
                         UPDATE tb_calificaciones 
-                        SET calificacion = %s, idGrupo = %s, observaciones = %s, updateBy = %s, updateAt = CURRENT_TIMESTAMP
+                        SET calificacion = %s, idGrupo = %s, observaciones = %s, 
+                            parcial1 = %s, parcial2 = %s, parcial3 = %s, semestral = %s, extraordinario = %s, 
+                            asistencias = %s, total_asistencias = %s,
+                            updateBy = %s, updateAt = CURRENT_TIMESTAMP
                         WHERE id = %s
-                    """, (calif_val, id_grupo, observaciones, create_by, existente["id"]))
+                    """, (calif_val, id_grupo, observaciones, p1_val, p2_val, p3_val, sem_val, ext_val, asist_val, tot_asist_val, create_by, existente["id"]))
                 else:
                     cursor.execute("""
                         INSERT INTO tb_calificaciones (
-                            idAlumno, idMateria, idGrupo, calificacion, tipoAcreditacion, observaciones, fechaEvaluacion, createBy
-                        ) VALUES (%s, %s, %s, %s, %s, %s, CURRENT_DATE, %s)
-                    """, (id_alumno, id_materia, id_grupo, calif_val, tipo_acred, observaciones, create_by))
+                            idAlumno, idMateria, idGrupo, calificacion, tipoAcreditacion, observaciones, fechaEvaluacion, createBy,
+                            parcial1, parcial2, parcial3, semestral, extraordinario, asistencias, total_asistencias
+                        ) VALUES (%s, %s, %s, %s, %s, %s, CURRENT_DATE, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """, (id_alumno, id_materia, id_grupo, calif_val, tipo_acred, observaciones, create_by, p1_val, p2_val, p3_val, sem_val, ext_val, asist_val, tot_asist_val))
 
             conexion.commit()
             return {"success": True, "message": "Calificaciones del grupo guardadas correctamente"}

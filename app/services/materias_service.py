@@ -4,16 +4,16 @@ import pymysql
 
 class MateriasService:
     @staticmethod
-    def get_materias(page=1, limit=50, search="", id_materia=None):
+    def get_materias(page=1, limit=1000, search="", id_materia=None):
         conexion = get_connection()
         cursor = conexion.cursor(pymysql.cursors.DictCursor)
         try:
             if page < 1:
                 page = 1
             if limit < 1:
-                limit = 50
-            if limit > 200:
-                limit = 200
+                limit = 1000
+            if limit > 1000:
+                limit = 1000
 
             offset = (page - 1) * limit
             

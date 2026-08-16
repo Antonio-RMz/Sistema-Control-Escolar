@@ -4,7 +4,7 @@ import datetime
 class GruposService:
     @staticmethod
     # para obtener todos los grupos con búsqueda y paginación
-    def get_all(page=1, limit=50, search="", id_centro_trabajo=None, id_nivel_academico=None, id_generacion=None, status_grupo=None, modalidad_horario=None, dia=None):
+    def get_all(page=1, limit=50, search="", id_centro_trabajo=None, id_nivel_academico=None, id_generacion=None, status_grupo=None, modalidad_horario=None, dia=None, id_docente=None):
         conexion = get_connection()
         cursor = conexion.cursor()
         try:
@@ -19,6 +19,10 @@ class GruposService:
             offset = (page - 1) * limit
             where_clauses = []
             params = []
+
+            if id_docente:
+                where_clauses.append("g.id IN (SELECT DISTINCT id_grupo FROM tb_horarios WHERE id_docente = %s)")
+                params.append(id_docente)
 
             if search:
                 where_clauses.append("g.clave LIKE %s")
@@ -36,8 +40,23 @@ class GruposService:
                 where_clauses.append("g.statusGrupo = %s")
                 params.append(status_grupo)
             if modalidad_horario:
-                where_clauses.append("g.modalidadHorario LIKE %s")
-                params.append(f"%{modalidad_horario}%")
+                modalidad_upper = str(modalidad_horario).strip().upper()
+                if "MATUTINO" in modalidad_upper:
+                    where_clauses.append("""(
+                        g.modalidadHorario LIKE %s 
+                        OR g.modalidadHorario LIKE %s 
+                        OR g.modalidadHorario LIKE %s
+                    )""")
+                    params.extend(["%MATUTINO%", "%MAÑANA%", "%MANANA%"])
+                elif "VESPERTINO" in modalidad_upper:
+                    where_clauses.append("""(
+                        g.modalidadHorario LIKE %s 
+                        OR g.modalidadHorario LIKE %s
+                    )""")
+                    params.extend(["%VESPERTINO%", "%TARDE%"])
+                else:
+                    where_clauses.append("g.modalidadHorario LIKE %s")
+                    params.append(f"%{modalidad_horario}%")
             if dia:
                 dia_upper = str(dia).strip().upper()
                 if any(x in dia_upper for x in ["LUNES", "VIERNES", "ESCOLARIZADO", "LV"]):
@@ -106,7 +125,9 @@ class GruposService:
                     gen.generacion AS numeroGeneracion,
                     g.modalidadHorario,
                     g.statusGrupo,
-                    IFNULL(GROUP_CONCAT(gd.dia), '') AS diasClase
+                    IFNULL(GROUP_CONCAT(gd.dia), '') AS diasClase,
+                    (SELECT COUNT(*) FROM tb_alumnogrupo WHERE idGrupo = g.id AND estado = 'ACTIVO') AS alumnos_count,
+                    (SELECT aula FROM tb_horarios WHERE id_grupo = g.id LIMIT 1) AS aula
                 FROM tb_grupos g
                 LEFT JOIN tb_centrotrabajo c ON g.id_centroTrabajo = c.id
                 LEFT JOIN tb_tipoperiodo tp ON g.id_tipoPeriodo = tp.id
@@ -123,7 +144,29 @@ class GruposService:
             
             for row in data:
                 dias_str = row.get("diasClase")
-                row["diasClase"] = dias_str.split(",") if dias_str else []
+                dias_list = dias_str.split(",") if dias_str else []
+                if not dias_list:
+                    modalidad = (row.get("modalidadHorario") or "").upper()
+                    if "SABADO" in modalidad or "SÁBADO" in modalidad:
+                        dias_list = ["SABADO"]
+                    elif "DOMINGO" in modalidad:
+                        dias_list = ["DOMINGO"]
+                    elif "MATUTINO" in modalidad or "VESPERTINO" in modalidad:
+                        dias_list = ["LUNES-VIERNES"]
+                    else:
+                        clave = (row.get("clave") or "").upper()
+                        if clave.endswith("S"):
+                            dias_list = ["SABADO"]
+                        elif clave.endswith("D"):
+                            dias_list = ["DOMINGO"]
+                        elif "LV" in clave or "BTI" in clave:
+                            dias_list = ["LUNES-VIERNES"]
+                        else:
+                            if row.get("id_centroTrabajo") == 2:
+                                dias_list = ["LUNES-VIERNES"]
+                            else:
+                                dias_list = ["SABADO"]
+                row["diasClase"] = dias_list
 
             return {
                 "page": page,
@@ -247,7 +290,15 @@ class GruposService:
                 id_grupo
             )
             cursor.execute(query, values)
-                    
+            
+            # Actualizar días de clase si vienen en el payload
+            dias_clase = data.get("diasClase", [])
+            if dias_clase:
+                cursor.execute("DELETE FROM tb_grupodias WHERE idGrupo = %s", (id_grupo,))
+                query_dias = "INSERT INTO tb_grupodias (idGrupo, dia) VALUES (%s, %s)"
+                for dia in dias_clase:
+                    cursor.execute(query_dias, (id_grupo, dia))
+
             conexion.commit()
             return {"mensaje": "Grupo actualizado correctamente", "idGrupo": id_grupo}
         except Exception as e:
@@ -285,6 +336,31 @@ class GruposService:
                     print(f"Error calculating level period: {e}")
                     
             return grupo
+        finally:
+            cursor.close()
+            conexion.close()
+
+    @staticmethod
+    def delete(id_grupo):
+        conexion = get_connection()
+        cursor = conexion.cursor()
+        try:
+            # 1. Desvincular alumnos en tb_alumnos (poner idGrupo = NULL)
+            cursor.execute("UPDATE tb_alumnos SET idGrupo = NULL WHERE idGrupo = %s", (id_grupo,))
+            # 2. Eliminar días del grupo
+            cursor.execute("DELETE FROM tb_grupodias WHERE idGrupo = %s", (id_grupo,))
+            # 3. Eliminar relación alumno-grupo en tb_alumnoGrupo
+            cursor.execute("DELETE FROM tb_alumnoGrupo WHERE idGrupo = %s", (id_grupo,))
+            # 4. Eliminar horarios del grupo
+            cursor.execute("DELETE FROM tb_horarios WHERE id_grupo = %s", (id_grupo,))
+            # 5. Eliminar el grupo
+            cursor.execute("DELETE FROM tb_grupos WHERE id = %s", (id_grupo,))
+            
+            conexion.commit()
+            return {"mensaje": "Grupo eliminado correctamente", "idGrupo": id_grupo}
+        except Exception as e:
+            conexion.rollback()
+            return {"error": str(e)}
         finally:
             cursor.close()
             conexion.close()

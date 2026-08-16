@@ -2,6 +2,8 @@ from app.config.conexion import get_connection
 import pymysql
 import datetime
 from datetime import timedelta
+from app.services.periodos_academico import PeriodoAcademicoService
+
 
 
 class DocentesService:
@@ -69,9 +71,17 @@ class DocentesService:
         conexion = get_connection()
         cursor = conexion.cursor()
         try:
+            # Validar duplicados de usuario si viene especificado
+            usuario = data.get("usuario")
+            if usuario:
+                usuario = usuario.strip()
+                cursor.execute("SELECT idDocente FROM tb_docentes WHERE usuario = %s", (usuario,))
+                if cursor.fetchone():
+                    return {"error": "El nombre de usuario ya está asignado a otro docente"}
+
             query = """
-                INSERT INTO tb_docentes (nombreDocente, apPaternoDocente, apMaternoDocente, correoDocente, telefonoDocente, statusDocente, observacionesDocente,nivelEstudios, fechaNacimiento, idBiometrico)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO tb_docentes (nombreDocente, apPaternoDocente, apMaternoDocente, correoDocente, telefonoDocente, statusDocente, observacionesDocente, nivelEstudios, fechaNacimiento, idBiometrico, usuario, password)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """
             cursor.execute(
                 query,
@@ -86,10 +96,15 @@ class DocentesService:
                     data.get("nivelEstudios"),
                     data.get("fechaNacimiento"),
                     data.get("idBiometrico"),
+                    usuario if usuario else None,
+                    data.get("password") if data.get("password") else None
                 ),
             )
             conexion.commit()
             return {"mensaje": "Docente creado correctamente"}
+        except Exception as e:
+            conexion.rollback()
+            return {"error": str(e)}
         finally:
             cursor.close()
             conexion.close()
@@ -99,17 +114,25 @@ class DocentesService:
         conexion = get_connection()
         cursor = conexion.cursor()
         try:
-            query = """
-                UPDATE tb_docentes 
-                SET nombreDocente = %s, apPaternoDocente = %s, apMaternoDocente = %s, 
-                    correoDocente = %s, telefonoDocente = %s, statusDocente = %s, 
-                    observacionesDocente = %s, nivelEstudios = %s, fechaNacimiento = %s,
-                    idBiometrico = %s
-                WHERE idDocente = %s
-            """
-            cursor.execute(
-                query,
-                (
+            # Validar duplicados de usuario
+            usuario = data.get("usuario")
+            if usuario:
+                usuario = usuario.strip()
+                cursor.execute("SELECT idDocente FROM tb_docentes WHERE usuario = %s AND idDocente != %s", (usuario, id_docente))
+                if cursor.fetchone():
+                    return {"error": "El nombre de usuario ya está asignado a otro docente"}
+
+            password = data.get("password")
+            if password:
+                query = """
+                    UPDATE tb_docentes 
+                    SET nombreDocente = %s, apPaternoDocente = %s, apMaternoDocente = %s, 
+                        correoDocente = %s, telefonoDocente = %s, statusDocente = %s, 
+                        observacionesDocente = %s, nivelEstudios = %s, fechaNacimiento = %s,
+                        idBiometrico = %s, usuario = %s, password = %s
+                    WHERE idDocente = %s
+                """
+                params = (
                     data.get("nombreDocente"),
                     data.get("apPaternoDocente"),
                     data.get("apMaternoDocente"),
@@ -120,9 +143,34 @@ class DocentesService:
                     data.get("nivelEstudios"),
                     data.get("fechaNacimiento"),
                     data.get("idBiometrico"),
-                    id_docente,
-                ),
-            )
+                    usuario if usuario else None,
+                    password,
+                    id_docente
+                )
+            else:
+                query = """
+                    UPDATE tb_docentes 
+                    SET nombreDocente = %s, apPaternoDocente = %s, apMaternoDocente = %s, 
+                        correoDocente = %s, telefonoDocente = %s, statusDocente = %s, 
+                        observacionesDocente = %s, nivelEstudios = %s, fechaNacimiento = %s,
+                        idBiometrico = %s, usuario = %s
+                    WHERE idDocente = %s
+                """
+                params = (
+                    data.get("nombreDocente"),
+                    data.get("apPaternoDocente"),
+                    data.get("apMaternoDocente"),
+                    data.get("correoDocente"),
+                    data.get("telefonoDocente"),
+                    data.get("statusDocente"),
+                    data.get("observacionesDocente"),
+                    data.get("nivelEstudios"),
+                    data.get("fechaNacimiento"),
+                    data.get("idBiometrico"),
+                    usuario if usuario else None,
+                    id_docente
+                )
+            cursor.execute(query, params)
             conexion.commit()
             return {"mensaje": "Docente actualizado correctamente"}
         except Exception as e:
@@ -195,9 +243,13 @@ class DocentesService:
                     h.horaFin,
                     g.clave AS clave_grupo,
                     g.fechaInicio,
-                    g.fechaFin
+                    g.fechaFin,
+                    g.id_tipoPeriodo,
+                    g.id_nivel_academico AS id_nivel_grupo,
+                    m.id_nivel_academico AS id_nivel_materia
                 FROM tb_horarios h
                 JOIN tb_grupos g ON h.id_grupo = g.id
+                LEFT JOIN tb_materias m ON h.id_materia = m.id
                 WHERE g.fechaInicio <= %s AND g.fechaFin >= %s
             """, (fecha_fin_str, fecha_inicio_str))
             horarios = cursor.fetchall()
@@ -242,8 +294,14 @@ class DocentesService:
                             h_fecha_fin = h_fecha_fin.date()
 
                         if h['diaSemana'] == db_weekday and h_fecha_inicio <= d <= h_fecha_fin:
-                            key = (h['horaInicio'], h['horaFin'])
-                            slots_dia_map[key] = h
+                            g_tipo = h.get('id_tipoPeriodo')
+                            g_nivel_db = h.get('id_nivel_grupo')
+                            m_nivel_id = h.get('id_nivel_materia')
+                            
+                            active_lvl = PeriodoAcademicoService.get_active_level_for_date(h_fecha_inicio, h_fecha_fin, g_tipo, g_nivel_db, d)
+                            if m_nivel_id is None or m_nivel_id == active_lvl:
+                                key = (h['horaInicio'], h['horaFin'])
+                                slots_dia_map[key] = h
 
                     if not slots_dia_map:
                         dias_reporte.append({
@@ -333,14 +391,19 @@ class DocentesService:
         cursor = conexion.cursor(pymysql.cursors.DictCursor)
         try:
             # Consultar los horarios vigentes para el docente en este día de la semana y fecha
-            # Un grupo está vigente si g.fechaInicio <= d_fecha <= g.fechaFin
+            # Un grupo está vigentes si g.fechaInicio <= d_fecha <= g.fechaFin
             cursor.execute("""
                 SELECT 
                     m.nombreMateria AS materia,
                     g.clave AS grupo,
                     h.aula,
                     h.horaInicio,
-                    h.horaFin
+                    h.horaFin,
+                    g.fechaInicio,
+                    g.fechaFin,
+                    g.id_tipoPeriodo,
+                    g.id_nivel_academico AS id_nivel_grupo,
+                    m.id_nivel_academico AS id_nivel_materia
                 FROM tb_horarios h
                 JOIN tb_grupos g ON h.id_grupo = g.id
                 JOIN tb_materias m ON h.id_materia = m.id
@@ -355,6 +418,16 @@ class DocentesService:
             
             resultado = []
             for r in rows:
+                g_start = r['fechaInicio']
+                g_end = r['fechaFin']
+                g_tipo = r.get('id_tipoPeriodo')
+                g_nivel_db = r.get('id_nivel_grupo')
+                m_nivel_id = r.get('id_nivel_materia')
+                
+                active_lvl = PeriodoAcademicoService.get_active_level_for_date(g_start, g_end, g_tipo, g_nivel_db, d_fecha)
+                if m_nivel_id is not None and m_nivel_id != active_lvl:
+                    continue
+                
                 start_td = r['horaInicio']
                 end_td = r['horaFin']
                 

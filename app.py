@@ -14,6 +14,7 @@ from app.routes.centros_trabajo import centros_trabajo_bp
 from app.routes.tipos_periodo import tipos_periodo_bp
 from app.routes.niveles_academicos import niveles_academicos_bp
 from app.routes.calificaciones import calificaciones_bp
+from app.routes.notificaciones import notificaciones_bp
 
 
 def create_app():
@@ -41,6 +42,7 @@ def create_app():
     app.register_blueprint(tipos_periodo_bp)
     app.register_blueprint(niveles_academicos_bp)
     app.register_blueprint(calificaciones_bp)
+    app.register_blueprint(notificaciones_bp)
 
     # Iniciar programador de tareas diario (7:00 AM)
     from app.utils.scheduler import iniciar_scheduler

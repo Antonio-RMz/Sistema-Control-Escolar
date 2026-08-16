@@ -14,8 +14,20 @@ def get_alumnos():
         generacion = request.args.get("generacion")
         idGrupo = request.args.get("idGrupo")
         search = request.args.get("search", "").strip()
+        id_centro_trabajo = request.args.get("idCentroTrabajo") or request.args.get("id_centro_trabajo")
+        status_alumno = request.args.get("statusAlumno") or request.args.get("status_alumno") or request.args.get("status")
+        order = request.args.get("order") or request.args.get("orden", "ASC")
 
-        resultado = AlumnosService.get_alumnos(page, limit, generacion, idGrupo, search)
+        resultado = AlumnosService.get_alumnos(
+            page=page, 
+            limit=limit, 
+            generacion=generacion, 
+            idGrupo=idGrupo, 
+            search=search,
+            id_centro_trabajo=id_centro_trabajo,
+            status_alumno=status_alumno,
+            order=order
+        )
         return jsonify(resultado)
     except Exception as e:
         return jsonify({"error": str(e)}), 500

@@ -23,13 +23,15 @@ def validacionHorario():
         data = request.json
         if not data.get("id_grupo") or not data.get("id_materia") or not data.get("id_docente") or not data.get("diaSemana") or not data.get("horaInicio") or not data.get("horaFin"):
             return jsonify({"error": "Faltan datos"}), 400
+        es_prehorario = data.get("es_prehorario", 0)
         return jsonify(HorariosService.validacionHorario(
             data.get("id_grupo"),
             data.get("id_materia"),
             data.get("id_docente"),
             data.get("diaSemana"),
             data.get("horaInicio"),
-            data.get("horaFin")
+            data.get("horaFin"),
+            es_prehorario
         ))
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -39,7 +41,8 @@ def validacionHorario():
 def getHorariosGrupo(id_grupo):
     try:
         agrupado = request.args.get("agrupado", "false").lower() == "true"
-        return jsonify(HorariosService.getHorariosGrupo(id_grupo, agrupado))
+        es_prehorario = int(request.args.get("es_prehorario", "0"))
+        return jsonify(HorariosService.getHorariosGrupo(id_grupo, agrupado, es_prehorario))
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -50,3 +53,12 @@ def delete_horario_grupo(id_horario):
         return jsonify(HorariosService.deleteHorarioGrupo(id_horario))
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@horarios_bp.route("/getHorariosDocente/<int:id_docente>", methods=["GET"])
+def get_horarios_docente(id_docente):
+    try:
+        return jsonify(HorariosService.getHorariosDocente(id_docente))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+

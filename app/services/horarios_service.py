@@ -16,6 +16,7 @@ class HorariosService:
             horaFin = data.get("horaFin") or data.get("horafin")
             id_docente = data.get("id_docente")
             aula = data.get("aula")
+            es_prehorario = data.get("es_prehorario", 0)
             # Soporta tanto un arreglo de IDs en 'materias' como una sola materia 'id_materia'
             materias = data.get("materias", [])
             if not materias:
@@ -25,7 +26,7 @@ class HorariosService:
             if not materias or not id_docente:
                 return {"error": "Faltan datos de la materia o docente"}, 400
 
-            query = "INSERT INTO tb_horarios (id_grupo, id_materia, id_docente, diaSemana, horaInicio, horaFin, aula) VALUES (%s, %s, %s, %s, %s, %s,%s)"
+            query = "INSERT INTO tb_horarios (id_grupo, id_materia, id_docente, diaSemana, horaInicio, horaFin, aula, es_prehorario) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)"
             
             # Insertar todas las materias para el mismo docente de forma atómica
             for id_materia in materias:
@@ -38,7 +39,8 @@ class HorariosService:
                         diaSemana,
                         horaInicio,
                         horaFin,
-                        aula
+                        aula,
+                        es_prehorario
                     )
                 )
             conexion.commit()
@@ -51,7 +53,7 @@ class HorariosService:
             conexion.close()
 
     @staticmethod
-    def getHorariosGrupo(id_grupo, agrupado=False):
+    def getHorariosGrupo(id_grupo, agrupado=False, es_prehorario=0):
         conexion = get_connection()
         cursor = conexion.cursor(pymysql.cursors.DictCursor)
         try:
@@ -66,14 +68,15 @@ class HorariosService:
                     TIME_FORMAT(h.horaInicio, '%%H:%%i:%%s') AS horaInicio,
                     TIME_FORMAT(h.horaFin, '%%H:%%i:%%s') AS horaFin,
                     m.nombreMateria AS materia_nombre,
-                    CONCAT(d.nombreDocente, ' ', d.apPaternoDocente, ' ', d.apMaternoDocente) AS docente_nombre
+                    CONCAT_WS(' ', d.nombreDocente, COALESCE(d.apPaternoDocente, ''), COALESCE(d.apMaternoDocente, '')) AS docente_nombre,
+                    m.id_nivel_academico AS id_nivel_materia
                 FROM tb_horarios h
                 LEFT JOIN tb_materias m ON h.id_materia = m.id
                 LEFT JOIN tb_docentes d ON h.id_docente = d.idDocente
-                WHERE h.id_grupo = %s
+                WHERE h.id_grupo = %s AND h.es_prehorario = %s
                 ORDER BY h.diaSemana, h.horaInicio
             """
-            cursor.execute(sql, (id_grupo,))
+            cursor.execute(sql, (id_grupo, es_prehorario))
             horarios = cursor.fetchall()
 
             if not agrupado:
@@ -98,7 +101,9 @@ class HorariosService:
                     "id_materia": h["id_materia"],
                     "materia_nombre": h["materia_nombre"],
                     "id_docente": h["id_docente"],
-                    "docente_nombre": h["docente_nombre"]
+                    "docente_nombre": h["docente_nombre"],
+                    "id_nivel_materia": h["id_nivel_materia"],
+                    "aula": h["aula"]
                 })
 
             return list(grouped.values())
@@ -107,7 +112,7 @@ class HorariosService:
             conexion.close()
 
     @staticmethod
-    def validacionHorario(id_grupo, id_materia, id_docente, diaSemana, horaInicio, horaFin):
+    def validacionHorario(id_grupo, id_materia, id_docente, diaSemana, horaInicio, horaFin, es_prehorario=0):
         conexion = get_connection()
         cursor = conexion.cursor(pymysql.cursors.DictCursor)
         try:
@@ -121,20 +126,47 @@ class HorariosService:
             else:
                 dia_semana_val = diaSemana
 
-            # Buscamos si el docente tiene otra clase en ese mismo día y hora en un GRUPO DIFERENTE
-            cursor.execute("""
-                SELECT 
-                    h.id_grupo,
-                    g.clave AS grupo_clave,
-                    m.nombreMateria AS materia_nombre
-                FROM tb_horarios h
-                LEFT JOIN tb_grupos g ON h.id_grupo = g.id
-                LEFT JOIN tb_materias m ON h.id_materia = m.id
-                WHERE h.id_docente = %s
-                AND h.diaSemana = %s
-                AND h.horaInicio = %s
-                AND h.id_grupo != %s
-            """, (id_docente, dia_semana_val, horaInicio, id_grupo))
+            # Validar empalmes
+            # Si estamos validando un pre-horario (es_prehorario=1):
+            # El docente está ocupado si tiene otro pre-horario asignado en esa hora
+            # O si tiene una clase en un grupo regular activo que aún no termina (g.fechaFin >= CURRENT_DATE).
+            # Si estamos validando un horario regular (es_prehorario=0):
+            # El docente está ocupado si tiene otro horario regular asignado en esa hora.
+            if int(es_prehorario) == 1:
+                sql_check = """
+                    SELECT 
+                        h.id_grupo,
+                        g.clave AS grupo_clave,
+                        m.nombreMateria AS materia_nombre
+                    FROM tb_horarios h
+                    LEFT JOIN tb_grupos g ON h.id_grupo = g.id
+                    LEFT JOIN tb_materias m ON h.id_materia = m.id
+                    WHERE h.id_docente = %s
+                    AND h.diaSemana = %s
+                    AND h.horaInicio = %s
+                    AND h.id_grupo != %s
+                    AND (
+                        h.es_prehorario = 1
+                        OR (h.es_prehorario = 0 AND (g.fechaFin IS NULL OR g.fechaFin >= CURRENT_DATE))
+                    )
+                """
+            else:
+                sql_check = """
+                    SELECT 
+                        h.id_grupo,
+                        g.clave AS grupo_clave,
+                        m.nombreMateria AS materia_nombre
+                    FROM tb_horarios h
+                    LEFT JOIN tb_grupos g ON h.id_grupo = g.id
+                    LEFT JOIN tb_materias m ON h.id_materia = m.id
+                    WHERE h.id_docente = %s
+                    AND h.diaSemana = %s
+                    AND h.horaInicio = %s
+                    AND h.id_grupo != %s
+                    AND h.es_prehorario = 0
+                """
+
+            cursor.execute(sql_check, (id_docente, dia_semana_val, horaInicio, id_grupo))
             existe_empalme = cursor.fetchone()
             
             if existe_empalme:
@@ -161,3 +193,40 @@ class HorariosService:
         finally:
             cursor.close()
             conexion.close()
+
+    @staticmethod
+    def getHorariosDocente(id_docente):
+        conexion = get_connection()
+        cursor = conexion.cursor(pymysql.cursors.DictCursor)
+        try:
+            sql = """
+                SELECT
+                    h.id_horario AS id,
+                    h.id_grupo,
+                    g.clave AS grupo_clave,
+                    g.id_centroTrabajo,
+                    ct.nombre AS centro_nombre,
+                    h.id_materia,
+                    h.diaSemana,
+                    h.aula,
+                    TIME_FORMAT(h.horaInicio, '%%H:%%i:%%s') AS horaInicio,
+                    TIME_FORMAT(h.horaFin, '%%H:%%i:%%s') AS horaFin,
+                    m.nombreMateria AS materia_nombre,
+                    CONCAT_WS(' ', d.nombreDocente, COALESCE(d.apPaternoDocente, ''), COALESCE(d.apMaternoDocente, '')) AS docente_nombre
+                FROM tb_horarios h
+                JOIN tb_grupos g ON h.id_grupo = g.id
+                LEFT JOIN tb_centrotrabajo ct ON g.id_centroTrabajo = ct.id
+                LEFT JOIN tb_materias m ON h.id_materia = m.id
+                LEFT JOIN tb_docentes d ON h.id_docente = d.idDocente
+                WHERE h.id_docente = %s
+                  AND g.fechaFin >= CURDATE()
+                  AND h.es_prehorario = 0
+                  AND (m.id_nivel_academico IS NULL OR m.id_nivel_academico = g.id_nivel_academico)
+                ORDER BY g.id_centroTrabajo, h.diaSemana, h.horaInicio
+            """
+            cursor.execute(sql, (id_docente,))
+            return cursor.fetchall()
+        finally:
+            cursor.close()
+            conexion.close()
+

@@ -101,5 +101,74 @@ def clear_asistencias():
         conexion.close()
 
 
+@asistencias_bp.route("/asistencias/alumnos/grupo/<int:id_grupo>", methods=["GET"])
+def get_asistencias_alumnos_grupo(id_grupo):
+    try:
+        id_materia = request.args.get("id_materia", type=int)
+        id_docente = request.args.get("id_docente", type=int)
+        from app.services.asistencias_alumnos_service import AsistenciasAlumnosService
+        resultado = AsistenciasAlumnosService.get_asistencias_grupo(id_grupo, id_materia, id_docente)
+        return jsonify(resultado)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@asistencias_bp.route("/asistencias/alumnos/guardar", methods=["POST"])
+def guardar_asistencias_alumnos():
+    try:
+        data = request.json
+        id_grupo = data.get("id_grupo")
+        id_materia = int(data.get("id_materia")) if data.get("id_materia") is not None else None
+        id_docente = int(data.get("id_docente")) if data.get("id_docente") is not None else None
+        asistencias_list = data.get("asistencias", [])
+        
+        if not id_grupo:
+            return jsonify({"error": "Falta el parámetro id_grupo"}), 400
+            
+        from app.services.asistencias_alumnos_service import AsistenciasAlumnosService
+        resultado = AsistenciasAlumnosService.guardar_asistencias(id_grupo, asistencias_list, id_materia, id_docente)
+        return jsonify(resultado)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@asistencias_bp.route("/asistencias/alumnos/justificar", methods=["POST"])
+def justificar_falta_alumno():
+    try:
+        data = request.json
+        id_alumno = data.get("id_alumno")
+        fecha_inicio = data.get("fecha_inicio")
+        fecha_fin = data.get("fecha_fin")
+        motivo = data.get("motivo")
+        
+        if not id_alumno or not fecha_inicio or not fecha_fin:
+            return jsonify({"error": "Faltan parámetros requeridos (id_alumno, fecha_inicio, fecha_fin)"}), 400
+            
+        from app.services.justificaciones_service import JustificacionesService
+        resultado = JustificacionesService.crear_justificacion(id_alumno, fecha_inicio, fecha_fin, motivo)
+        return jsonify(resultado)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@asistencias_bp.route("/asistencias/alumnos/hoy", methods=["GET"])
+def get_asistencias_hoy():
+    from app.config.conexion import get_connection
+    import datetime
+    conexion = get_connection()
+    cursor = conexion.cursor()
+    try:
+        hoy = datetime.date.today().strftime("%Y-%m-%d")
+        cursor.execute("SELECT DISTINCT id_grupo FROM tb_asistencias_alumnos WHERE fecha = %s", (hoy,))
+        rows = cursor.fetchall()
+        grupo_ids = [r['id_grupo'] for r in rows if r.get('id_grupo') is not None]
+        return jsonify(grupo_ids)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cursor.close()
+        conexion.close()
+
+
 
 

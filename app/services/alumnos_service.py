@@ -5,7 +5,7 @@ import math
 
 class AlumnosService:
     @staticmethod
-    def get_alumnos(page=1, limit=50, generacion=None, idGrupo=None, search=""):
+    def get_alumnos(page=1, limit=50, generacion=None, idGrupo=None, search="", id_centro_trabajo=None, status_alumno=None, order="ASC"):
         conexion = get_connection()
         cursor = conexion.cursor()
 
@@ -28,6 +28,14 @@ class AlumnosService:
             if idGrupo:
                 where.append("a.idGrupo = %s")
                 valores.append(idGrupo)
+
+            if id_centro_trabajo:
+                where.append("gr.id_centroTrabajo = %s")
+                valores.append(id_centro_trabajo)
+
+            if status_alumno:
+                where.append("a.statusAlumno = %s")
+                valores.append(status_alumno)
 
             if search:
                 palabras = search.strip().split()
@@ -53,6 +61,9 @@ class AlumnosService:
 
             cursor.execute(sql_total, valores)
             total = cursor.fetchone()["total"]
+
+            # Sanear ordenación
+            order_direction = "DESC" if str(order).upper() == "DESC" else "ASC"
 
             # Consulta paginada
             sql_datos = f"""
@@ -97,7 +108,7 @@ class AlumnosService:
                 )
                 LEFT JOIN tb_contactos c ON ac.idContacto = c.idContacto
                 {where_sql}
-                ORDER BY a.idAlumno ASC
+                ORDER BY a.idAlumno {order_direction}
                 LIMIT %s OFFSET %s
             """
 
@@ -147,7 +158,31 @@ class AlumnosService:
                 else alumno_data.get("equivalencia")
             )
             if isinstance(equivalencia, bool):
-                equivalencia = 1 if equivalencia else 0
+                equivalencia = "SI" if equivalencia else "NO"
+            elif isinstance(equivalencia, int):
+                equivalencia = "SI" if equivalencia == 1 else "NO"
+            else:
+                equivalencia = "SI" if str(equivalencia).upper() in ["SI", "1", "TRUE", "SÍ"] else "NO"
+
+            # Documentos y Pagos
+            certificado_incompleto = (
+                "SI" if equiv_data.get("cuentaConCertificadoIncompleto") == True or str(equiv_data.get("cuentaConCertificadoIncompleto")).upper() in ["SI", "1", "TRUE"]
+                else ("NO" if "cuentaConCertificadoIncompleto" in equiv_data else (alumno_data.get("certificado_incompleto") or "NO"))
+            )
+            if isinstance(certificado_incompleto, bool):
+                certificado_incompleto = "SI" if certificado_incompleto else "NO"
+            else:
+                certificado_incompleto = "SI" if str(certificado_incompleto).upper() in ["SI", "1", "TRUE", "SÍ"] else "NO"
+
+            fecha_entrega_certificado = equiv_data.get("fechaEntrega") or alumno_data.get("fecha_entrega_certificado") or None
+            
+            trae_boleta = data.get("traeBoleta") or alumno_data.get("trae_boleta") or "SI"
+            if isinstance(trae_boleta, bool):
+                trae_boleta = "SI" if trae_boleta else "NO"
+            else:
+                trae_boleta = "SI" if str(trae_boleta).upper() in ["SI", "1", "TRUE", "SÍ"] else "NO"
+            
+            estado_pago_equivalencia = equiv_data.get("estadoPago") or alumno_data.get("estado_pago_equivalencia") or "PENDIENTE"
 
             # Datos académicos
             id_centro_trabajo = academico_data.get("idCentroTrabajo") or academico_data.get("id_centroTrabajo")
@@ -248,9 +283,10 @@ class AlumnosService:
                     INSERT INTO tb_alumnos (
                         nombre, apPaterno, apMaterno, fechaNacimiento, celularAlumno,
                         correoAlumno, escuelaProcedencia, observaciones, idGeneracion,
-                        idGrupo, equivalencia, numeroControl, statusAlumno, curp, createBy
+                        idGrupo, equivalencia, numeroControl, statusAlumno, curp, createBy, id_nivel_ingreso,
+                        certificado_incompleto, fecha_entrega_certificado, trae_boleta, estado_pago_equivalencia
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """
                 cursor.execute(
                     query_alumno,
@@ -270,6 +306,11 @@ class AlumnosService:
                         status_alumno,
                         curp,
                         create_by,
+                        id_nivel_academico,
+                        certificado_incompleto,
+                        fecha_entrega_certificado,
+                        trae_boleta,
+                        estado_pago_equivalencia,
                     ),
                 )
                 id_alumno = cursor.lastrowid
@@ -506,10 +547,18 @@ class AlumnosService:
                     a.numeroControl,
                     a.statusAlumno,
                     a.curp,
+                    a.id_nivel_ingreso,
+                    a.certificado_incompleto,
+                    a.fecha_entrega_certificado,
+                    a.trae_boleta,
+                    a.estado_pago_equivalencia,
+                    COALESCE(a.id_nivel_ingreso, gr.id_nivel_academico) AS idNivelAcademico,
+                    COALESCE(a.id_nivel_ingreso, gr.id_nivel_academico) AS id_nivel_academico,
                     COALESCE(gr.id_centroTrabajo, g.id_centroTrabajo) AS id_centroTrabajo,
                     COALESCE(gr.id_centroTrabajo, g.id_centroTrabajo) AS idCentroTrabajo,
                     gr.id_nivel_academico,
                     gr.modalidadHorario AS jornadaHorario,
+                    gr.fechaInicio AS fechaInicioGrupo,
                     g.generacion AS nombreGeneracionTexto,
                     g.nombreGeneracion,
                     gr.clave AS nombreGrupoTexto,
@@ -573,7 +622,12 @@ class AlumnosService:
                     equivalencia = %s,
                     numeroControl = %s,
                     statusAlumno = %s,
-                    curp = %s
+                    curp = %s,
+                    id_nivel_ingreso = %s,
+                    certificado_incompleto = %s,
+                    fecha_entrega_certificado = %s,
+                    trae_boleta = %s,
+                    estado_pago_equivalencia = %s
                 WHERE idAlumno = %s
             """
             values = (
@@ -591,6 +645,11 @@ class AlumnosService:
                 data.get("numeroControl"),
                 data.get("statusAlumno") or "ACTIVO",
                 data.get("curp"),
+                data.get("id_nivel_ingreso") or data.get("id_nivel_academico") or data.get("idNivelAcademico") or None,
+                data.get("certificado_incompleto") or "NO",
+                data.get("fecha_entrega_certificado") or None,
+                data.get("trae_boleta") or "SI",
+                data.get("estado_pago_equivalencia") or "PENDIENTE",
                 id_alumno,
             )
             cursor.execute(query, values)

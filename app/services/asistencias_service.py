@@ -5,6 +5,8 @@ from datetime import timedelta
 import pandas as pd
 import pymysql
 from app.config.conexion import get_connection
+from app.services.periodos_academico import PeriodoAcademicoService
+
 
 def str_from_td(td):
     if td is None:
@@ -151,9 +153,13 @@ class AsistenciasService:
                             h.horaInicio,
                             h.horaFin,
                             g.fechaInicio,
-                            g.fechaFin
+                            g.fechaFin,
+                            g.id_tipoPeriodo,
+                            g.id_nivel_academico AS id_nivel_grupo,
+                            m.id_nivel_academico AS id_nivel_materia
                         FROM tb_horarios h
                         JOIN tb_grupos g ON h.id_grupo = g.id
+                        LEFT JOIN tb_materias m ON h.id_materia = m.id
                         WHERE h.id_docente = %s
                     """, (db_teacher_id,))
                     teacher_schedules = cursor.fetchall()
@@ -187,7 +193,13 @@ class AsistenciasService:
                                     h_fecha_fin = h_fecha_fin.date()
                                     
                                 if s['diaSemana'] == db_weekday and h_fecha_inicio <= date_val <= h_fecha_fin:
-                                    slots_dia.append(s)
+                                    g_tipo = s.get('id_tipoPeriodo')
+                                    g_nivel_db = s.get('id_nivel_grupo')
+                                    m_nivel_id = s.get('id_nivel_materia')
+                                    
+                                    active_lvl = PeriodoAcademicoService.get_active_level_for_date(h_fecha_inicio, h_fecha_fin, g_tipo, g_nivel_db, date_val)
+                                    if m_nivel_id is None or m_nivel_id == active_lvl:
+                                        slots_dia.append(s)
 
                             # Agrupar por (horaInicio, horaFin) para deduplicar materias en el mismo horario
                             slots_dia_map = {}

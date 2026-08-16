@@ -8,7 +8,7 @@ materias_bp = Blueprint("materias", __name__)
 def get_materias():
     try:
         page = int(request.args.get("page", 1))
-        limit = int(request.args.get("limit", 50))
+        limit = int(request.args.get("limit", 1000))
         search = request.args.get("search", "").strip()
         id_materia = request.args.get("id_materia")
 
