@@ -21,6 +21,14 @@ class AsistenciasAlumnosService:
             if not grupo:
                 return {"error": "Grupo no encontrado"}
 
+            # Obtener nivel académico activo de tb_grupo_periodos_captura o tb_grupos
+            cursor.execute("SELECT id_nivel_academico FROM tb_grupo_periodos_captura WHERE id_grupo = %s", (id_grupo,))
+            config_periodo = cursor.fetchone()
+            if config_periodo and config_periodo.get("id_nivel_academico") is not None:
+                grupo["active_level"] = config_periodo["id_nivel_academico"]
+            else:
+                grupo["active_level"] = grupo.get("id_nivel_academico")
+
             fecha_inicio = grupo["fechaInicio"]
             fecha_fin = grupo["fechaFin"]
             id_tipo_periodo = grupo["id_tipoPeriodo"]
