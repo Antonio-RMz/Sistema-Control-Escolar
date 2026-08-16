@@ -6,6 +6,48 @@ materias_bp = Blueprint("materias", __name__)
 
 @materias_bp.route("/materias", methods=["GET"])
 def get_materias():
+    """
+    Get materias
+    ---
+    parameters:
+      - name: page
+        in: query
+        type: string
+        required: false
+        description: Parámetro page
+      - name: limit
+        in: query
+        type: string
+        required: false
+        description: Parámetro limit
+      - name: search
+        in: query
+        type: string
+        required: false
+        description: Parámetro search
+      - name: id_materia
+        in: query
+        type: string
+        required: false
+        description: Parámetro id_materia
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          properties:
+            nombreMateria:
+              type: string
+            estatusMateria:
+              type: string
+            docentes:
+              type: string
+    responses:
+      200:
+        description: Operación exitosa
+      500:
+        description: Error interno del servidor
+    """
     try:
         page = int(request.args.get("page", 1))
         limit = int(request.args.get("limit", 1000))
@@ -20,6 +62,28 @@ def get_materias():
 
 @materias_bp.route("/createMateria", methods=["POST"])
 def create_materia():
+    """
+    Create materia
+    ---
+    parameters:
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          properties:
+            nombreMateria:
+              type: string
+            estatusMateria:
+              type: string
+            docentes:
+              type: string
+    responses:
+      200:
+        description: Operación exitosa
+      500:
+        description: Error interno del servidor
+    """
     try:
         data = request.json
 
@@ -38,6 +102,33 @@ def create_materia():
 
 @materias_bp.route("/deleteMateria/<int:id_materia>", methods=["DELETE"])
 def delete_materia(id_materia):
+    """
+    Delete materia
+    ---
+    parameters:
+      - name: id_materia
+        in: path
+        type: integer
+        required: true
+        description: Parámetro id_materia
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          properties:
+            nombreMateria:
+              type: string
+            estatusMateria:
+              type: string
+            docentes:
+              type: string
+    responses:
+      200:
+        description: Operación exitosa
+      500:
+        description: Error interno del servidor
+    """
     try:
         return jsonify(MateriasService.delete_materia(id_materia))
     except Exception as e:
@@ -46,6 +137,33 @@ def delete_materia(id_materia):
 
 @materias_bp.route("/updateMateria/<int:id_materia>", methods=["PUT"])
 def update_materia(id_materia):
+    """
+    Update materia
+    ---
+    parameters:
+      - name: id_materia
+        in: path
+        type: integer
+        required: true
+        description: Parámetro id_materia
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          properties:
+            nombreMateria:
+              type: string
+            estatusMateria:
+              type: string
+            docentes:
+              type: string
+    responses:
+      200:
+        description: Operación exitosa
+      500:
+        description: Error interno del servidor
+    """
     try:
         data = request.json
 

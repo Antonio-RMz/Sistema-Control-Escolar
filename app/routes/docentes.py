@@ -7,6 +7,21 @@ docentes_bp = Blueprint("docentes", __name__)
 # Métodos get para docentes
 @docentes_bp.route("/createDocentes", methods=["POST"])
 def create_docente():
+    """
+    Create docente
+    ---
+    parameters:
+      - name: page
+        in: query
+        type: string
+        required: false
+        description: Parámetro page
+    responses:
+      200:
+        description: Operación exitosa
+      500:
+        description: Error interno del servidor
+    """
     try:
         # Obtener datos del body (JSON)
         data = request.get_json()
@@ -39,6 +54,46 @@ def create_docente():
 # Método para crear un nuevo docente
 @docentes_bp.route("/docentes", methods=["GET"])
 def get_docentes():
+    """
+    Get docentes
+    ---
+    parameters:
+      - name: page
+        in: query
+        type: string
+        required: false
+        description: Parámetro page
+      - name: limit
+        in: query
+        type: string
+        required: false
+        description: Parámetro limit
+      - name: search
+        in: query
+        type: string
+        required: false
+        description: Parámetro search
+      - name: status
+        in: query
+        type: string
+        required: false
+        description: Parámetro status
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          properties:
+            nombreDocente:
+              type: string
+            statusDocente:
+              type: string
+    responses:
+      200:
+        description: Operación exitosa
+      500:
+        description: Error interno del servidor
+    """
     try:
         page = int(request.args.get("page", 1))
         limit = int(request.args.get("limit", 50))
@@ -55,6 +110,41 @@ def get_docentes():
 
 @docentes_bp.route("/updateDocente/<int:id_docente>", methods=["PUT"])
 def update_docente(id_docente):
+    """
+    Update docente
+    ---
+    parameters:
+      - name: id_docente
+        in: path
+        type: integer
+        required: true
+        description: Parámetro id_docente
+      - name: fecha_inicio
+        in: query
+        type: string
+        required: false
+        description: Parámetro fecha_inicio
+      - name: fecha_fin
+        in: query
+        type: string
+        required: false
+        description: Parámetro fecha_fin
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          properties:
+            nombreDocente:
+              type: string
+            statusDocente:
+              type: string
+    responses:
+      200:
+        description: Operación exitosa
+      500:
+        description: Error interno del servidor
+    """
     try:
         data = request.json
         if (
@@ -69,6 +159,41 @@ def update_docente(id_docente):
 
 @docentes_bp.route("/deleteDocente/<int:idDocente>", methods=["DELETE"])
 def delete_docente(idDocente):
+    """
+    Delete docente
+    ---
+    parameters:
+      - name: idDocente
+        in: path
+        type: integer
+        required: true
+        description: Parámetro idDocente
+      - name: fecha_inicio
+        in: query
+        type: string
+        required: false
+        description: Parámetro fecha_inicio
+      - name: fecha_fin
+        in: query
+        type: string
+        required: false
+        description: Parámetro fecha_fin
+      - name: fecha
+        in: query
+        type: string
+        required: false
+        description: Parámetro fecha
+      - name: id_docente
+        in: query
+        type: string
+        required: false
+        description: Parámetro id_docente
+    responses:
+      200:
+        description: Operación exitosa
+      500:
+        description: Error interno del servidor
+    """
     try:
         return jsonify(DocentesService.delete_docente(idDocente))
     except Exception as e:
@@ -77,6 +202,36 @@ def delete_docente(idDocente):
 
 @docentes_bp.route("/horasDocentes", methods=["GET"])
 def get_horas_docentes():
+    """
+    Get horas docentes
+    ---
+    parameters:
+      - name: fecha_inicio
+        in: query
+        type: string
+        required: false
+        description: Parámetro fecha_inicio
+      - name: fecha_fin
+        in: query
+        type: string
+        required: false
+        description: Parámetro fecha_fin
+      - name: fecha
+        in: query
+        type: string
+        required: false
+        description: Parámetro fecha
+      - name: id_docente
+        in: query
+        type: string
+        required: false
+        description: Parámetro id_docente
+    responses:
+      200:
+        description: Operación exitosa
+      500:
+        description: Error interno del servidor
+    """
     try:
         fecha_inicio = request.args.get("fecha_inicio")
         fecha_fin = request.args.get("fecha_fin")
@@ -93,6 +248,38 @@ def get_horas_docentes():
 
 @docentes_bp.route("/detalleHorasDocente", methods=["GET"])
 def get_detalle_horas_docente():
+    """
+    Get detalle horas docente
+    ---
+    parameters:
+      - name: fecha
+        in: query
+        type: string
+        required: false
+        description: Parámetro fecha
+      - name: id_docente
+        in: query
+        type: string
+        required: false
+        description: Parámetro id_docente
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          properties:
+            usuario:
+              type: string
+            password:
+              type: string
+            permisos_modulos:
+              type: string
+    responses:
+      200:
+        description: Operación exitosa
+      500:
+        description: Error interno del servidor
+    """
     try:
         fecha = request.args.get("fecha")
         id_docente = request.args.get("id_docente")
@@ -109,15 +296,43 @@ def get_detalle_horas_docente():
 
 @docentes_bp.route("/docentes/<int:idDocente>/credenciales", methods=["POST"])
 def actualizar_credenciales_docente(idDocente):
+    """
+    Actualizar credenciales docente
+    ---
+    parameters:
+      - name: idDocente
+        in: path
+        type: integer
+        required: true
+        description: Parámetro idDocente
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          properties:
+            usuario:
+              type: string
+            password:
+              type: string
+            permisos_modulos:
+              type: string
+    responses:
+      200:
+        description: Operación exitosa
+      500:
+        description: Error interno del servidor
+    """
     try:
         data = request.get_json() or {}
         usuario = data.get("usuario")
         password = data.get("password")
+        permisos_modulos = data.get("permisos_modulos")
 
         if not usuario:
             return jsonify({"error": "El nombre de usuario es obligatorio"}), 400
 
-        resultado = DocentesService.actualizar_credenciales(idDocente, usuario, password)
+        resultado = DocentesService.actualizar_credenciales(idDocente, usuario, password, permisos_modulos)
         if "error" in resultado:
             return jsonify(resultado), 400
         return jsonify(resultado)
@@ -127,6 +342,21 @@ def actualizar_credenciales_docente(idDocente):
 
 @docentes_bp.route("/docentes/by-username/<string:username>", methods=["GET"])
 def get_docente_by_username(username):
+    """
+    Get docente by username
+    ---
+    parameters:
+      - name: username
+        in: path
+        type: string
+        required: true
+        description: Parámetro username
+    responses:
+      200:
+        description: Operación exitosa
+      500:
+        description: Error interno del servidor
+    """
     try:
         docente = DocentesService.get_docente_by_username(username)
         if not docente:

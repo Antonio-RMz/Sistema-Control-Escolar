@@ -6,6 +6,36 @@ calificaciones_bp = Blueprint("calificaciones", __name__)
 @calificaciones_bp.route("/alumnos/<int:idAlumno>/kardex", methods=["GET"])
 @calificaciones_bp.route("/calificaciones/kardex/<int:idAlumno>", methods=["GET"])
 def get_kardex(idAlumno):
+    """
+    Get kardex
+    ---
+    parameters:
+      - name: idAlumno
+        in: path
+        type: integer
+        required: true
+        description: Parámetro idAlumno
+      - name: id_materia
+        in: query
+        type: string
+        required: false
+        description: Parámetro id_materia
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          properties:
+            calificaciones:
+              type: string
+            user:
+              type: string
+    responses:
+      200:
+        description: Operación exitosa
+      500:
+        description: Error interno del servidor
+    """
     try:
         resultado = CalificacionesService.get_kardex_alumno(idAlumno)
         if "error" in resultado:
@@ -17,6 +47,36 @@ def get_kardex(idAlumno):
 @calificaciones_bp.route("/alumnos/<int:idAlumno>/calificaciones", methods=["POST"])
 @calificaciones_bp.route("/calificaciones/alumno/<int:idAlumno>", methods=["POST"])
 def save_calificaciones(idAlumno):
+    """
+    Save calificaciones
+    ---
+    parameters:
+      - name: idAlumno
+        in: path
+        type: integer
+        required: true
+        description: Parámetro idAlumno
+      - name: id_materia
+        in: query
+        type: string
+        required: false
+        description: Parámetro id_materia
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          properties:
+            calificaciones:
+              type: string
+            user:
+              type: string
+    responses:
+      200:
+        description: Operación exitosa
+      500:
+        description: Error interno del servidor
+    """
     try:
         data = request.json or {}
         calificaciones = data.get("calificaciones") or (data if isinstance(data, list) else [])
@@ -31,6 +91,36 @@ def save_calificaciones(idAlumno):
 
 @calificaciones_bp.route("/grupos/<int:idGrupo>/calificaciones-materia", methods=["GET"])
 def get_calificaciones_grupo_materia(idGrupo):
+    """
+    Get calificaciones grupo materia
+    ---
+    parameters:
+      - name: idGrupo
+        in: path
+        type: integer
+        required: true
+        description: Parámetro idGrupo
+      - name: id_materia
+        in: query
+        type: string
+        required: false
+        description: Parámetro id_materia
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          properties:
+            calificaciones:
+              type: string
+            user:
+              type: string
+    responses:
+      200:
+        description: Operación exitosa
+      500:
+        description: Error interno del servidor
+    """
     try:
         id_materia = request.args.get("id_materia")
         resultado = CalificacionesService.get_calificaciones_grupo_materia(idGrupo, id_materia)
@@ -42,6 +132,36 @@ def get_calificaciones_grupo_materia(idGrupo):
 
 @calificaciones_bp.route("/grupos/<int:idGrupo>/calificaciones-materia/<int:idMateria>", methods=["POST"])
 def save_calificaciones_grupo_materia(idGrupo, idMateria):
+    """
+    Save calificaciones grupo materia
+    ---
+    parameters:
+      - name: idGrupo
+        in: path
+        type: integer
+        required: true
+        description: Parámetro idGrupo
+      - name: idMateria
+        in: path
+        type: integer
+        required: true
+        description: Parámetro idMateria
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          properties:
+            calificaciones:
+              type: string
+            user:
+              type: string
+    responses:
+      200:
+        description: Operación exitosa
+      500:
+        description: Error interno del servidor
+    """
     try:
         data = request.json or {}
         calificaciones = data.get("calificaciones") or (data if isinstance(data, list) else [])

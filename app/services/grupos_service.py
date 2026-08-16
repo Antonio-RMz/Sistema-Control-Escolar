@@ -167,6 +167,16 @@ class GruposService:
                             else:
                                 dias_list = ["SABADO"]
                 row["diasClase"] = dias_list
+                
+                try:
+                    from app.services.periodos_academico import PeriodoAcademicoService
+                    res_nivel = PeriodoAcademicoService.calcularNivelGrupo(row["id"])
+                    if res_nivel:
+                        # Convert to string to ensure clean JSON serialization in Flask
+                        row["fechaInicioNivel"] = str(res_nivel.get("fechaInicioNivel")) if res_nivel.get("fechaInicioNivel") else None
+                        row["fechaFinNivel"] = str(res_nivel.get("fechaFinNivel")) if res_nivel.get("fechaFinNivel") else None
+                except Exception as ex:
+                    print("Error al calcular nivel del grupo:", ex)
 
             return {
                 "page": page,

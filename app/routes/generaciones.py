@@ -6,6 +6,40 @@ generaciones_bp = Blueprint("generaciones", __name__)
 
 @generaciones_bp.route("/generaciones", methods=["GET"])
 def get_generaciones():
+    """
+    Get generaciones
+    ---
+    parameters:
+      - name: idCentroTrabajo
+        in: query
+        type: string
+        required: false
+        description: Parámetro idCentroTrabajo
+      - name: id_centroTrabajo
+        in: query
+        type: string
+        required: false
+        description: Parámetro id_centroTrabajo
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          properties:
+            idCentroTrabajo:
+              type: string
+            id_centroTrabajo:
+              type: string
+            anioFin:
+              type: string
+            aniofin:
+              type: string
+    responses:
+      200:
+        description: Operación exitosa
+      500:
+        description: Error interno del servidor
+    """
     try:
         id_centro_trabajo = request.args.get("idCentroTrabajo") or request.args.get("id_centroTrabajo")
         resultado = GeneracionesService.get_all(id_centro_trabajo)
@@ -17,6 +51,40 @@ def get_generaciones():
 @generaciones_bp.route("/createGeneraciones", methods=["POST"])
 @generaciones_bp.route("/generaciones", methods=["POST"])
 def create_generacion():
+    """
+    Create generacion
+    ---
+    parameters:
+      - name: idCentroTrabajo
+        in: query
+        type: string
+        required: false
+        description: Parámetro idCentroTrabajo
+      - name: id_centroTrabajo
+        in: query
+        type: string
+        required: false
+        description: Parámetro id_centroTrabajo
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          properties:
+            idCentroTrabajo:
+              type: string
+            id_centroTrabajo:
+              type: string
+            anioFin:
+              type: string
+            aniofin:
+              type: string
+    responses:
+      200:
+        description: Operación exitosa
+      500:
+        description: Error interno del servidor
+    """
     try:
         data = request.json or {}
         cct = data.get("idCentroTrabajo") or data.get("id_centroTrabajo")
@@ -32,6 +100,26 @@ def create_generacion():
 
 @generaciones_bp.route("/generaciones/ultima", methods=["GET"])
 def get_ultima_generacion():
+    """
+    Get ultima generacion
+    ---
+    parameters:
+      - name: idCentroTrabajo
+        in: query
+        type: string
+        required: false
+        description: Parámetro idCentroTrabajo
+      - name: id_centroTrabajo
+        in: query
+        type: string
+        required: false
+        description: Parámetro id_centroTrabajo
+    responses:
+      200:
+        description: Operación exitosa
+      500:
+        description: Error interno del servidor
+    """
     try:
         id_centro_trabajo = request.args.get("idCentroTrabajo") or request.args.get("id_centroTrabajo")
         if not id_centro_trabajo:
@@ -58,6 +146,21 @@ def get_ultima_generacion():
 
 @generaciones_bp.route("/generaciones/<int:id_generacion>", methods=["PUT"])
 def update_generacion(id_generacion):
+    """
+    Update generacion
+    ---
+    parameters:
+      - name: id_generacion
+        in: path
+        type: integer
+        required: true
+        description: Parámetro id_generacion
+    responses:
+      200:
+        description: Operación exitosa
+      500:
+        description: Error interno del servidor
+    """
     try:
         data = request.json or {}
         resultado = GeneracionesService.update(id_generacion, data)
@@ -67,6 +170,21 @@ def update_generacion(id_generacion):
 
 @generaciones_bp.route("/generaciones/<int:id_generacion>", methods=["DELETE"])
 def delete_generacion(id_generacion):
+    """
+    Delete generacion
+    ---
+    parameters:
+      - name: id_generacion
+        in: path
+        type: integer
+        required: true
+        description: Parámetro id_generacion
+    responses:
+      200:
+        description: Operación exitosa
+      500:
+        description: Error interno del servidor
+    """
     try:
         resultado = GeneracionesService.delete(id_generacion)
         return jsonify(resultado)

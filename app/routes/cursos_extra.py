@@ -6,6 +6,28 @@ cursos_extra_bp = Blueprint("cursos_extra", __name__)
 
 @cursos_extra_bp.route("/createCursoExtra", methods=["POST"])
 def create_curso_extracurricular():
+    """
+    Create curso extracurricular
+    ---
+    parameters:
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          properties:
+            nombre:
+              type: string
+            idCentroTrabajo:
+              type: string
+            idDocente:
+              type: string
+    responses:
+      200:
+        description: Operación exitosa
+      500:
+        description: Error interno del servidor
+    """
     try:
         data = request.json
         if (
@@ -21,6 +43,15 @@ def create_curso_extracurricular():
 
 @cursos_extra_bp.route("/getCursosExtra", methods=["GET"])
 def get_cursos_extracurriculares():
+    """
+    Get cursos extracurriculares
+    ---
+    responses:
+      200:
+        description: Operación exitosa
+      500:
+        description: Error interno del servidor
+    """
     try:
         return jsonify(CursosExtraService.get_cursos_extracurriculares())
     except Exception as e:

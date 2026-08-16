@@ -6,6 +6,131 @@ grupos_bp = Blueprint("grupos", __name__)
 
 @grupos_bp.route("/grupos", methods=["GET"])
 def get_grupos():
+    """
+    Get grupos
+    ---
+    parameters:
+      - name: page
+        in: query
+        type: string
+        required: false
+        description: Parámetro page
+      - name: limit
+        in: query
+        type: string
+        required: false
+        description: Parámetro limit
+      - name: search
+        in: query
+        type: string
+        required: false
+        description: Parámetro search
+      - name: idCentroTrabajo
+        in: query
+        type: string
+        required: false
+        description: Parámetro idCentroTrabajo
+      - name: id_centroTrabajo
+        in: query
+        type: string
+        required: false
+        description: Parámetro id_centroTrabajo
+      - name: id_centro_trabajo
+        in: query
+        type: string
+        required: false
+        description: Parámetro id_centro_trabajo
+      - name: idNivelAcademico
+        in: query
+        type: string
+        required: false
+        description: Parámetro idNivelAcademico
+      - name: id_nivel_academico
+        in: query
+        type: string
+        required: false
+        description: Parámetro id_nivel_academico
+      - name: idGeneracion
+        in: query
+        type: string
+        required: false
+        description: Parámetro idGeneracion
+      - name: id_generacion
+        in: query
+        type: string
+        required: false
+        description: Parámetro id_generacion
+      - name: statusGrupo
+        in: query
+        type: string
+        required: false
+        description: Parámetro statusGrupo
+      - name: status
+        in: query
+        type: string
+        required: false
+        description: Parámetro status
+      - name: status_grupo
+        in: query
+        type: string
+        required: false
+        description: Parámetro status_grupo
+      - name: modalidadHorario
+        in: query
+        type: string
+        required: false
+        description: Parámetro modalidadHorario
+      - name: jornada
+        in: query
+        type: string
+        required: false
+        description: Parámetro jornada
+      - name: modalidad_horario
+        in: query
+        type: string
+        required: false
+        description: Parámetro modalidad_horario
+      - name: dia
+        in: query
+        type: string
+        required: false
+        description: Parámetro dia
+      - name: diaClase
+        in: query
+        type: string
+        required: false
+        description: Parámetro diaClase
+      - name: dia_clase
+        in: query
+        type: string
+        required: false
+        description: Parámetro dia_clase
+      - name: idDocente
+        in: query
+        type: string
+        required: false
+        description: Parámetro idDocente
+      - name: id_docente
+        in: query
+        type: string
+        required: false
+        description: Parámetro id_docente
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          properties:
+            clave:
+              type: string
+            fechaCreacion:
+              type: string
+    responses:
+      200:
+        description: Operación exitosa
+      500:
+        description: Error interno del servidor
+    """
     try:
         page = request.args.get("page", 1, type=int)
         limit = request.args.get("limit", 50, type=int)
@@ -37,6 +162,26 @@ def get_grupos():
 
 @grupos_bp.route("/createGrupos", methods=["POST"])
 def create_grupo():
+    """
+    Create grupo
+    ---
+    parameters:
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          properties:
+            clave:
+              type: string
+            fechaCreacion:
+              type: string
+    responses:
+      200:
+        description: Operación exitosa
+      500:
+        description: Error interno del servidor
+    """
     try:
         data = request.json
         if not data.get("clave") or not data.get("fechaCreacion"):
@@ -51,6 +196,31 @@ def create_grupo():
 
 @grupos_bp.route("/updateGrupo/<int:id_grupo>", methods=["PUT"])
 def update_grupo(id_grupo):
+    """
+    Update grupo
+    ---
+    parameters:
+      - name: id_grupo
+        in: path
+        type: integer
+        required: true
+        description: Parámetro id_grupo
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          properties:
+            clave:
+              type: string
+            fechaCreacion:
+              type: string
+    responses:
+      200:
+        description: Operación exitosa
+      500:
+        description: Error interno del servidor
+    """
     try:
         data = request.json
         if not data.get("clave") or not data.get("fechaCreacion"):
@@ -64,6 +234,23 @@ def update_grupo(id_grupo):
 
 @grupos_bp.route("/getGrupo/<int:id_grupo>", methods=["GET"])
 def get_grupo(id_grupo):
+    """
+    Obtener detalles de un grupo por su ID
+    ---
+    parameters:
+      - name: id_grupo
+        in: path
+        type: integer
+        required: true
+        description: El ID único del grupo que deseas consultar.
+    responses:
+      200:
+        description: Detalles del grupo obtenidos correctamente.
+        schema:
+          type: object
+      500:
+        description: Error interno del servidor.
+    """
     try:
         resultado = GruposService.get_grupo(id_grupo)
         return jsonify(resultado)
@@ -72,6 +259,21 @@ def get_grupo(id_grupo):
 
 @grupos_bp.route("/deleteGrupo/<int:id_grupo>", methods=["DELETE"])
 def delete_grupo(id_grupo):
+    """
+    Delete grupo
+    ---
+    parameters:
+      - name: id_grupo
+        in: path
+        type: integer
+        required: true
+        description: Parámetro id_grupo
+    responses:
+      200:
+        description: Operación exitosa
+      500:
+        description: Error interno del servidor
+    """
     try:
         resultado = GruposService.delete(id_grupo)
         if "error" in resultado:

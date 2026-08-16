@@ -6,6 +6,44 @@ horarios_bp = Blueprint("horarios", __name__)
 
 @horarios_bp.route("/createHorarioGrupo", methods=["POST"])
 def create_horario_grupo():
+    """
+    Create horario grupo
+    ---
+    parameters:
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          properties:
+            horaInicio:
+              type: string
+            horainicio:
+              type: string
+            horaFin:
+              type: string
+            horafin:
+              type: string
+            id_grupo:
+              type: string
+            id_materia:
+              type: string
+            materias:
+              type: string
+            id_docente:
+              type: string
+            diaSemana:
+              type: string
+            aula:
+              type: string
+            es_prehorario:
+              type: string
+    responses:
+      200:
+        description: Operación exitosa
+      500:
+        description: Error interno del servidor
+    """
     try:
         data = request.json
         hora_inicio = data.get("horaInicio") or data.get("horainicio")
@@ -19,6 +57,46 @@ def create_horario_grupo():
 
 @horarios_bp.route("/validacionHorario", methods=["POST"])
 def validacionHorario():
+    """
+    Validacionhorario
+    ---
+    parameters:
+      - name: agrupado
+        in: query
+        type: string
+        required: false
+        description: Parámetro agrupado
+      - name: es_prehorario
+        in: query
+        type: string
+        required: false
+        description: Parámetro es_prehorario
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          properties:
+            id_grupo:
+              type: string
+            id_materia:
+              type: string
+            id_docente:
+              type: string
+            diaSemana:
+              type: string
+            horaInicio:
+              type: string
+            horaFin:
+              type: string
+            es_prehorario:
+              type: string
+    responses:
+      200:
+        description: Operación exitosa
+      500:
+        description: Error interno del servidor
+    """
     try:
         data = request.json
         if not data.get("id_grupo") or not data.get("id_materia") or not data.get("id_docente") or not data.get("diaSemana") or not data.get("horaInicio") or not data.get("horaFin"):
@@ -39,6 +117,31 @@ def validacionHorario():
 
 @horarios_bp.route("/getHorariosGrupo/<int:id_grupo>", methods=["GET"])
 def getHorariosGrupo(id_grupo):
+    """
+    Gethorariosgrupo
+    ---
+    parameters:
+      - name: id_grupo
+        in: path
+        type: integer
+        required: true
+        description: Parámetro id_grupo
+      - name: agrupado
+        in: query
+        type: string
+        required: false
+        description: Parámetro agrupado
+      - name: es_prehorario
+        in: query
+        type: string
+        required: false
+        description: Parámetro es_prehorario
+    responses:
+      200:
+        description: Operación exitosa
+      500:
+        description: Error interno del servidor
+    """
     try:
         agrupado = request.args.get("agrupado", "false").lower() == "true"
         es_prehorario = int(request.args.get("es_prehorario", "0"))
@@ -49,6 +152,21 @@ def getHorariosGrupo(id_grupo):
 
 @horarios_bp.route("/deleteHorarioGrupo/<int:id_horario>", methods=["DELETE"])
 def delete_horario_grupo(id_horario):
+    """
+    Delete horario grupo
+    ---
+    parameters:
+      - name: id_horario
+        in: path
+        type: integer
+        required: true
+        description: Parámetro id_horario
+    responses:
+      200:
+        description: Operación exitosa
+      500:
+        description: Error interno del servidor
+    """
     try:
         return jsonify(HorariosService.deleteHorarioGrupo(id_horario))
     except Exception as e:
@@ -57,6 +175,21 @@ def delete_horario_grupo(id_horario):
 
 @horarios_bp.route("/getHorariosDocente/<int:id_docente>", methods=["GET"])
 def get_horarios_docente(id_docente):
+    """
+    Get horarios docente
+    ---
+    parameters:
+      - name: id_docente
+        in: path
+        type: integer
+        required: true
+        description: Parámetro id_docente
+    responses:
+      200:
+        description: Operación exitosa
+      500:
+        description: Error interno del servidor
+    """
     try:
         return jsonify(HorariosService.getHorariosDocente(id_docente))
     except Exception as e:

@@ -29,7 +29,8 @@ class DocentesService:
                     observacionesDocente,
                     nivelEstudios,
                     fechaNacimiento,
-                    idBiometrico
+                    idBiometrico,
+                    permisos_modulos
                 FROM tb_docentes
                 WHERE 1=1
             """
@@ -487,7 +488,7 @@ class DocentesService:
             conexion.close()
 
     @staticmethod
-    def actualizar_credenciales(id_docente, usuario, password_hash=None):
+    def actualizar_credenciales(id_docente, usuario, password_hash=None, permisos_modulos=None):
         conexion = get_connection()
         cursor = conexion.cursor()
         try:
@@ -497,18 +498,21 @@ class DocentesService:
             if dup:
                 return {"error": "El nombre de usuario ya está asignado a otro docente"}
 
+            if permisos_modulos is None:
+                permisos_modulos = 'horarios,pendientes,grupos'
+
             if password_hash:
                 cursor.execute("""
                     UPDATE tb_docentes 
-                    SET usuario = %s, password = %s, updateAt = CURRENT_TIMESTAMP
+                    SET usuario = %s, password = %s, permisos_modulos = %s, updateAt = CURRENT_TIMESTAMP
                     WHERE idDocente = %s
-                """, (usuario, password_hash, id_docente))
+                """, (usuario, password_hash, permisos_modulos, id_docente))
             else:
                 cursor.execute("""
                     UPDATE tb_docentes 
-                    SET usuario = %s, updateAt = CURRENT_TIMESTAMP
+                    SET usuario = %s, permisos_modulos = %s, updateAt = CURRENT_TIMESTAMP
                     WHERE idDocente = %s
-                """, (usuario, id_docente))
+                """, (usuario, permisos_modulos, id_docente))
             conexion.commit()
             return {"success": True, "mensaje": "Credenciales del docente actualizadas correctamente"}
         except Exception as e:
@@ -532,7 +536,8 @@ class DocentesService:
                     correoDocente, 
                     usuario, 
                     password, 
-                    statusDocente
+                    statusDocente,
+                    permisos_modulos
                 FROM tb_docentes
                 WHERE (usuario = %s OR correoDocente = %s) AND statusDocente = 'ACTIVO'
                 LIMIT 1

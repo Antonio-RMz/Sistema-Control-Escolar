@@ -11,6 +11,15 @@ def allowed_file(filename):
 
 @asistencias_bp.route("/asistencias/upload", methods=["POST"])
 def upload_asistencias():
+    """
+    Upload asistencias
+    ---
+    responses:
+      200:
+        description: Operación exitosa
+      500:
+        description: Error interno del servidor
+    """
     try:
         # Verificar si el archivo está en la petición
         if "file" not in request.files:
@@ -60,6 +69,31 @@ def upload_asistencias():
 
 @asistencias_bp.route("/asistencias", methods=["GET"])
 def get_asistencias():
+    """
+    Get asistencias
+    ---
+    parameters:
+      - name: fecha_inicio
+        in: query
+        type: string
+        required: false
+        description: Parámetro fecha_inicio
+      - name: fecha_fin
+        in: query
+        type: string
+        required: false
+        description: Parámetro fecha_fin
+      - name: id_docente
+        in: query
+        type: string
+        required: false
+        description: Parámetro id_docente
+    responses:
+      200:
+        description: Operación exitosa
+      500:
+        description: Error interno del servidor
+    """
     try:
         fecha_inicio = request.args.get("fecha_inicio")
         fecha_fin = request.args.get("fecha_fin")
@@ -86,6 +120,38 @@ def get_asistencias():
 
 @asistencias_bp.route("/clear_asistencias", methods=["DELETE"])
 def clear_asistencias():
+    """
+    Clear asistencias
+    ---
+    parameters:
+      - name: id_materia
+        in: query
+        type: string
+        required: false
+        description: Parámetro id_materia
+      - name: id_docente
+        in: query
+        type: string
+        required: false
+        description: Parámetro id_docente
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          properties:
+            id_grupo:
+              type: string
+            id_materia:
+              type: string
+            id_docente:
+              type: string
+    responses:
+      200:
+        description: Operación exitosa
+      500:
+        description: Error interno del servidor
+    """
     from app.config.conexion import get_connection
     import pymysql
     conexion = get_connection()
@@ -103,6 +169,47 @@ def clear_asistencias():
 
 @asistencias_bp.route("/asistencias/alumnos/grupo/<int:id_grupo>", methods=["GET"])
 def get_asistencias_alumnos_grupo(id_grupo):
+    """
+    Get asistencias alumnos grupo
+    ---
+    parameters:
+      - name: id_grupo
+        in: path
+        type: integer
+        required: true
+        description: Parámetro id_grupo
+      - name: id_materia
+        in: query
+        type: string
+        required: false
+        description: Parámetro id_materia
+      - name: id_docente
+        in: query
+        type: string
+        required: false
+        description: Parámetro id_docente
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          properties:
+            id_grupo:
+              type: string
+            id_materia:
+              type: string
+            id_docente:
+              type: string
+            asistencias:
+              type: string
+            id_alumno:
+              type: string
+    responses:
+      200:
+        description: Operación exitosa
+      500:
+        description: Error interno del servidor
+    """
     try:
         id_materia = request.args.get("id_materia", type=int)
         id_docente = request.args.get("id_docente", type=int)
@@ -115,6 +222,38 @@ def get_asistencias_alumnos_grupo(id_grupo):
 
 @asistencias_bp.route("/asistencias/alumnos/guardar", methods=["POST"])
 def guardar_asistencias_alumnos():
+    """
+    Guardar asistencias alumnos
+    ---
+    parameters:
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          properties:
+            id_grupo:
+              type: string
+            id_materia:
+              type: string
+            id_docente:
+              type: string
+            asistencias:
+              type: string
+            id_alumno:
+              type: string
+            fecha_inicio:
+              type: string
+            fecha_fin:
+              type: string
+            motivo:
+              type: string
+    responses:
+      200:
+        description: Operación exitosa
+      500:
+        description: Error interno del servidor
+    """
     try:
         data = request.json
         id_grupo = data.get("id_grupo")
@@ -134,6 +273,30 @@ def guardar_asistencias_alumnos():
 
 @asistencias_bp.route("/asistencias/alumnos/justificar", methods=["POST"])
 def justificar_falta_alumno():
+    """
+    Justificar falta alumno
+    ---
+    parameters:
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          properties:
+            id_alumno:
+              type: string
+            fecha_inicio:
+              type: string
+            fecha_fin:
+              type: string
+            motivo:
+              type: string
+    responses:
+      200:
+        description: Operación exitosa
+      500:
+        description: Error interno del servidor
+    """
     try:
         data = request.json
         id_alumno = data.get("id_alumno")
@@ -153,6 +316,15 @@ def justificar_falta_alumno():
 
 @asistencias_bp.route("/asistencias/alumnos/hoy", methods=["GET"])
 def get_asistencias_hoy():
+    """
+    Get asistencias hoy
+    ---
+    responses:
+      200:
+        description: Operación exitosa
+      500:
+        description: Error interno del servidor
+    """
     from app.config.conexion import get_connection
     import datetime
     conexion = get_connection()
