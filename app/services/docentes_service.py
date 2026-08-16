@@ -546,3 +546,137 @@ class DocentesService:
         finally:
             cursor.close()
             conexion.close()
+
+    @staticmethod
+    def get_docente_pendientes(id_docente):
+        conexion = get_connection()
+        cursor = conexion.cursor(pymysql.cursors.DictCursor)
+        try:
+            hoy = datetime.date.today().strftime('%Y-%m-%d')
+            proximos15_dias = (datetime.date.today() + datetime.timedelta(days=15)).strftime('%Y-%m-%d')
+
+            # 1. Prórrogas activas
+            cursor.execute("""
+                SELECT 
+                    p.*,
+                    g.clave as clave_grupo,
+                    m.nombreMateria as nombre_materia,
+                    m.clave as clave_materia,
+                    DATEDIFF(p.fecha_limite, %s) as dias_restantes
+                FROM tb_docente_permisos_captura p
+                JOIN tb_grupos g ON p.id_grupo = g.id
+                JOIN tb_materias m ON p.id_materia = m.id
+                JOIN tb_horarios h ON p.id_grupo = h.id_grupo 
+                                   AND p.id_materia = h.id_materia 
+                                   AND p.id_docente = h.id_docente
+                WHERE p.id_docente = %s
+                  AND p.habilitado = 1
+                  AND p.fecha_limite >= %s
+                ORDER BY p.fecha_limite ASC
+            """, (hoy, id_docente, hoy))
+            prorrogas = cursor.fetchall()
+
+            for p in prorrogas:
+                if p.get('fecha_limite'):
+                    p['fecha_limite'] = str(p['fecha_limite'])
+                if p.get('createAt'):
+                    p['createAt'] = str(p['createAt'])
+                if p.get('updateAt'):
+                    p['updateAt'] = str(p['updateAt'])
+
+            # 2. Grupos por finalizar (próximos 15 días)
+            cursor.execute("""
+                SELECT DISTINCT
+                    g.id,
+                    g.clave as clave_grupo,
+                    g.fechaFin as fecha_fin,
+                    DATEDIFF(g.fechaFin, %s) as dias_restantes
+                FROM tb_horarios h
+                JOIN tb_grupos g ON h.id_grupo = g.id
+                WHERE h.id_docente = %s
+                  AND g.statusGrupo = 'ACTIVO'
+                  AND g.fechaFin >= %s
+                  AND g.fechaFin <= %s
+                ORDER BY g.fechaFin ASC
+            """, (hoy, id_docente, hoy, proximos15_dias))
+            por_finalizar = cursor.fetchall()
+
+            for gf in por_finalizar:
+                if gf.get('fecha_fin'):
+                    gf['fecha_fin'] = str(gf['fecha_fin'])
+
+            # 3. Calificaciones pendientes por capturar
+            cursor.execute("""
+                SELECT DISTINCT
+                    g.id as id_grupo,
+                    g.clave as clave_grupo,
+                    m.id as id_materia,
+                    m.nombreMateria as nombre_materia,
+                    m.clave as clave_materia
+                FROM tb_horarios h
+                JOIN tb_grupos g ON h.id_grupo = g.id
+                JOIN tb_materias m ON h.id_materia = m.id
+                WHERE h.id_docente = %s
+                  AND g.statusGrupo = 'ACTIVO'
+                  AND (m.id_nivel_academico IS NULL OR m.id_nivel_academico = g.id_nivel_academico)
+            """, (id_docente,))
+            clases = cursor.fetchall()
+
+            calificaciones_pendientes = []
+
+            from app.services.calificaciones_service import CalificacionesService
+
+            for clase in clases:
+                cursor.execute("""
+                    SELECT ag.idAlumno FROM tb_alumnogrupo ag
+                    JOIN tb_alumnos a ON ag.idAlumno = a.idAlumno
+                    WHERE ag.idGrupo = %s AND ag.estado = 'ACTIVO' AND a.statusAlumno = 'ACTIVO'
+                """, (clase['id_grupo'],))
+                alumnos = cursor.fetchall()
+
+                if not alumnos:
+                    continue
+
+                alumnos_ids = [al['idAlumno'] for al in alumnos]
+
+                placeholders = ', '.join(['%s'] * len(alumnos_ids))
+                query_calif = f"""
+                    SELECT COUNT(*) as count FROM tb_calificaciones
+                    WHERE idMateria = %s AND idGrupo = %s
+                      AND idAlumno IN ({placeholders})
+                      AND calificacion IS NOT NULL
+                """
+                params_calif = [clase['id_materia'], clase['id_grupo']] + alumnos_ids
+                cursor.execute(query_calif, params_calif)
+                calificados_count_row = cursor.fetchone()
+                calificados_count = calificados_count_row['count'] if calificados_count_row else 0
+
+                total_alumnos = len(alumnos_ids)
+                faltantes = total_alumnos - calificados_count
+
+                if faltantes > 0:
+                    permission_result = CalificacionesService.check_captura_permission(
+                        clase['id_grupo'], clase['id_materia'], id_docente, 'DOCENTE'
+                    )
+                    calificaciones_pendientes.append({
+                        'id_grupo': clase['id_grupo'],
+                        'clave_grupo': clase['clave_grupo'],
+                        'id_materia': clase['id_materia'],
+                        'nombre_materia': clase['nombre_materia'],
+                        'clave_materia': clase['clave_materia'],
+                        'alumnos_totales': total_alumnos,
+                        'alumnos_faltantes': faltantes,
+                        'bloqueado': not permission_result['allowed'],
+                        'motivo_bloqueo': permission_result['reason']
+                    })
+
+            return {
+                'prorrogas': prorrogas,
+                'por_finalizar': por_finalizar,
+                'calificaciones_pendientes': calificaciones_pendientes
+            }
+        except Exception as e:
+            return {'error': str(e)}
+        finally:
+            cursor.close()
+            conexion.close()

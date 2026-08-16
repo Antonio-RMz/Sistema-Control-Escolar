@@ -1,4 +1,6 @@
 from app.config.conexion import get_connection
+from datetime import date, datetime
+import pymysql
 
 class CalificacionesService:
 
@@ -238,15 +240,129 @@ class CalificacionesService:
             return {"success": True, "message": "Calificaciones guardadas exitosamente"}
         except Exception as e:
             conexion.rollback()
-            return {"error": str(e)}
+    def check_captura_permission(id_grupo, id_materia, id_docente, rol):
+        conexion = get_connection()
+        cursor = conexion.cursor(pymysql.cursors.DictCursor)
+        try:
+            if rol and rol.upper() == 'ADMIN':
+                return {
+                    'allowed': True,
+                    'reason': 'Acceso administrador total.'
+                }
+
+            if not id_docente:
+                return {
+                    'allowed': False,
+                    'reason': 'Identificación de docente no encontrada.'
+                }
+
+            hoy = date.today().strftime('%Y-%m-%d')
+
+            cursor.execute("""
+                SELECT habilitado, fecha_limite, permitir_modificar_pasados 
+                FROM tb_docente_permisos_captura
+                WHERE id_docente = %s AND id_grupo = %s AND id_materia = %s
+            """, (id_docente, id_grupo, id_materia))
+            permiso = cursor.fetchone()
+
+            if permiso and not permiso.get('habilitado'):
+                return {
+                    'allowed': False,
+                    'reason': 'La captura de calificaciones ha sido deshabilitada para esta asignatura por administración.'
+                }
+
+            if not permiso:
+                cursor.execute("""
+                    SELECT EXISTS(
+                        SELECT 1 FROM tb_horarios
+                        WHERE id_docente = %s AND id_grupo = %s AND id_materia = %s
+                    ) AS exist
+                """, (id_docente, id_grupo, id_materia))
+                horario_exist = cursor.fetchone()
+                if not horario_exist or not horario_exist.get('exist'):
+                    return {
+                        'allowed': False,
+                        'reason': 'No tienes asignada esta asignatura en este grupo.'
+                    }
+
+            cursor.execute("SELECT statusGrupo, fechaFin, id_nivel_academico FROM tb_grupos WHERE id = %s", (id_grupo,))
+            grupo = cursor.fetchone()
+            
+            cursor.execute("SELECT id_nivel_academico FROM tb_materias WHERE id = %s", (id_materia,))
+            materia = cursor.fetchone()
+
+            if not grupo:
+                return {
+                    'allowed': False,
+                    'reason': 'El grupo no existe.'
+                }
+
+            if not permiso:
+                cursor.execute("SELECT captura_habilitada FROM tb_grupo_periodos_captura WHERE id_grupo = %s", (id_grupo,))
+                grp_config = cursor.fetchone()
+                if grp_config and not grp_config.get('captura_habilitada'):
+                    return {
+                        'allowed': False,
+                        'reason': 'La captura de calificaciones está deshabilitada temporalmente para este grupo.'
+                    }
+
+            if grupo.get('statusGrupo') and grupo.get('statusGrupo').upper() != 'ACTIVO':
+                if not permiso or not permiso.get('permitir_modificar_pasados'):
+                    return {
+                        'allowed': False,
+                        'reason': 'El grupo se encuentra inactivo. Requiere autorización especial de administración.'
+                    }
+
+            if grupo and materia:
+                g_lvl_id = grupo.get('id_nivel_academico')
+                m_lvl_id = materia.get('id_nivel_academico')
+                if g_lvl_id is not None and m_lvl_id is not None:
+                    cursor.execute("SELECT numero, nombre FROM tb_niveles_academicos WHERE id = %s", (g_lvl_id,))
+                    nivel_grupo = cursor.fetchone()
+                    cursor.execute("SELECT numero, nombre FROM tb_niveles_academicos WHERE id = %s", (m_lvl_id,))
+                    nivel_materia = cursor.fetchone()
+                    
+                    if nivel_grupo and nivel_materia:
+                        if int(nivel_materia.get('numero') or 0) < int(nivel_grupo.get('numero') or 0):
+                            if not permiso or not permiso.get('permitir_modificar_pasados'):
+                                return {
+                                    'allowed': False,
+                                    'reason': f"Esta asignatura pertenece a un periodo anterior ({nivel_materia.get('nombre')}). Requiere autorización de administración para modificar calificaciones pasadas."
+                                }
+
+            if permiso and permiso.get('fecha_limite'):
+                fecha_limite_str = str(permiso.get('fecha_limite'))
+                if hoy > fecha_limite_str:
+                    return {
+                        'allowed': False,
+                        'reason': f"El periodo extraordinario de captura expiró el {datetime.strptime(fecha_limite_str, '%Y-%m-%d').strftime('%d/%m/%Y')}."
+                    }
+            else:
+                if grupo.get('fechaFin'):
+                    fecha_fin_str = str(grupo.get('fechaFin'))
+                    if hoy > fecha_fin_str:
+                        return {
+                            'allowed': False,
+                            'reason': f"El periodo ordinario de captura finalizó el {datetime.strptime(fecha_fin_str, '%Y-%m-%d').strftime('%d/%m/%Y')}."
+                        }
+
+            return {
+                'allowed': True,
+                'reason': 'Permiso concedido.'
+            }
+        except Exception as e:
+            return {
+                'allowed': False,
+                'reason': f"Error al verificar permisos: {str(e)}"
+            }
         finally:
             cursor.close()
             conexion.close()
 
     @staticmethod
-    def get_calificaciones_grupo_materia(id_grupo, id_materia=None):
+    def get_calificaciones_grupo_materia(id_grupo, id_materia=None, id_docente=None, rol=None):
         conexion = get_connection()
-        cursor = conexion.cursor()
+        cursor = conexion.cursor(pymysql.cursors.DictCursor)
         try:
             # 1. Información del grupo
             cursor.execute("""
@@ -261,6 +377,7 @@ class CalificacionesService:
                     g.id_nivel_academico,
                     na.nombre AS nombreNivel,
                     g.modalidadHorario,
+                    g.statusGrupo,
                     tp.nombrePeriodo
                 FROM tb_grupos g
                 LEFT JOIN tb_centrotrabajo ct ON g.id_centroTrabajo = ct.id
@@ -312,11 +429,38 @@ class CalificacionesService:
                     LEFT JOIN tb_niveles_academicos na ON m.id_nivel_academico = na.id
                     WHERE m.idCentroTrabajo = %s OR m.idCentroTrabajo IS NULL
                     ORDER BY m.id_nivel_academico ASC, ordenMateria ASC
-                """, (grupo.get("id_centroTrabajo") or grupo.get("id_centro_trabajo") or 3,))
+                """, (grupo.get("id_centro_trabajo") or grupo.get("id_centroTrabajo") or 3,))
                 materias_horario = cursor.fetchall()
 
+            # Filtrar materias si es rol DOCENTE
+            is_docente = rol and rol.upper() == 'DOCENTE'
+            group_level = grupo.get("id_nivel_academico")
+            
+            if is_docente and id_docente:
+                filtered_materias = []
+                for m in materias_horario:
+                    match_docente = m.get("id_docente") is not None and int(m["id_docente"]) == int(id_docente)
+                    match_level = m.get("id_nivel_academico") is None or (group_level is not None and int(m["id_nivel_academico"]) == int(group_level))
+                    if match_docente and match_level:
+                        filtered_materias.append(m)
+                materias_horario = filtered_materias
+
+            # Si no hay id_materia, tomar la primera
             if not id_materia and materias_horario:
-                id_materia = materias_horario[0]["idMateria"]
+                if is_docente and id_docente:
+                    cursor.execute("""
+                        SELECT h.id_materia FROM tb_horarios h
+                        JOIN tb_materias m ON h.id_materia = m.id
+                        WHERE h.id_grupo = %s AND h.id_docente = %s
+                        AND (m.id_nivel_academico IS NULL OR m.id_nivel_academico = %s)
+                        ORDER BY h.id_materia ASC LIMIT 1
+                    """, (id_grupo, id_docente, group_level))
+                    first_horario = cursor.fetchone()
+                    if first_horario:
+                        id_materia = first_horario["id_materia"]
+                
+                if not id_materia:
+                    id_materia = materias_horario[0]["idMateria"]
 
             # Docente de la materia seleccionada
             materia_seleccionada = None
@@ -324,6 +468,13 @@ class CalificacionesService:
                 if str(m["idMateria"]) == str(id_materia):
                     materia_seleccionada = m
                     break
+
+            # Si el rol es DOCENTE y id_materia no está en materias_horario, reajustarla
+            if is_docente and id_docente and id_materia and not materia_seleccionada:
+                for m in materias_horario:
+                    if str(m["idMateria"]) == str(id_materia) and m.get("id_docente") is not None and int(m["id_docente"]) == int(id_docente):
+                        materia_seleccionada = m
+                        break
 
             # 3. Lista de alumnos del grupo con sus calificaciones en esta materia
             alumnos_califs = []
@@ -377,12 +528,82 @@ class CalificacionesService:
                             is_equiv = True
                     a["es_equivalencia"] = is_equiv
 
+            # 4. Lógica de permisos de captura
+            solo_lectura = False
+            mensaje_restriccion = ""
+            
+            permiso = None
+            if id_docente and id_materia:
+                cursor.execute("""
+                    SELECT habilitado, fecha_limite, permitir_modificar_pasados 
+                    FROM tb_docente_permisos_captura
+                    WHERE id_docente = %s AND id_grupo = %s AND id_materia = %s
+                """, (id_docente, id_grupo, id_materia))
+                permiso = cursor.fetchone()
+                
+            cursor.execute("""
+                SELECT p1_habilitado, p1_fecha_inicio, p1_fecha_fin,
+                       p2_habilitado, p2_fecha_inicio, p2_fecha_fin,
+                       p3_habilitado, p3_fecha_inicio, p3_fecha_fin,
+                       semestral_habilitado, semestral_fecha_inicio, semestral_fecha_fin,
+                       extraordinario_habilitado, extraordinario_fecha_inicio, extraordinario_fecha_fin,
+                       captura_habilitada, id_nivel_academico
+                FROM tb_grupo_periodos_captura WHERE id_grupo = %s
+            """, (id_grupo,))
+            cfg = cursor.fetchone()
+
+            if is_docente and id_materia:
+                # Validar permisos básicos
+                perm_res = CalificacionesService.check_captura_permission(id_grupo, id_materia, id_docente, rol)
+                if not perm_res['allowed']:
+                    solo_lectura = True
+                    mensaje_restriccion = perm_res['reason']
+
+            # Bloqueo por semestre si no hay permiso especial activo
+            has_active_special_permission = False
+            if permiso and permiso.get('habilitado'):
+                fecha_limite = permiso.get('fecha_limite')
+                hoy = date.today().strftime('%Y-%m-%d')
+                if not fecha_limite or hoy <= str(fecha_limite):
+                    has_active_special_permission = True
+
+            if is_docente and not has_active_special_permission and cfg and cfg.get('id_nivel_academico') is not None and materia_seleccionada:
+                materia_nivel = materia_seleccionada.get('id_nivel_academico')
+                if materia_nivel is not None and int(materia_nivel) != int(cfg['id_nivel_academico']):
+                    cursor.execute("SELECT nombre FROM tb_niveles_academicos WHERE id = %s", (cfg['id_nivel_academico'],))
+                    nivel_row = cursor.fetchone()
+                    level_name = nivel_row['nombre'] if nivel_row else f"Nivel {cfg['id_nivel_academico']}"
+                    solo_lectura = True
+                    mensaje_restriccion = f"La captura para este semestre está deshabilitada. El semestre habilitado es: {level_name}."
+
+            # Armar cct_config
+            def is_period_open(enabled, start, end):
+                if not enabled:
+                    return False
+                hoy = date.today().strftime('%Y-%m-%d')
+                if start and hoy < str(start):
+                    return False
+                if end and hoy > str(end):
+                    return False
+                return True
+
+            cct_config = {
+                'captura_p1': True if has_active_special_permission else is_period_open(cfg.get('p1_habilitado', 1) if cfg else 1, cfg.get('p1_fecha_inicio') if cfg else None, cfg.get('p1_fecha_fin') if cfg else None),
+                'captura_p2': True if has_active_special_permission else is_period_open(cfg.get('p2_habilitado', 1) if cfg else 1, cfg.get('p2_fecha_inicio') if cfg else None, cfg.get('p2_fecha_fin') if cfg else None),
+                'captura_p3': True if has_active_special_permission else is_period_open(cfg.get('p3_habilitado', 1) if cfg else 1, cfg.get('p3_fecha_inicio') if cfg else None, cfg.get('p3_fecha_fin') if cfg else None),
+                'captura_semestral': True if has_active_special_permission else is_period_open(cfg.get('semestral_habilitado', 1) if cfg else 1, cfg.get('semestral_fecha_inicio') if cfg else None, cfg.get('semestral_fecha_fin') if cfg else None),
+                'captura_extraordinario': True if has_active_special_permission else is_period_open(cfg.get('extraordinario_habilitado', 1) if cfg else 1, cfg.get('extraordinario_fecha_inicio') if cfg else None, cfg.get('extraordinario_fecha_fin') if cfg else None),
+            }
+
             return {
                 "grupo": grupo,
                 "materias": materias_horario,
                 "materiaSeleccionada": materia_seleccionada,
                 "idMateriaSeleccionada": int(id_materia) if id_materia else None,
-                "alumnos": alumnos_califs
+                "alumnos": alumnos_califs,
+                "solo_lectura": solo_lectura,
+                "mensaje_restriccion": mensaje_restriccion,
+                "cct_config": cct_config
             }
         except Exception as e:
             return {"error": str(e)}

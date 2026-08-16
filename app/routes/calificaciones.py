@@ -123,7 +123,9 @@ def get_calificaciones_grupo_materia(idGrupo):
     """
     try:
         id_materia = request.args.get("id_materia")
-        resultado = CalificacionesService.get_calificaciones_grupo_materia(idGrupo, id_materia)
+        id_docente = request.args.get("id_docente")
+        rol = request.args.get("rol")
+        resultado = CalificacionesService.get_calificaciones_grupo_materia(idGrupo, id_materia, id_docente, rol)
         if "error" in resultado:
             return jsonify(resultado), 500
         return jsonify({"success": True, "data": resultado})
@@ -173,3 +175,14 @@ def save_calificaciones_grupo_materia(idGrupo, idMateria):
         return jsonify(resultado)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@calificaciones_bp.route("/grupos/<int:idGrupo>/check-captura-permission/<int:idMateria>", methods=["GET"])
+def check_captura_permission(idGrupo, idMateria):
+    try:
+        id_docente = request.args.get("id_docente")
+        rol = request.args.get("rol")
+        resultado = CalificacionesService.check_captura_permission(idGrupo, idMateria, id_docente, rol)
+        return jsonify(resultado)
+    except Exception as e:
+        return jsonify({"error": str(e), "allowed": False}), 500

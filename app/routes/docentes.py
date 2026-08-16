@@ -364,3 +364,29 @@ def get_docente_by_username(username):
         return jsonify({"success": True, "data": docente})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@docentes_bp.route("/docentes/<int:idDocente>/pendientes", methods=["GET"])
+def get_docente_pendientes(idDocente):
+    """
+    Get pending items for a teacher (prorrogas, finalizando, calificaciones)
+    ---
+    parameters:
+      - name: idDocente
+        in: path
+        type: integer
+        required: true
+        description: ID del docente
+    responses:
+      200:
+        description: Operación exitosa
+      500:
+        description: Error interno del servidor
+    """
+    try:
+        resultado = DocentesService.get_docente_pendientes(idDocente)
+        if "error" in resultado:
+            return jsonify(resultado), 500
+        return jsonify(resultado)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
