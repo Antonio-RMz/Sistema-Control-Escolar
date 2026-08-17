@@ -500,26 +500,66 @@ class AlumnosService:
         cursor = conexion.cursor()
 
         try:
-            # Eliminar cursos extracurriculares del alumno
+            # 1. Eliminar asistencias
+            cursor.execute(
+                "DELETE FROM tb_asistencias_alumnos WHERE id_alumno = %s", (id_alumno,)
+            )
+
+            # 2. Eliminar justificaciones
+            cursor.execute(
+                "DELETE FROM tb_justificaciones_alumnos WHERE id_alumno = %s", (id_alumno,)
+            )
+
+            # 3. Eliminar calificaciones
+            cursor.execute(
+                "DELETE FROM tb_calificaciones WHERE idAlumno = %s", (id_alumno,)
+            )
+
+            # 4. Eliminar certificados
+            cursor.execute(
+                "DELETE FROM tb_certificados_alumno WHERE idAlumno = %s", (id_alumno,)
+            )
+
+            # 5. Eliminar direcciones
+            cursor.execute(
+                "DELETE FROM tb_direcciones_alumno WHERE idAlumno = %s", (id_alumno,)
+            )
+
+            # 6. Eliminar contactos del alumno
+            cursor.execute(
+                "DELETE FROM tb_alumno_contacto WHERE idAlumno = %s", (id_alumno,)
+            )
+
+            # 7. Eliminar contactos_alumno
+            cursor.execute(
+                "DELETE FROM tb_contactos_alumno WHERE idAlumno = %s", (id_alumno,)
+            )
+
+            # 8. Eliminar cursos extracurriculares
             cursor.execute(
                 "DELETE FROM tb_cursoExtraAlumno WHERE idAlumno = %s", (id_alumno,)
             )
 
-            # Eliminar relación alumno-grupo
+            # 9. Eliminar relación alumno-grupo
             cursor.execute(
                 "DELETE FROM tb_alumnogrupo WHERE idAlumno = %s", (id_alumno,)
             )
 
-            # Eliminar alumno
+            # 10. Eliminar relación alumno-programa
+            cursor.execute(
+                "DELETE FROM tb_alumnoprograma WHERE idAlumno = %s", (id_alumno,)
+            )
+
+            # 11. Eliminar alumno de la tabla principal
             cursor.execute("DELETE FROM tb_alumnos WHERE idAlumno = %s", (id_alumno,))
 
             conexion.commit()
 
-            return {"mensaje": "Alumno eliminado correctamente", "idAlumno": id_alumno}
+            return {"mensaje": "Alumno eliminado correctamente", "idAlumno": id_alumno}, 200
 
         except Exception as e:
             conexion.rollback()
-            return {"error": str(e)}
+            return {"error": str(e)}, 500
 
         finally:
             cursor.close()
