@@ -102,7 +102,7 @@ class PermisosCapturaService:
         try:
             cursor.execute("""
                 UPDATE tb_docente_permisos_captura 
-                SET fecha_limite = %s, permitir_modificar_pasados = %s, habilitado = %s, updated_at = NOW()
+                SET fecha_limite = %s, permitir_modificar_pasados = %s, habilitado = %s, finalizado = 0, updated_at = NOW()
                 WHERE id = %s
             """, (
                 data.get('fecha_limite') or None,

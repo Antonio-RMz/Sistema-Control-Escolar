@@ -168,8 +168,13 @@ def save_calificaciones_grupo_materia(idGrupo, idMateria):
         data = request.json or {}
         calificaciones = data.get("calificaciones") or (data if isinstance(data, list) else [])
         user = data.get("user", "SISTEMA") if isinstance(data, dict) else "SISTEMA"
+        id_docente = data.get("id_docente")
+        rol = data.get("rol")
+        finalizar = data.get("finalizar", False)
 
-        resultado = CalificacionesService.guardar_calificaciones_grupo_materia(idGrupo, idMateria, calificaciones, user)
+        resultado = CalificacionesService.guardar_calificaciones_grupo_materia(
+            idGrupo, idMateria, calificaciones, user, id_docente=id_docente, rol=rol, finalizar=finalizar
+        )
         if "error" in resultado:
             return jsonify(resultado), 500
         return jsonify(resultado)

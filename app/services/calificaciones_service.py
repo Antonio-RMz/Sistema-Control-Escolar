@@ -259,11 +259,17 @@ class CalificacionesService:
             hoy = date.today().strftime('%Y-%m-%d')
 
             cursor.execute("""
-                SELECT habilitado, fecha_limite, permitir_modificar_pasados 
+                SELECT habilitado, fecha_limite, permitir_modificar_pasados, finalizado 
                 FROM tb_docente_permisos_captura
                 WHERE id_docente = %s AND id_grupo = %s AND id_materia = %s
             """, (id_docente, id_grupo, id_materia))
             permiso = cursor.fetchone()
+
+            if permiso and (permiso.get('finalizado') == 1 or permiso.get('finalizado') is True):
+                return {
+                    'allowed': False,
+                    'reason': 'Las calificaciones de esta asignatura ya fueron enviadas y confirmadas. Solo el administrador puede realizar cambios.'
+                }
 
             if permiso and not permiso.get('habilitado'):
                 return {
@@ -535,7 +541,7 @@ class CalificacionesService:
             permiso = None
             if id_docente and id_materia:
                 cursor.execute("""
-                    SELECT habilitado, fecha_limite, permitir_modificar_pasados 
+                    SELECT habilitado, fecha_limite, permitir_modificar_pasados, finalizado 
                     FROM tb_docente_permisos_captura
                     WHERE id_docente = %s AND id_grupo = %s AND id_materia = %s
                 """, (id_docente, id_grupo, id_materia))
@@ -603,7 +609,8 @@ class CalificacionesService:
                 "alumnos": alumnos_califs,
                 "solo_lectura": solo_lectura,
                 "mensaje_restriccion": mensaje_restriccion,
-                "cct_config": cct_config
+                "cct_config": cct_config,
+                "finalizado": bool(permiso.get('finalizado')) if permiso else False
             }
         except Exception as e:
             return {"error": str(e)}
@@ -612,10 +619,33 @@ class CalificacionesService:
             conexion.close()
 
     @staticmethod
-    def guardar_calificaciones_grupo_materia(id_grupo, id_materia, calificaciones, create_by="SISTEMA"):
+    def guardar_calificaciones_grupo_materia(id_grupo, id_materia, calificaciones, create_by="SISTEMA", id_docente=None, rol=None, finalizar=False):
         conexion = get_connection()
         cursor = conexion.cursor()
         try:
+            # 1. Validar permiso antes de guardar si es docente
+            if rol and rol.upper() == 'DOCENTE':
+                perm_res = CalificacionesService.check_captura_permission(id_grupo, id_materia, id_docente, rol)
+                if not perm_res['allowed']:
+                    return {"error": perm_res['reason']}
+
+            # 2. Validar rango de calificaciones (0 a 10) para BTI (CCT 2) y BGNE (CCT 3)
+            cursor.execute("SELECT id_centroTrabajo FROM tb_grupos WHERE id = %s", (id_grupo,))
+            grupo_row = cursor.fetchone()
+            id_cct = grupo_row.get("id_centroTrabajo") if grupo_row else None
+            
+            if id_cct in [2, 3]:
+                for item in calificaciones:
+                    for fld in ["calificacion", "parcial1", "parcial2", "parcial3", "semestral", "extraordinario"]:
+                        val = item.get(fld)
+                        if val is not None and val != "":
+                            try:
+                                f_val = float(val)
+                                if f_val < 0.0 or f_val > 10.0:
+                                    return {"error": f"La calificacion '{fld}' ({f_val}) esta fuera del rango permitido (0 a 10)."}
+                            except ValueError:
+                                return {"error": f"La calificacion '{fld}' no es un numero valido."}
+
             for item in calificaciones:
                 id_alumno = item.get("idAlumno")
                 calificacion = item.get("calificacion")
@@ -665,6 +695,26 @@ class CalificacionesService:
                             parcial1, parcial2, parcial3, semestral, extraordinario, asistencias, total_asistencias
                         ) VALUES (%s, %s, %s, %s, %s, %s, CURRENT_DATE, %s, %s, %s, %s, %s, %s, %s, %s)
                     """, (id_alumno, id_materia, id_grupo, calif_val, tipo_acred, observaciones, create_by, p1_val, p2_val, p3_val, sem_val, ext_val, asist_val, tot_asist_val))
+
+            # 3. Registrar como finalizado si corresponde
+            if finalizar and id_docente and rol and rol.upper() == 'DOCENTE':
+                cursor.execute("""
+                    SELECT id FROM tb_docente_permisos_captura 
+                    WHERE id_docente = %s AND id_grupo = %s AND id_materia = %s
+                """, (id_docente, id_grupo, id_materia))
+                perm = cursor.fetchone()
+                if perm:
+                    cursor.execute("""
+                        UPDATE tb_docente_permisos_captura 
+                        SET finalizado = 1, updated_at = NOW() 
+                        WHERE id = %s
+                    """, (perm['id'],))
+                else:
+                    cursor.execute("""
+                        INSERT INTO tb_docente_permisos_captura (
+                            id_docente, id_grupo, id_materia, habilitado, finalizado, created_at, updated_at
+                        ) VALUES (%s, %s, %s, 1, 1, NOW(), NOW())
+                    """, (id_docente, id_grupo, id_materia))
 
             conexion.commit()
             return {"success": True, "message": "Calificaciones del grupo guardadas correctamente"}
