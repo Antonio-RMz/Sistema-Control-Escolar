@@ -379,7 +379,7 @@ class AlumnosService:
             cursos = data.get("cursos") or alumno_data.get("cursos")
             if cursos and isinstance(cursos, list):
                 query_cursos = """
-                    INSERT INTO tb_cursoExtraAlumno (
+                    INSERT INTO tb_cursoextraalumno (
                         idCursoExtracurricular, idAlumno, createDate, lastUpdateDate
                     ) VALUES (%s, %s, NOW(), NOW())
                 """
@@ -537,7 +537,7 @@ class AlumnosService:
 
             # 8. Eliminar cursos extracurriculares
             cursor.execute(
-                "DELETE FROM tb_cursoExtraAlumno WHERE idAlumno = %s", (id_alumno,)
+                "DELETE FROM tb_cursoextraalumno WHERE idAlumno = %s", (id_alumno,)
             )
 
             # 9. Eliminar relación alumno-grupo
