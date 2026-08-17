@@ -148,6 +148,7 @@ class HorariosService:
                     AND h.diaSemana = %s
                     AND h.horaInicio = %s
                     AND h.id_grupo != %s
+                    AND m.id_nivel_academico = g.id_nivel_academico
                     AND (
                         h.es_prehorario = 1
                         OR (h.es_prehorario = 0 AND (g.fechaFin IS NULL OR g.fechaFin >= CURRENT_DATE))
@@ -170,6 +171,7 @@ class HorariosService:
                     AND h.horaInicio = %s
                     AND h.id_grupo != %s
                     AND h.es_prehorario = 0
+                    AND m.id_nivel_academico = g.id_nivel_academico
                 """
 
             cursor.execute(sql_check, (id_docente, dia_semana_val, horaInicio, id_grupo))
