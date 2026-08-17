@@ -136,6 +136,9 @@ class HorariosService:
                 sql_check = """
                     SELECT 
                         h.id_grupo,
+                        h.diaSemana,
+                        h.horaInicio,
+                        h.horaFin,
                         g.clave AS grupo_clave,
                         m.nombreMateria AS materia_nombre
                     FROM tb_horarios h
@@ -154,6 +157,9 @@ class HorariosService:
                 sql_check = """
                     SELECT 
                         h.id_grupo,
+                        h.diaSemana,
+                        h.horaInicio,
+                        h.horaFin,
                         g.clave AS grupo_clave,
                         m.nombreMateria AS materia_nombre
                     FROM tb_horarios h
@@ -170,9 +176,34 @@ class HorariosService:
             existe_empalme = cursor.fetchone()
             
             if existe_empalme:
+                def format_time(t):
+                    if t is None:
+                        return ""
+                    s = str(t)
+                    if "day" in s:
+                        s = s.split(",")[-1].strip()
+                    parts = s.split(":")
+                    if len(parts) >= 2:
+                        return f"{parts[0]}:{parts[1]}"
+                    return s
+
+                day_names = {
+                    1: "Lunes", 2: "Martes", 3: "Miércoles", 4: "Jueves",
+                    5: "Viernes", 6: "Sábado", 7: "Domingo"
+                }
+                dia_val = existe_empalme.get('diaSemana')
+                dia_nombre = day_names.get(dia_val, str(dia_val))
+                h_inicio = format_time(existe_empalme.get('horaInicio'))
+                h_fin = format_time(existe_empalme.get('horaFin'))
+
                 return {
                     "success": False,
-                    "mensaje": f"El docente ya tiene una clase asignada en el grupo '{existe_empalme['grupo_clave']}' con la materia '{existe_empalme['materia_nombre']}' en este horario."
+                    "grupo_clave": existe_empalme['grupo_clave'],
+                    "materia_nombre": existe_empalme['materia_nombre'],
+                    "dia_nombre": dia_nombre,
+                    "hora_inicio": h_inicio,
+                    "hora_fin": h_fin,
+                    "mensaje": f"El docente ya tiene una clase asignada en el grupo '{existe_empalme['grupo_clave']}' con la materia '{existe_empalme['materia_nombre']}' el día {dia_nombre} de {h_inicio} a {h_fin}."
                 }
             return {
                 "success": True,
