@@ -142,8 +142,8 @@ class HorariosService:
                         g.clave AS grupo_clave,
                         m.nombreMateria AS materia_nombre
                     FROM tb_horarios h
-                    LEFT JOIN tb_grupos g ON h.id_grupo = g.id
-                    LEFT JOIN tb_materias m ON h.id_materia = m.id
+                    JOIN tb_grupos g ON h.id_grupo = g.id
+                    JOIN tb_materias m ON h.id_materia = m.id
                     WHERE h.id_docente = %s
                     AND h.diaSemana = %s
                     AND h.horaInicio = %s
@@ -163,8 +163,8 @@ class HorariosService:
                         g.clave AS grupo_clave,
                         m.nombreMateria AS materia_nombre
                     FROM tb_horarios h
-                    LEFT JOIN tb_grupos g ON h.id_grupo = g.id
-                    LEFT JOIN tb_materias m ON h.id_materia = m.id
+                    JOIN tb_grupos g ON h.id_grupo = g.id
+                    JOIN tb_materias m ON h.id_materia = m.id
                     WHERE h.id_docente = %s
                     AND h.diaSemana = %s
                     AND h.horaInicio = %s
