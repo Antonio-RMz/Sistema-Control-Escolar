@@ -195,7 +195,8 @@ def delete_docente(idDocente):
         description: Error interno del servidor
     """
     try:
-        return jsonify(DocentesService.delete_docente(idDocente))
+        resultado, status_code = DocentesService.delete_docente(idDocente)
+        return jsonify(resultado), status_code
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

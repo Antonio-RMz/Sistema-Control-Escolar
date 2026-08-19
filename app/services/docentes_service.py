@@ -186,23 +186,21 @@ class DocentesService:
         conexion = get_connection()
         cursor = conexion.cursor()
         try:
-            # 1. Desvincular materias asociadas al docente (poner a NULL) para no eliminarlas
-            cursor.execute("UPDATE tb_materias SET idDocente = NULL WHERE idDocente = %s", (idDocente,))
-            
-            # 2. Eliminar relaciones en tablas secundarias para evitar errores de llave foránea
+            # 1. Eliminar relaciones en tablas secundarias para evitar errores de llave foránea
+            cursor.execute("DELETE FROM tb_asistencias_alumnos WHERE id_docente = %s", (idDocente,))
             cursor.execute("DELETE FROM tb_asistencias_docentes WHERE id_docente = %s", (idDocente,))
             cursor.execute("DELETE FROM tb_cursoextracurricular WHERE idDocente = %s", (idDocente,))
             cursor.execute("DELETE FROM tb_grupodocentes WHERE idDocente = %s", (idDocente,))
             cursor.execute("DELETE FROM tb_horarios WHERE id_docente = %s", (idDocente,))
             cursor.execute("DELETE FROM tb_materiadocente WHERE idDocente = %s", (idDocente,))
             
-            # 3. Eliminar el docente
+            # 2. Eliminar el docente
             cursor.execute("DELETE FROM tb_docentes WHERE idDocente = %s", (idDocente,))
             conexion.commit()
-            return {"mensaje": "Docente eliminado correctamente"}
+            return {"mensaje": "Docente eliminado correctamente"}, 200
         except Exception as e:
             conexion.rollback()
-            return {"error": str(e)}
+            return {"error": str(e)}, 500
         finally:
             cursor.close()
             conexion.close()

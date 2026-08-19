@@ -126,6 +126,28 @@ class HorariosService:
             else:
                 dia_semana_val = diaSemana
 
+                        # Omitir validacion de conflictos si el grupo ya finalizo (es registro historico)
+            # o si la materia que se programa no pertenece al nivel (trimestre/semestre) activo actual del grupo
+            cursor.execute("SELECT id_nivel_academico, (fechaFin IS NOT NULL AND fechaFin < CURRENT_DATE) AS finalizado FROM tb_grupos WHERE id = %s", (id_grupo,))
+            grupo_info = cursor.fetchone()
+
+            cursor.execute("SELECT id_nivel_academico FROM tb_materias WHERE id = %s", (id_materia,))
+            materia_info = cursor.fetchone()
+
+            if grupo_info and materia_info:
+                if grupo_info.get('finalizado') == 1:
+                    return {
+                        "success": True,
+                        "mensaje": "Grupo finalizado. Omitiendo validacion de empalmes para registros historicos."
+                    }
+                materia_lvl = materia_info.get('id_nivel_academico')
+                grupo_lvl = grupo_info.get('id_nivel_academico')
+                if materia_lvl is not None and grupo_lvl is not None and int(materia_lvl) != int(grupo_lvl):
+                    return {
+                        "success": True,
+                        "mensaje": "La materia no pertenece al nivel activo actual del grupo. Omitiendo validacion."
+                    }
+
             # Validar empalmes
             # Si estamos validando un pre-horario (es_prehorario=1):
             # El docente está ocupado si tiene otro pre-horario asignado en esa hora
@@ -149,10 +171,7 @@ class HorariosService:
                     AND h.horaInicio = %s
                     AND h.id_grupo != %s
                     AND m.id_nivel_academico = g.id_nivel_academico
-                    AND (
-                        h.es_prehorario = 1
-                        OR (h.es_prehorario = 0 AND (g.fechaFin IS NULL OR g.fechaFin >= CURRENT_DATE))
-                    )
+                    AND (g.fechaFin IS NULL OR g.fechaFin >= CURRENT_DATE) AND (h.es_prehorario = 1 OR h.es_prehorario = 0)
                 """
             else:
                 sql_check = """
@@ -172,6 +191,7 @@ class HorariosService:
                     AND h.id_grupo != %s
                     AND h.es_prehorario = 0
                     AND m.id_nivel_academico = g.id_nivel_academico
+                    AND (g.fechaFin IS NULL OR g.fechaFin >= CURRENT_DATE)
                 """
 
             cursor.execute(sql_check, (id_docente, dia_semana_val, horaInicio, id_grupo))
