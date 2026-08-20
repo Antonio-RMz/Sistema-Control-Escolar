@@ -253,7 +253,7 @@ class GruposService:
             query = """
                 SELECT a.*
                 FROM tb_alumnos a
-                INNER JOIN tb_alumnoGrupo ag 
+                INNER JOIN tb_alumnogrupo ag 
                     ON a.idAlumno = ag.idAlumno
                 WHERE ag.idGrupo = %s
             """
@@ -359,8 +359,8 @@ class GruposService:
             cursor.execute("UPDATE tb_alumnos SET idGrupo = NULL WHERE idGrupo = %s", (id_grupo,))
             # 2. Eliminar días del grupo
             cursor.execute("DELETE FROM tb_grupodias WHERE idGrupo = %s", (id_grupo,))
-            # 3. Eliminar relación alumno-grupo en tb_alumnoGrupo
-            cursor.execute("DELETE FROM tb_alumnoGrupo WHERE idGrupo = %s", (id_grupo,))
+            # 3. Eliminar relación alumno-grupo en tb_alumnogrupo
+            cursor.execute("DELETE FROM tb_alumnogrupo WHERE idGrupo = %s", (id_grupo,))
             # 4. Eliminar horarios del grupo
             cursor.execute("DELETE FROM tb_horarios WHERE id_grupo = %s", (id_grupo,))
             # 5. Eliminar el grupo
