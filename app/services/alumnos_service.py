@@ -139,8 +139,8 @@ class AlumnosService:
             equiv_data = data.get("equivalencia") if isinstance(data.get("equivalencia"), dict) else {}
 
             nombre = (alumno_data.get("nombre") or "").strip()
-            ap_paterno = (alumno_data.get("apPaterno") or "").strip()
-            ap_materno = (alumno_data.get("apMaterno") or "").strip()
+            ap_paterno = (alumno_data.get("apPaterno") or "").strip() or None
+            ap_materno = (alumno_data.get("apMaterno") or "").strip() or None
             curp = (alumno_data.get("curp") or "").strip() or None
             fecha_nacimiento = alumno_data.get("fechaNacimiento") or None
             celular_alumno = alumno_data.get("celularAlumno") or None
@@ -190,9 +190,15 @@ class AlumnosService:
             id_generacion = academico_data.get("idGeneracion") or academico_data.get("id_generacion")
             id_grupo = academico_data.get("idGrupo") or academico_data.get("id_grupo")
 
+            # Check if it is a historical record
+            es_historico = observaciones and "[REGISTRO_HISTORICO]" in observaciones
+
             # Validación requeridos básicos de alumno
-            if not nombre or not ap_paterno:
-                return {"error": "El nombre y apellido paterno del alumno son obligatorios."}, 400
+            if not nombre:
+                return {"error": "El nombre del alumno es obligatorio."}, 400
+
+            if not es_historico and not ap_paterno:
+                return {"error": "El apellido paterno del alumno es obligatorio."}, 400
 
             # --- VALIDACIÓN 1: CCT existente ---
             id_programa = None

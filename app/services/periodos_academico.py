@@ -118,7 +118,12 @@ class PeriodoAcademicoService:
                 fecha_inicio_nivel = fecha_fin_nivel + datetime.timedelta(weeks=1)
                 id_nivel = next_id_nivel
 
-            cambio = (id_nivel != id_nivel_actual_db)
+            # Solo permitir avance automático de nivel, nunca retroceso/downgrade
+            # para no sobrescribir la configuración manual del usuario
+            if id_nivel_actual_db is not None:
+                cambio = (id_nivel > id_nivel_actual_db)
+            else:
+                cambio = True
 
             # Capping at group's official fechaFin
             fecha_fin_absoluta = grupo["fechaFin"]
@@ -175,7 +180,8 @@ class PeriodoAcademicoService:
         conexion = get_connection()
         cursor = conexion.cursor(pymysql.cursors.DictCursor)
         try:
-            cursor.execute("SELECT id FROM tb_grupos")
+            # ÚNICAMENTE actualizamos los grupos que estén activos
+            cursor.execute("SELECT id FROM tb_grupos WHERE statusGrupo = 'ACTIVO'")
             grupos = cursor.fetchall()
         finally:
             cursor.close()
