@@ -265,12 +265,14 @@ class HorariosService:
                     TIME_FORMAT(h.horaInicio, '%%H:%%i:%%s') AS horaInicio,
                     TIME_FORMAT(h.horaFin, '%%H:%%i:%%s') AS horaFin,
                     m.nombreMateria AS materia_nombre,
+                    na.nombre AS nivel_nombre,
                     CONCAT_WS(' ', d.nombreDocente, COALESCE(d.apPaternoDocente, ''), COALESCE(d.apMaternoDocente, '')) AS docente_nombre
                 FROM tb_horarios h
                 JOIN tb_grupos g ON h.id_grupo = g.id
                 LEFT JOIN tb_centrotrabajo ct ON g.id_centroTrabajo = ct.id
                 LEFT JOIN tb_materias m ON h.id_materia = m.id
                 LEFT JOIN tb_docentes d ON h.id_docente = d.idDocente
+                LEFT JOIN tb_niveles_academicos na ON g.id_nivel_academico = na.id
                 WHERE h.id_docente = %s
                   AND g.fechaFin >= CURDATE()
                   AND h.es_prehorario = 0
