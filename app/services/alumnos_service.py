@@ -234,7 +234,7 @@ class AlumnosService:
                 if not nivel_row:
                     return {"error": f"El nivel académico con ID {id_nivel_academico} no existe."}, 400
                 
-                if cct_tipo_periodo and nivel_row.get("id_tipoPeriodo") and int(nivel_row.get("id_tipoPeriodo")) != int(cct_tipo_periodo):
+                if not es_historico and cct_tipo_periodo and nivel_row.get("id_tipoPeriodo") and int(nivel_row.get("id_tipoPeriodo")) != int(cct_tipo_periodo):
                     return {
                         "error": f"El nivel académico '{nivel_row.get('nombre')}' no es compatible con el esquema de periodicidad del Centro de Trabajo seleccionado."
                     }, 400
@@ -252,7 +252,7 @@ class AlumnosService:
                 if id_centro_trabajo and grupo_row.get("id_centroTrabajo") and int(grupo_row["id_centroTrabajo"]) != int(id_centro_trabajo):
                     return {"error": "El grupo seleccionado no pertenece al Centro de Trabajo indicado."}, 400
 
-                if id_nivel_academico and grupo_row.get("id_nivel_academico") and int(grupo_row["id_nivel_academico"]) != int(id_nivel_academico):
+                if not es_historico and id_nivel_academico and grupo_row.get("id_nivel_academico") and int(grupo_row["id_nivel_academico"]) != int(id_nivel_academico):
                     return {"error": "El grupo seleccionado no corresponde al nivel académico seleccionado."}, 400
 
                 # Si no se pasó idGeneracion explícito pero el grupo tiene uno, tomar la del grupo
