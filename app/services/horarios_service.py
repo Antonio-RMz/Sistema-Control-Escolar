@@ -148,6 +148,21 @@ class HorariosService:
                         "mensaje": "La materia no pertenece al nivel activo actual del grupo. Omitiendo validacion."
                     }
 
+                        # If exclude_ids is provided, parse it to ensure it is a list of integers
+            exclude_list = []
+            if exclude_ids:
+                if isinstance(exclude_ids, list):
+                    exclude_list = [int(x) for x in exclude_ids if x is not None]
+                elif isinstance(exclude_ids, (int, str)):
+                    exclude_list = [int(exclude_ids)]
+
+            exclude_clause = ""
+            params_check = [id_docente, dia_semana_val, horaInicio]
+            if exclude_list:
+                exclude_clause = f" AND h.id_horario NOT IN ({','.join(['%s'] * len(exclude_list))}) "
+                params_check.extend(exclude_list)
+            params_check.append(id_grupo)
+
             # Validar empalmes
             # Si estamos validando un pre-horario (es_prehorario=1):
             # El docente está ocupado si tiene otro pre-horario asignado en esa hora
@@ -155,7 +170,7 @@ class HorariosService:
             # Si estamos validando un horario regular (es_prehorario=0):
             # El docente está ocupado si tiene otro horario regular asignado en esa hora.
             if int(es_prehorario) == 1:
-                sql_check = """
+                sql_check = f"""
                     SELECT 
                         h.id_grupo,
                         h.diaSemana,
@@ -169,12 +184,13 @@ class HorariosService:
                     WHERE h.id_docente = %s
                     AND h.diaSemana = %s
                     AND h.horaInicio = %s
+                    {exclude_clause}
                     AND h.id_grupo != %s
                     AND m.id_nivel_academico = g.id_nivel_academico
                     AND (g.fechaFin IS NULL OR g.fechaFin >= CURRENT_DATE) AND (h.es_prehorario = 1 OR h.es_prehorario = 0)
                 """
             else:
-                sql_check = """
+                sql_check = f"""
                     SELECT 
                         h.id_grupo,
                         h.diaSemana,
@@ -188,13 +204,14 @@ class HorariosService:
                     WHERE h.id_docente = %s
                     AND h.diaSemana = %s
                     AND h.horaInicio = %s
+                    {exclude_clause}
                     AND h.id_grupo != %s
                     AND h.es_prehorario = 0
                     AND m.id_nivel_academico = g.id_nivel_academico
                     AND (g.fechaFin IS NULL OR g.fechaFin >= CURRENT_DATE)
                 """
 
-            cursor.execute(sql_check, (id_docente, dia_semana_val, horaInicio, id_grupo))
+            cursor.execute(sql_check, tuple(params_check))
             existe_empalme = cursor.fetchone()
             
             if existe_empalme:
@@ -227,10 +244,96 @@ class HorariosService:
                     "hora_fin": h_fin,
                     "mensaje": f"El docente ya tiene una clase asignada en el grupo '{existe_empalme['grupo_clave']}' con la materia '{existe_empalme['materia_nombre']}' el día {dia_nombre} de {h_inicio} a {h_fin}."
                 }
+
+            # Validar empalmes de aula
+            if aula:
+                def format_time(t):
+                    if t is None:
+                        return ""
+                    s = str(t)
+                    if "day" in s:
+                        s = s.split(",")[-1].strip()
+                    parts = s.split(":")
+                    if len(parts) >= 2:
+                        return f"{parts[0]}:{parts[1]}"
+                    return s
+
+                exclude_clause_aula = ""
+                params_aula = [aula, dia_semana_val, horaInicio]
+                if exclude_list:
+                    exclude_clause_aula = f" AND h.id_horario NOT IN ({','.join(['%s'] * len(exclude_list))}) "
+                    params_aula.extend(exclude_list)
+                params_aula.append(id_grupo)
+
+                if int(es_prehorario) == 1:
+                    sql_aula = f"""
+                        SELECT 
+                            h.id_grupo,
+                            h.diaSemana,
+                            h.horaInicio,
+                            h.horaFin,
+                            g.clave AS grupo_clave,
+                            m.nombreMateria AS materia_nombre
+                        FROM tb_horarios h
+                        JOIN tb_grupos g ON h.id_grupo = g.id
+                        JOIN tb_materias m ON h.id_materia = m.id
+                        WHERE h.aula = %s
+                        AND h.diaSemana = %s
+                        AND h.horaInicio = %s
+                        {exclude_clause_aula}
+                        AND h.id_grupo != %s
+                        AND m.id_nivel_academico = g.id_nivel_academico
+                        AND (g.fechaFin IS NULL OR g.fechaFin >= CURRENT_DATE) AND (h.es_prehorario = 1 OR h.es_prehorario = 0)
+                    """
+                else:
+                    sql_aula = f"""
+                        SELECT 
+                            h.id_grupo,
+                            h.diaSemana,
+                            h.horaInicio,
+                            h.horaFin,
+                            g.clave AS grupo_clave,
+                            m.nombreMateria AS materia_nombre
+                        FROM tb_horarios h
+                        JOIN tb_grupos g ON h.id_grupo = g.id
+                        JOIN tb_materias m ON h.id_materia = m.id
+                        WHERE h.aula = %s
+                        AND h.diaSemana = %s
+                        AND h.horaInicio = %s
+                        {exclude_clause_aula}
+                        AND h.id_grupo != %s
+                        AND h.es_prehorario = 0
+                        AND m.id_nivel_academico = g.id_nivel_academico
+                        AND (g.fechaFin IS NULL OR g.fechaFin >= CURRENT_DATE)
+                    """
+
+                cursor.execute(sql_aula, tuple(params_aula))
+                existe_empalme_aula = cursor.fetchone()
+                if existe_empalme_aula:
+                    day_names = {
+                        1: "Lunes", 2: "Martes", 3: "Miércoles", 4: "Jueves",
+                        5: "Viernes", 6: "Sábado", 7: "Domingo"
+                    }
+                    dia_val = existe_empalme_aula.get('diaSemana')
+                    dia_nombre = day_names.get(dia_val, str(dia_val))
+                    h_inicio = format_time(existe_empalme_aula.get('horaInicio'))
+                    h_fin = format_time(existe_empalme_aula.get('horaFin'))
+                    return {
+                        "success": False,
+                        "grupo_clave": existe_empalme_aula['grupo_clave'],
+                        "materia_nombre": existe_empalme_aula['materia_nombre'],
+                        "dia_nombre": dia_nombre,
+                        "hora_inicio": h_inicio,
+                        "hora_fin": h_fin,
+                        "mensaje": f"El aula '{aula}' ya está ocupada por el grupo '{existe_empalme_aula['grupo_clave']}' con la materia '{existe_empalme_aula['materia_nombre']}' el día {dia_nombre} de {h_inicio} a {h_fin}."
+                    }
+
             return {
                 "success": True,
-                "mensaje": "El docente está disponible para ese horario."
+                "mensaje": "El docente y el aula están disponibles para ese horario."
             }
+
+            
         finally:
             cursor.close()
             conexion.close()

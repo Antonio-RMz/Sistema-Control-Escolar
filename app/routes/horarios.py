@@ -102,6 +102,8 @@ def validacionHorario():
         if not data.get("id_grupo") or not data.get("id_materia") or not data.get("id_docente") or not data.get("diaSemana") or not data.get("horaInicio") or not data.get("horaFin"):
             return jsonify({"error": "Faltan datos"}), 400
         es_prehorario = data.get("es_prehorario", 0)
+        aula = data.get("aula")
+        exclude_ids = data.get("exclude_ids")
         return jsonify(HorariosService.validacionHorario(
             data.get("id_grupo"),
             data.get("id_materia"),
@@ -109,7 +111,9 @@ def validacionHorario():
             data.get("diaSemana"),
             data.get("horaInicio"),
             data.get("horaFin"),
-            es_prehorario
+            es_prehorario,
+            aula,
+            exclude_ids
         ))
     except Exception as e:
         return jsonify({"error": str(e)}), 500
