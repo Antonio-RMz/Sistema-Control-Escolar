@@ -20,15 +20,22 @@ class NotificacionesService:
                     a.certificado_incompleto,
                     a.fecha_entrega_certificado,
                     a.trae_boleta,
+                    a.observaciones,
+                    nei.numero AS nivel_ingreso_num,
                     COALESCE(gr.clave, 'Sin Grupo') AS nombreGrupo,
                     ct.nombre AS nombreCentroTrabajo
                 FROM tb_alumnos a
                 LEFT JOIN tb_grupos gr ON a.idGrupo = gr.id
                 LEFT JOIN tb_centrotrabajo ct ON COALESCE(gr.id_centroTrabajo, a.id_nivel_ingreso) = ct.id
+                LEFT JOIN tb_niveles_academicos nei ON a.id_nivel_ingreso = nei.id
                 WHERE a.statusAlumno NOT IN ('BAJA_DEFINITIVA', 'INACTIVO')
                   AND (
                       (a.certificado_incompleto = 'SI' AND (a.fecha_entrega_certificado IS NULL OR a.fecha_entrega_certificado <= CURRENT_DATE))
-                      OR a.trae_boleta = 'NO'
+                      OR (
+                          a.trae_boleta = 'NO'
+                          AND nei.numero > 1
+                          AND (a.observaciones IS NULL OR a.observaciones NOT LIKE '%[REGISTRO_HISTORICO]%')
+                      )
                   )
                 ORDER BY a.apPaterno ASC, a.nombre ASC
             """)
@@ -62,7 +69,10 @@ class NotificacionesService:
                         es_critico = True
                         detalle.append("Falta Certificado parcial (Sin fecha límite registrada)")
                         
-                if al["trae_boleta"] == "NO":
+                nivel_num = al.get("nivel_ingreso_num")
+                obs = al.get("observaciones") or ""
+                es_historico = "[REGISTRO_HISTORICO]" in obs
+                if al["trae_boleta"] == "NO" and nivel_num is not None and nivel_num > 1 and not es_historico:
                     detalle.append("Falta Boleta de calificaciones anteriores")
                     
                 alertas_documentos.append({
