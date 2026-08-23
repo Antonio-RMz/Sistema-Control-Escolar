@@ -74,13 +74,18 @@ class PeriodoAcademicoService:
                 else:
                     id_tipo_periodo = 2  # TRIMESTRAL (default)
 
-            # Determinar el nivel inicial
-            if id_tipo_periodo == 2:
-                id_nivel = 1   # 1er Trimestre
-            elif id_tipo_periodo == 1:
-                id_nivel = 7  # 1er Semestre
-            else:
-                id_nivel = 1
+            # Si es semestral (BTI / Escolarizado), el nivel es estático y no se calcula progreso modular automático
+            if id_tipo_periodo == 1:
+                return {
+                    "id_grupo": id_grupo,
+                    "id_nivel_academico": id_nivel_actual_db or 7,
+                    "fechaInicioNivel": fecha_inicio_absoluta,
+                    "fechaFinNivel": grupo["fechaFin"],
+                    "cambiado": False
+                }
+
+            # Determinar el nivel inicial para Trimestral
+            id_nivel = 1   # 1er Trimestre
 
             fecha_inicio_nivel = fecha_inicio_absoluta
             today = datetime.date.today()
@@ -181,7 +186,7 @@ class PeriodoAcademicoService:
         cursor = conexion.cursor(pymysql.cursors.DictCursor)
         try:
             # ÚNICAMENTE actualizamos los grupos que estén activos
-            cursor.execute("SELECT id FROM tb_grupos WHERE statusGrupo = 'ACTIVO'")
+            cursor.execute("SELECT id, id_tipoPeriodo, id_nivel_academico FROM tb_grupos WHERE statusGrupo = 'ACTIVO'")
             grupos = cursor.fetchall()
         finally:
             cursor.close()
@@ -189,6 +194,19 @@ class PeriodoAcademicoService:
 
         actualizados = 0
         for g in grupos:
+            id_tp = g.get("id_tipoPeriodo")
+            id_niv = g.get("id_nivel_academico")
+            
+            es_semestral = False
+            if id_tp == 1:
+                es_semestral = True
+            elif id_tp is None:
+                if id_niv is not None and id_niv >= 7:
+                    es_semestral = True
+                    
+            if es_semestral:
+                continue # Omitir actualización automática de grupos semestrales (BTI / Escolarizado)
+
             if PeriodoAcademicoService.actualizarNivelGrupo(g["id"]):
                 actualizados += 1
         return actualizados
