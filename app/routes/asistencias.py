@@ -342,5 +342,62 @@ def get_asistencias_hoy():
         conexion.close()
 
 
+@asistencias_bp.route("/asistencias/personal", methods=["GET"])
+def get_asistencias_personal():
+    """
+    Get staff (personal) attendance logs and hours totals
+    """
+    try:
+        fecha_inicio = request.args.get("fecha_inicio")
+        fecha_fin = request.args.get("fecha_fin")
+        id_personal = request.args.get("id_personal")
+        
+        if not fecha_inicio or not fecha_fin:
+            return jsonify({"error": "Faltan parámetros fecha_inicio o fecha_fin"}), 400
+            
+        resultado = AsistenciasService.get_asistencias_personal(fecha_inicio, fecha_fin, id_personal)
+        
+        import datetime
+        import decimal
+        # Convert daily logs
+        for r in resultado["asistencias"]:
+            for k, v in list(r.items()):
+                if isinstance(v, (datetime.timedelta, datetime.date, datetime.datetime)):
+                    r[k] = str(v)
+                elif isinstance(v, decimal.Decimal):
+                    r[k] = float(v)
+                    
+        # Convert summaries
+        for r in resultado["resumen"]:
+            for k, v in list(r.items()):
+                if isinstance(v, (datetime.timedelta, datetime.date, datetime.datetime)):
+                    r[k] = str(v)
+                elif isinstance(v, decimal.Decimal):
+                    r[k] = float(v)
+
+        return jsonify(resultado)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@asistencias_bp.route("/clear_asistencias_personal", methods=["DELETE"])
+def clear_asistencias_personal():
+    """
+    Clear all staff attendance logs
+    """
+    from app.config.conexion import get_connection
+    conexion = get_connection()
+    cursor = conexion.cursor()
+    try:
+        cursor.execute("DELETE FROM tb_asistencias_personal")
+        conexion.commit()
+        return jsonify({"success": True, "message": "Datos de asistencia de personal limpiados correctamente."})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cursor.close()
+        conexion.close()
+
+
 
 

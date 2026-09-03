@@ -16,6 +16,9 @@ class PersonalService:
                     rol, 
                     permisos_modulos, 
                     status,
+                    idBiometrico,
+                    es_servicio_social,
+                    horas_objetivo,
                     createAt,
                     updateAt
                 FROM tb_personal
@@ -23,9 +26,9 @@ class PersonalService:
             """
             params = []
             if search:
-                sql += " AND (nombre LIKE %s OR usuario LIKE %s OR rol LIKE %s)"
+                sql += " AND (nombre LIKE %s OR usuario LIKE %s OR rol LIKE %s OR idBiometrico LIKE %s)"
                 like = f"%{search}%"
-                params.extend([like, like, like])
+                params.extend([like, like, like, like])
             if status:
                 sql += " AND status = %s"
                 params.append(status)
@@ -58,8 +61,8 @@ class PersonalService:
                 permisos_modulos = "inicio,notificaciones,alumnos,docentes,grupos,materias,planes,formatos,generaciones"
 
             query = """
-                INSERT INTO tb_personal (nombre, usuario, password, rol, permisos_modulos, status)
-                VALUES (%s, %s, %s, %s, %s, %s)
+                INSERT INTO tb_personal (nombre, usuario, password, rol, permisos_modulos, status, idBiometrico, es_servicio_social, horas_objetivo)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             """
             cursor.execute(
                 query,
@@ -69,7 +72,10 @@ class PersonalService:
                     data.get("password"),
                     data.get("rol"),
                     permisos_modulos,
-                    data.get("status", "ACTIVO")
+                    data.get("status", "ACTIVO"),
+                    data.get("idBiometrico"),
+                    data.get("es_servicio_social", 0),
+                    data.get("horas_objetivo")
                 )
             )
             conexion.commit()
@@ -87,7 +93,7 @@ class PersonalService:
         cursor = conexion.cursor()
         try:
             cursor.execute("""
-                SELECT idPersonal, nombre, usuario, rol, permisos_modulos, status, createAt, updateAt
+                SELECT idPersonal, nombre, usuario, rol, permisos_modulos, status, idBiometrico, es_servicio_social, horas_objetivo, createAt, updateAt
                 FROM tb_personal
                 WHERE idPersonal = %s
             """, (id_personal,))
@@ -113,14 +119,18 @@ class PersonalService:
 
             sql = """
                 UPDATE tb_personal 
-                SET nombre = %s, usuario = %s, rol = %s, permisos_modulos = %s, status = %s
+                SET nombre = %s, usuario = %s, rol = %s, permisos_modulos = %s, status = %s,
+                    idBiometrico = %s, es_servicio_social = %s, horas_objetivo = %s
             """
             params = [
                 data.get("nombre"),
                 usuario,
                 data.get("rol"),
                 permisos_modulos,
-                data.get("status")
+                data.get("status"),
+                data.get("idBiometrico"),
+                data.get("es_servicio_social", 0),
+                data.get("horas_objetivo")
             ]
 
             if data.get("password"):
@@ -161,7 +171,7 @@ class PersonalService:
         cursor = conexion.cursor()
         try:
             cursor.execute("""
-                SELECT idPersonal, nombre, usuario, password, rol, permisos_modulos, status
+                SELECT idPersonal, nombre, usuario, password, rol, permisos_modulos, status, idBiometrico, es_servicio_social, horas_objetivo
                 FROM tb_personal
                 WHERE usuario = %s AND status = 'ACTIVO'
                 LIMIT 1

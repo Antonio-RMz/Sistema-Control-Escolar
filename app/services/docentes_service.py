@@ -30,7 +30,8 @@ class DocentesService:
                     nivelEstudios,
                     fechaNacimiento,
                     idBiometrico,
-                    permisos_modulos
+                    permisos_modulos,
+                    colorDocente
                 FROM tb_docentes
                 WHERE 1=1
             """
@@ -81,8 +82,8 @@ class DocentesService:
                     return {"error": "El nombre de usuario ya está asignado a otro docente"}
 
             query = """
-                INSERT INTO tb_docentes (nombreDocente, apPaternoDocente, apMaternoDocente, correoDocente, telefonoDocente, statusDocente, observacionesDocente, nivelEstudios, fechaNacimiento, idBiometrico, usuario, password)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO tb_docentes (nombreDocente, apPaternoDocente, apMaternoDocente, correoDocente, telefonoDocente, statusDocente, observacionesDocente, nivelEstudios, fechaNacimiento, idBiometrico, usuario, password, colorDocente)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """
             cursor.execute(
                 query,
@@ -98,7 +99,8 @@ class DocentesService:
                     data.get("fechaNacimiento"),
                     data.get("idBiometrico"),
                     usuario if usuario else None,
-                    data.get("password") if data.get("password") else None
+                    data.get("password") if data.get("password") else None,
+                    data.get("colorDocente") or "#FFFFFF"
                 ),
             )
             conexion.commit()
@@ -130,7 +132,7 @@ class DocentesService:
                     SET nombreDocente = %s, apPaternoDocente = %s, apMaternoDocente = %s, 
                         correoDocente = %s, telefonoDocente = %s, statusDocente = %s, 
                         observacionesDocente = %s, nivelEstudios = %s, fechaNacimiento = %s,
-                        idBiometrico = %s, usuario = %s, password = %s
+                        idBiometrico = %s, usuario = %s, password = %s, colorDocente = %s
                     WHERE idDocente = %s
                 """
                 params = (
@@ -146,6 +148,7 @@ class DocentesService:
                     data.get("idBiometrico"),
                     usuario if usuario else None,
                     password,
+                    data.get("colorDocente") or "#FFFFFF",
                     id_docente
                 )
             else:
@@ -154,7 +157,7 @@ class DocentesService:
                     SET nombreDocente = %s, apPaternoDocente = %s, apMaternoDocente = %s, 
                         correoDocente = %s, telefonoDocente = %s, statusDocente = %s, 
                         observacionesDocente = %s, nivelEstudios = %s, fechaNacimiento = %s,
-                        idBiometrico = %s, usuario = %s
+                        idBiometrico = %s, usuario = %s, colorDocente = %s
                     WHERE idDocente = %s
                 """
                 params = (
@@ -169,6 +172,7 @@ class DocentesService:
                     data.get("fechaNacimiento"),
                     data.get("idBiometrico"),
                     usuario if usuario else None,
+                    data.get("colorDocente") or "#FFFFFF",
                     id_docente
                 )
             cursor.execute(query, params)

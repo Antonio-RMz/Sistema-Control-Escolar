@@ -69,7 +69,8 @@ class HorariosService:
                     TIME_FORMAT(h.horaFin, '%%H:%%i:%%s') AS horaFin,
                     m.nombreMateria AS materia_nombre,
                     CONCAT_WS(' ', d.nombreDocente, COALESCE(d.apPaternoDocente, ''), COALESCE(d.apMaternoDocente, '')) AS docente_nombre,
-                    m.id_nivel_academico AS id_nivel_materia
+                    m.id_nivel_academico AS id_nivel_materia,
+                    d.colorDocente AS docente_color
                 FROM tb_horarios h
                 LEFT JOIN tb_materias m ON h.id_materia = m.id
                 LEFT JOIN tb_docentes d ON h.id_docente = d.idDocente
@@ -93,6 +94,7 @@ class HorariosService:
                         "horaFin": h["horaFin"],
                         "id_docente": h["id_docente"],
                         "docente_nombre": h["docente_nombre"],
+                        "docente_color": h.get("docente_color") or "#FFFFFF",
                         "aula": h["aula"],
                         "clases": []
                     }
@@ -102,6 +104,7 @@ class HorariosService:
                     "materia_nombre": h["materia_nombre"],
                     "id_docente": h["id_docente"],
                     "docente_nombre": h["docente_nombre"],
+                    "docente_color": h.get("docente_color") or "#FFFFFF",
                     "id_nivel_materia": h["id_nivel_materia"],
                     "aula": h["aula"]
                 })
@@ -369,7 +372,8 @@ class HorariosService:
                     TIME_FORMAT(h.horaFin, '%%H:%%i:%%s') AS horaFin,
                     m.nombreMateria AS materia_nombre,
                     na.nombre AS nivel_nombre,
-                    CONCAT_WS(' ', d.nombreDocente, COALESCE(d.apPaternoDocente, ''), COALESCE(d.apMaternoDocente, '')) AS docente_nombre
+                    CONCAT_WS(' ', d.nombreDocente, COALESCE(d.apPaternoDocente, ''), COALESCE(d.apMaternoDocente, '')) AS docente_nombre,
+                    d.colorDocente AS docente_color
                 FROM tb_horarios h
                 JOIN tb_grupos g ON h.id_grupo = g.id
                 LEFT JOIN tb_centrotrabajo ct ON g.id_centroTrabajo = ct.id

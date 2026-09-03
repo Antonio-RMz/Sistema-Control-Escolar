@@ -186,7 +186,7 @@ class PeriodoAcademicoService:
         cursor = conexion.cursor(pymysql.cursors.DictCursor)
         try:
             # ÚNICAMENTE actualizamos los grupos que estén activos
-            cursor.execute("SELECT id, id_tipoPeriodo, id_nivel_academico FROM tb_grupos WHERE statusGrupo = 'ACTIVO'")
+            cursor.execute("SELECT id, id_tipoPeriodo, id_nivel_academico, id_centroTrabajo, clave FROM tb_grupos WHERE statusGrupo = 'ACTIVO'")
             grupos = cursor.fetchall()
         finally:
             cursor.close()
@@ -196,9 +196,16 @@ class PeriodoAcademicoService:
         for g in grupos:
             id_tp = g.get("id_tipoPeriodo")
             id_niv = g.get("id_nivel_academico")
+            id_cct = g.get("id_centroTrabajo")
+            clave = g.get("clave") or ""
             
             es_semestral = False
+            # BTI (id_centroTrabajo = 2) e Informatica (id_centroTrabajo = 1) son planes semestrales
             if id_tp == 1:
+                es_semestral = True
+            elif id_cct in (1, 2):
+                es_semestral = True
+            elif str(clave).upper().startswith("BTI"):
                 es_semestral = True
             elif id_tp is None:
                 if id_niv is not None and id_niv >= 7:
