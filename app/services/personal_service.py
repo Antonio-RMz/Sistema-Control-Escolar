@@ -53,6 +53,22 @@ class PersonalService:
             cursor.execute("SELECT idPersonal FROM tb_personal WHERE usuario = %s", (usuario,))
             if cursor.fetchone():
                 return {"error": "El nombre de usuario ya está asignado a otra cuenta de personal"}
+
+            # Validar idBiometrico duplicado
+            id_bio = data.get("idBiometrico")
+            if id_bio is not None and str(id_bio).strip() != "":
+                id_bio = str(id_bio).strip()
+                cursor.execute("SELECT idPersonal, nombre FROM tb_personal WHERE idBiometrico = %s", (id_bio,))
+                p_dup = cursor.fetchone()
+                if p_dup:
+                    return {"error": f"El ID Biométrico '{id_bio}' ya está asignado al personal '{p_dup['nombre']}'."}
+
+                cursor.execute("SELECT idDocente, nombreDocente FROM tb_docentes WHERE idBiometrico = %s", (id_bio,))
+                d_dup = cursor.fetchone()
+                if d_dup:
+                    return {"error": f"El ID Biométrico '{id_bio}' ya está asignado al docente '{d_dup['nombreDocente']}'."}
+            else:
+                id_bio = None
             
             permisos_modulos = data.get("permisos_modulos")
             if isinstance(permisos_modulos, list):
@@ -73,7 +89,7 @@ class PersonalService:
                     data.get("rol"),
                     permisos_modulos,
                     data.get("status", "ACTIVO"),
-                    data.get("idBiometrico"),
+                    id_bio,
                     data.get("es_servicio_social", 0),
                     data.get("horas_objetivo")
                 )
@@ -112,6 +128,22 @@ class PersonalService:
             cursor.execute("SELECT idPersonal FROM tb_personal WHERE usuario = %s AND idPersonal != %s", (usuario, id_personal))
             if cursor.fetchone():
                 return {"error": "El nombre de usuario ya está asignado a otra cuenta de personal"}
+
+            # Validar idBiometrico duplicado
+            id_bio = data.get("idBiometrico")
+            if id_bio is not None and str(id_bio).strip() != "":
+                id_bio = str(id_bio).strip()
+                cursor.execute("SELECT idPersonal, nombre FROM tb_personal WHERE idBiometrico = %s AND idPersonal != %s", (id_bio, id_personal))
+                p_dup = cursor.fetchone()
+                if p_dup:
+                    return {"error": f"El ID Biométrico '{id_bio}' ya está asignado al personal '{p_dup['nombre']}'."}
+
+                cursor.execute("SELECT idDocente, nombreDocente FROM tb_docentes WHERE idBiometrico = %s", (id_bio,))
+                d_dup = cursor.fetchone()
+                if d_dup:
+                    return {"error": f"El ID Biométrico '{id_bio}' ya está asignado al docente '{d_dup['nombreDocente']}'."}
+            else:
+                id_bio = None
             
             permisos_modulos = data.get("permisos_modulos")
             if isinstance(permisos_modulos, list):
@@ -128,7 +160,7 @@ class PersonalService:
                 data.get("rol"),
                 permisos_modulos,
                 data.get("status"),
-                data.get("idBiometrico"),
+                id_bio,
                 data.get("es_servicio_social", 0),
                 data.get("horas_objetivo")
             ]

@@ -83,8 +83,8 @@ def save_calificaciones(idAlumno):
         user = data.get("user", "SISTEMA") if isinstance(data, dict) else "SISTEMA"
 
         resultado = CalificacionesService.guardar_calificaciones_alumno(idAlumno, calificaciones, user)
-        if "error" in resultado:
-            return jsonify(resultado), 500
+        if not resultado or "error" in resultado:
+            return jsonify(resultado or {"error": "Error desconocido al procesar las calificaciones"}), 500
         return jsonify(resultado)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -175,8 +175,8 @@ def save_calificaciones_grupo_materia(idGrupo, idMateria):
         resultado = CalificacionesService.guardar_calificaciones_grupo_materia(
             idGrupo, idMateria, calificaciones, user, id_docente=id_docente, rol=rol, finalizar=finalizar
         )
-        if "error" in resultado:
-            return jsonify(resultado), 500
+        if not resultado or "error" in resultado:
+            return jsonify(resultado or {"error": "Error desconocido al procesar las calificaciones"}), 500
         return jsonify(resultado)
     except Exception as e:
         return jsonify({"error": str(e)}), 500

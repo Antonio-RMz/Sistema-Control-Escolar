@@ -441,6 +441,12 @@ class CalificacionesService:
             return {"success": True, "message": "Calificaciones guardadas exitosamente"}
         except Exception as e:
             conexion.rollback()
+            return {"error": str(e)}
+        finally:
+            cursor.close()
+            conexion.close()
+
+    @staticmethod
     def check_captura_permission(id_grupo, id_materia, id_docente, rol):
         conexion = get_connection()
         cursor = conexion.cursor(pymysql.cursors.DictCursor)
