@@ -771,9 +771,9 @@ class CalificacionesService:
                 # Determinar si cada alumno tiene estatus de equivalencia para este periodo
                 for a in alumnos_califs:
                     is_equiv = False
-                    if a.get("equivalencia") == "SI" and a.get("numeroNivelIngreso") is not None:
-                        if int(a["numeroNivelIngreso"]) > numero_nivel_materia:
-                            is_equiv = True
+                    # Se considera equivalencia si ya está registrado explícitamente como EQUIVALENCIA
+                    if str(a.get("tipoAcreditacion") or "").upper() == "EQUIVALENCIA":
+                        is_equiv = True
                     a["es_equivalencia"] = is_equiv
 
             # 4. Lógica de permisos de captura
@@ -871,20 +871,23 @@ class CalificacionesService:
                 if not perm_res['allowed']:
                     return {"error": perm_res['reason']}
 
-            # 2. Validar rango de calificaciones (0 a 10) para BTI (CCT 2) y BGNE (CCT 3)
+            # 2. Validar rango de calificaciones (enteros 1 a 10) para BTI (CCT 2) y BGNE (CCT 3)
             cursor.execute("SELECT id_centroTrabajo FROM tb_grupos WHERE id = %s", (id_grupo,))
             grupo_row = cursor.fetchone()
             id_cct = grupo_row.get("id_centroTrabajo") if grupo_row else None
             
             if id_cct in [2, 3]:
                 for item in calificaciones:
+                    # Las equivalencias se gestionan de forma especial
+                    if str(item.get("tipoAcreditacion") or "").upper() == "EQUIVALENCIA":
+                        continue
                     for fld in ["calificacion", "parcial1", "parcial2", "parcial3", "semestral", "extraordinario"]:
                         val = item.get(fld)
                         if val is not None and val != "":
                             try:
                                 f_val = float(val)
-                                if f_val < 0.0 or f_val > 10.0:
-                                    return {"error": f"La calificacion '{fld}' ({f_val}) esta fuera del rango permitido (0 a 10)."}
+                                if f_val < 1.0 or f_val > 10.0:
+                                    return {"error": f"La calificacion '{fld}' ({f_val}) debe ser un numero entero del 1 al 10."}
                             except ValueError:
                                 return {"error": f"La calificacion '{fld}' no es un numero valido."}
 
@@ -892,10 +895,48 @@ class CalificacionesService:
                 id_alumno = item.get("idAlumno")
                 calificacion = item.get("calificacion")
                 observaciones = item.get("observaciones") or ""
-                tipo_acred = item.get("tipoAcreditacion") or "ORDINARIO"
+                tipo_acred = (item.get("tipoAcreditacion") or "ORDINARIO").strip().upper()
 
-                if not id_alumno or calificacion is None or calificacion == "":
+                if not id_alumno:
                     continue
+
+                if tipo_acred == "EQUIVALENCIA":
+                    # Limpiar cualquier calificacion ordinaria previa para este alumno y materia
+                    cursor.execute("""
+                        DELETE FROM tb_calificaciones 
+                        WHERE idAlumno = %s AND idMateria = %s AND tipoAcreditacion != 'EQUIVALENCIA'
+                    """, (id_alumno, id_materia))
+
+                    cursor.execute("""
+                        SELECT id FROM tb_calificaciones 
+                        WHERE idAlumno = %s AND idMateria = %s AND tipoAcreditacion = 'EQUIVALENCIA'
+                    """, (id_alumno, id_materia))
+                    existente = cursor.fetchone()
+
+                    if existente:
+                        cursor.execute("""
+                            UPDATE tb_calificaciones 
+                            SET calificacion = 0.0, idGrupo = %s, observaciones = %s,
+                                parcial1 = NULL, parcial2 = NULL, parcial3 = NULL, semestral = NULL, extraordinario = NULL,
+                                updateBy = %s, updateAt = CURRENT_TIMESTAMP
+                            WHERE id = %s
+                        """, (id_grupo, observaciones, create_by, existente["id"]))
+                    else:
+                        cursor.execute("""
+                            INSERT INTO tb_calificaciones (
+                                idAlumno, idMateria, idGrupo, calificacion, tipoAcreditacion, observaciones, fechaEvaluacion, createBy
+                            ) VALUES (%s, %s, %s, 0.0, 'EQUIVALENCIA', %s, CURRENT_DATE, %s)
+                        """, (id_alumno, id_materia, id_grupo, observaciones, create_by))
+                    continue
+
+                if calificacion is None or calificacion == "":
+                    continue
+
+                # Al guardar ordinario, asegurarse de limpiar cualquier registro previo de equivalencia
+                cursor.execute("""
+                    DELETE FROM tb_calificaciones 
+                    WHERE idAlumno = %s AND idMateria = %s AND tipoAcreditacion = 'EQUIVALENCIA'
+                """, (id_alumno, id_materia))
 
                 calif_val = float(calificacion)
                 
