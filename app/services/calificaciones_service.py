@@ -602,7 +602,12 @@ class CalificacionesService:
             if not grupo:
                 return {"error": "Grupo no encontrado"}
 
-            # 2. Obtener materias y docentes asociados a este grupo (de tb_horarios o del CCT)
+            # 2. Obtener materias y docentes asociados a este grupo
+            id_cct_grupo = grupo.get("id_centro_trabajo") or grupo.get("id_centroTrabajo") or 3
+            is_docente = rol and rol.upper() == 'DOCENTE'
+            group_level = grupo.get("id_nivel_academico")
+
+            # A) Horarios y docentes asignados en tb_horarios para este grupo
             cursor.execute("""
                 SELECT DISTINCT 
                     m.id AS idMateria,
@@ -622,10 +627,20 @@ class CalificacionesService:
                 WHERE h.id_grupo = %s
                 ORDER BY ordenMateria ASC
             """, (id_grupo,))
-            materias_horario = cursor.fetchall()
+            materias_horario_db = cursor.fetchall()
 
-            # Si no hay materias en tb_horarios para este grupo, traer las materias de su CCT/Nivel
-            if not materias_horario:
+            if is_docente and id_docente:
+                # Filtrar materias si es rol DOCENTE: solo sus materias asignadas en este grupo y nivel
+                filtered_materias = []
+                for m in materias_horario_db:
+                    match_docente = m.get("id_docente") is not None and int(m["id_docente"]) == int(id_docente)
+                    match_level = m.get("id_nivel_academico") is None or (group_level is not None and int(m["id_nivel_academico"]) == int(group_level))
+                    if match_docente and match_level:
+                        filtered_materias.append(m)
+                materias_horario = filtered_materias
+            else:
+                # Para Administrador y Control Escolar:
+                # Todas las materias activas declaradas para el CCT siempre deben estar disponibles por trimestre/periodo
                 cursor.execute("""
                     SELECT 
                         m.id AS idMateria,
@@ -640,23 +655,39 @@ class CalificacionesService:
                         COALESCE(m.orden, m.id) AS ordenMateria
                     FROM tb_materias m
                     LEFT JOIN tb_niveles_academicos na ON m.id_nivel_academico = na.id
-                    WHERE m.idCentroTrabajo = %s OR m.idCentroTrabajo IS NULL
-                    ORDER BY m.id_nivel_academico ASC, ordenMateria ASC
-                """, (grupo.get("id_centro_trabajo") or grupo.get("id_centroTrabajo") or 3,))
-                materias_horario = cursor.fetchall()
+                    WHERE (m.idCentroTrabajo = %s OR m.idCentroTrabajo IS NULL)
+                      AND (m.estatusMateria = 'ACTIVA' OR m.estatusMateria IS NULL)
+                    ORDER BY na.numero ASC, ordenMateria ASC
+                """, (id_cct_grupo,))
+                todas_materias_cct = cursor.fetchall()
 
-            # Filtrar materias si es rol DOCENTE
-            is_docente = rol and rol.upper() == 'DOCENTE'
-            group_level = grupo.get("id_nivel_academico")
-            
-            if is_docente and id_docente:
-                filtered_materias = []
-                for m in materias_horario:
-                    match_docente = m.get("id_docente") is not None and int(m["id_docente"]) == int(id_docente)
-                    match_level = m.get("id_nivel_academico") is None or (group_level is not None and int(m["id_nivel_academico"]) == int(group_level))
-                    if match_docente and match_level:
-                        filtered_materias.append(m)
-                materias_horario = filtered_materias
+                # Mapear las materias que ya tienen docente asignado en tb_horarios
+                mapa_horarios = {m["idMateria"]: m for m in materias_horario_db}
+
+                lista_combinada = []
+                ids_procesados = set()
+
+                for m in todas_materias_cct:
+                    mid = m["idMateria"]
+                    if mid in mapa_horarios:
+                        lista_combinada.append(mapa_horarios[mid])
+                    else:
+                        lista_combinada.append(m)
+                    ids_procesados.add(mid)
+
+                # Mantener cualquier materia adicional que pudiera estar en tb_horarios
+                for m in materias_horario_db:
+                    if m["idMateria"] not in ids_procesados:
+                        lista_combinada.append(m)
+                        ids_procesados.add(m["idMateria"])
+
+                materias_horario = sorted(
+                    lista_combinada,
+                    key=lambda x: (
+                        x.get("numeroNivel") if x.get("numeroNivel") is not None else 99,
+                        x.get("ordenMateria") if x.get("ordenMateria") is not None else x.get("idMateria", 0)
+                    )
+                )
 
             # Si no hay id_materia, tomar la primera
             if not id_materia and materias_horario:
@@ -673,7 +704,11 @@ class CalificacionesService:
                         id_materia = first_horario["id_materia"]
                 
                 if not id_materia:
-                    id_materia = materias_horario[0]["idMateria"]
+                    mats_mismo_nivel = [m["idMateria"] for m in materias_horario if group_level is not None and m.get("id_nivel_academico") == group_level]
+                    if mats_mismo_nivel:
+                        id_materia = mats_mismo_nivel[0]
+                    else:
+                        id_materia = materias_horario[0]["idMateria"]
 
             # Docente de la materia seleccionada
             materia_seleccionada = None
