@@ -630,12 +630,8 @@ class CalificacionesService:
             """, (id_grupo,))
             materias_horario_db = cursor.fetchall()
 
-            # Para grupos BTI escolarizados: los horarios deben coincidir estrictamente con el nivel del grupo
-            if is_bti and group_level:
-                materias_horario_db = [m for m in materias_horario_db if m.get("id_nivel_academico") is None or int(m["id_nivel_academico"]) == int(group_level)]
-
             if is_docente and id_docente:
-                # Filtrar materias si es rol DOCENTE: solo sus materias asignadas en este grupo y nivel
+                # Si es rol DOCENTE: filtrar solo sus materias asignadas en este grupo
                 filtered_materias = []
                 for m in materias_horario_db:
                     match_docente = m.get("id_docente") is not None and int(m["id_docente"]) == int(id_docente)
@@ -645,49 +641,26 @@ class CalificacionesService:
                 materias_horario = filtered_materias
             else:
                 # Para Administrador y Control Escolar:
-                if is_bti and group_level:
-                    # En BTI (escolarizado semestral), cargar únicamente las materias del semestre del grupo
-                    cursor.execute("""
-                        SELECT 
-                            m.id AS idMateria,
-                            m.nombreMateria,
-                            m.clave AS claveMateria,
-                            m.id_nivel_academico,
-                            na.nombre AS nombreNivel,
-                            na.numero AS numeroNivel,
-                            NULL AS id_docente,
-                            'Sin docente asignado' AS nombreDocente,
-                            NULL AS nivelEstudios,
-                            COALESCE(m.orden, m.id) AS ordenMateria
-                        FROM tb_materias m
-                        LEFT JOIN tb_niveles_academicos na ON m.id_nivel_academico = na.id
-                        WHERE (m.idCentroTrabajo = %s OR m.idCentroTrabajo IS NULL)
-                          AND (m.estatusMateria = 'ACTIVA' OR m.estatusMateria IS NULL)
-                          AND m.id_nivel_academico = %s
-                        ORDER BY na.numero ASC, ordenMateria ASC
-                    """, (id_cct_grupo, group_level))
-                    todas_materias_cct = cursor.fetchall()
-                else:
-                    # Para BGNE u otros: Todas las materias activas declaradas para el CCT siempre deben estar disponibles por trimestre/periodo
-                    cursor.execute("""
-                        SELECT 
-                            m.id AS idMateria,
-                            m.nombreMateria,
-                            m.clave AS claveMateria,
-                            m.id_nivel_academico,
-                            na.nombre AS nombreNivel,
-                            na.numero AS numeroNivel,
-                            NULL AS id_docente,
-                            'Sin docente asignado' AS nombreDocente,
-                            NULL AS nivelEstudios,
-                            COALESCE(m.orden, m.id) AS ordenMateria
-                        FROM tb_materias m
-                        LEFT JOIN tb_niveles_academicos na ON m.id_nivel_academico = na.id
-                        WHERE (m.idCentroTrabajo = %s OR m.idCentroTrabajo IS NULL)
-                          AND (m.estatusMateria = 'ACTIVA' OR m.estatusMateria IS NULL)
-                        ORDER BY na.numero ASC, ordenMateria ASC
-                    """, (id_cct_grupo,))
-                    todas_materias_cct = cursor.fetchall()
+                # Todas las materias activas declaradas para el CCT siempre deben estar disponibles (todos los semestres/trimestres)
+                cursor.execute("""
+                    SELECT 
+                        m.id AS idMateria,
+                        m.nombreMateria,
+                        m.clave AS claveMateria,
+                        m.id_nivel_academico,
+                        na.nombre AS nombreNivel,
+                        na.numero AS numeroNivel,
+                        NULL AS id_docente,
+                        'Sin docente asignado' AS nombreDocente,
+                        NULL AS nivelEstudios,
+                        COALESCE(m.orden, m.id) AS ordenMateria
+                    FROM tb_materias m
+                    LEFT JOIN tb_niveles_academicos na ON m.id_nivel_academico = na.id
+                    WHERE (m.idCentroTrabajo = %s OR m.idCentroTrabajo IS NULL)
+                      AND (m.estatusMateria = 'ACTIVA' OR m.estatusMateria IS NULL)
+                    ORDER BY na.numero ASC, ordenMateria ASC
+                """, (id_cct_grupo,))
+                todas_materias_cct = cursor.fetchall()
 
                 # Mapear las materias que ya tienen docente asignado en tb_horarios
                 mapa_horarios = {m["idMateria"]: m for m in materias_horario_db}
@@ -703,12 +676,11 @@ class CalificacionesService:
                         lista_combinada.append(m)
                     ids_procesados.add(mid)
 
-                # Mantener cualquier materia adicional que pudiera estar en tb_horarios (solo del nivel si es BTI)
+                # Mantener cualquier materia adicional que pudiera estar en tb_horarios
                 for m in materias_horario_db:
                     if m["idMateria"] not in ids_procesados:
-                        if not (is_bti and group_level) or (m.get("id_nivel_academico") is None or int(m["id_nivel_academico"]) == int(group_level)):
-                            lista_combinada.append(m)
-                            ids_procesados.add(m["idMateria"])
+                        lista_combinada.append(m)
+                        ids_procesados.add(m["idMateria"])
 
                 materias_horario = sorted(
                     lista_combinada,
