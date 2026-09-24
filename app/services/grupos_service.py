@@ -255,7 +255,7 @@ class GruposService:
                 FROM tb_alumnos a
                 INNER JOIN tb_alumnogrupo ag 
                     ON a.idAlumno = ag.idAlumno
-                WHERE ag.idGrupo = %s
+                WHERE ag.idGrupo = %s AND a.statusAlumno = 'ACTIVO'
             """
             cursor.execute(query, (id_grupo,))
             return cursor.fetchall()

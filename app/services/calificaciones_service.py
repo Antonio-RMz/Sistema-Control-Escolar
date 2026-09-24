@@ -769,7 +769,7 @@ class CalificacionesService:
                     FROM tb_alumnos a
                     LEFT JOIN tb_niveles_academicos nei ON a.id_nivel_ingreso = nei.id
                     LEFT JOIN tb_calificaciones c ON c.idAlumno = a.idAlumno AND c.idMateria = %s
-                    WHERE a.idGrupo = %s
+                    WHERE a.idGrupo = %s AND a.statusAlumno = 'ACTIVO'
                     ORDER BY a.apPaterno ASC, a.apMaterno ASC, a.nombre ASC
                 """, (id_materia, id_grupo))
                 alumnos_califs = cursor.fetchall()

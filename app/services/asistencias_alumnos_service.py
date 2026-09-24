@@ -87,10 +87,10 @@ class AsistenciasAlumnosService:
 
             # 6. Obtener alumnos del grupo
             cursor.execute("""
-                SELECT a.idAlumno, a.nombre AS nombreAlumno, a.apPaterno AS apPaternoAlumno, a.apMaterno AS apMaternoAlumno, a.numeroControl AS matricula, ag.estado
+                SELECT a.idAlumno, a.nombre AS nombreAlumno, a.apPaterno AS apPaternoAlumno, a.apMaterno AS apMaternoAlumno, a.numeroControl AS matricula, ag.estado, a.statusAlumno
                 FROM tb_alumnogrupo ag
                 JOIN tb_alumnos a ON ag.idAlumno = a.idAlumno
-                WHERE ag.idGrupo = %s AND ag.estado = 'ACTIVO'
+                WHERE ag.idGrupo = %s AND ag.estado = 'ACTIVO' AND a.statusAlumno = 'ACTIVO'
                 ORDER BY a.apPaterno, a.apMaterno, a.nombre
             """, (id_grupo,))
             alumnos = cursor.fetchall()
