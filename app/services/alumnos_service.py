@@ -5,7 +5,7 @@ import math
 
 class AlumnosService:
     @staticmethod
-    def get_alumnos(page=1, limit=50, generacion=None, idGrupo=None, search="", id_centro_trabajo=None, status_alumno=None, order="ASC"):
+    def get_alumnos(page=1, limit=50, generacion=None, idGrupo=None, search="", id_centro_trabajo=None, status_alumno=None, modalidad_estudio=None, order="ASC"):
         conexion = get_connection()
         cursor = conexion.cursor()
 
@@ -36,6 +36,10 @@ class AlumnosService:
             if status_alumno:
                 where.append("a.statusAlumno = %s")
                 valores.append(status_alumno)
+
+            if modalidad_estudio:
+                where.append("a.modalidad_estudio = %s")
+                valores.append(modalidad_estudio)
 
             if search:
                 palabras = search.strip().split()
@@ -83,6 +87,13 @@ class AlumnosService:
                     a.numeroControl,
                     a.statusAlumno,
                     a.curp,
+                    a.modalidad_estudio,
+                    a.dia_pago,
+                    a.moodle_user_id,
+                    a.moodle_username,
+                    a.moodle_password,
+                    a.semana_actual_pagada,
+                    a.fecha_proximo_pago,
                     g.generacion AS nombreGeneracionTexto,
                     gr.clave AS nombreGrupoTexto,
                     d.calle,
@@ -96,7 +107,14 @@ class AlumnosService:
                     cert.fechaRecogioCertificado,
                     CONCAT_WS(' ', c.nombre, c.apPaterno, c.apMaterno) AS tutor,
                     ac.parentesco,
-                    COALESCE(c.telefono, c.celular) AS telefonoTutor
+                    COALESCE(c.telefono, c.celular) AS telefonoTutor,
+                    COALESCE(a.modalidad_estudio, 'PRESENCIAL') AS modalidad_estudio,
+                    COALESCE(a.dia_pago, 'SABADO') AS dia_pago,
+                    a.moodle_user_id,
+                    a.moodle_username,
+                    a.moodle_password,
+                    COALESCE(a.semana_actual_pagada, 0) AS semana_actual_pagada,
+                    a.fecha_proximo_pago
                 FROM tb_alumnos a
                 LEFT JOIN tb_generaciones g ON a.idGeneracion = g.id
                 LEFT JOIN tb_grupos gr ON a.idGrupo = gr.id
@@ -623,7 +641,14 @@ class AlumnosService:
                     cert.fechaEmision AS fechaEmisionCertificado,
                     CONCAT_WS(' ', c.nombre, c.apPaterno, c.apMaterno) AS tutor,
                     ac.parentesco,
-                    COALESCE(c.telefono, c.celular) AS telefonoTutor
+                    COALESCE(c.telefono, c.celular) AS telefonoTutor,
+                    COALESCE(a.modalidad_estudio, 'PRESENCIAL') AS modalidad_estudio,
+                    COALESCE(a.dia_pago, 'SABADO') AS dia_pago,
+                    a.moodle_user_id,
+                    a.moodle_username,
+                    a.moodle_password,
+                    COALESCE(a.semana_actual_pagada, 0) AS semana_actual_pagada,
+                    a.fecha_proximo_pago
                 FROM tb_alumnos a
                 LEFT JOIN tb_generaciones g ON a.idGeneracion = g.id
                 LEFT JOIN tb_grupos gr ON a.idGrupo = gr.id
@@ -699,6 +724,15 @@ class AlumnosService:
                 id_alumno,
             )
             cursor.execute(query, values)
+
+            # 1.1 Actualizar modalidad de estudio y dia_pago si se especifican
+            if "modalidad_estudio" in data or "dia_pago" in data:
+                mod_est = data.get("modalidad_estudio") or "PRESENCIAL"
+                dia_p = data.get("dia_pago") or "SABADO"
+                cursor.execute(
+                    "UPDATE tb_alumnos SET modalidad_estudio = %s, dia_pago = %s WHERE idAlumno = %s",
+                    (mod_est, dia_p, id_alumno)
+                )
 
             # 2. Actualizar / Insertar dirección en tb_direcciones_alumno
             calle = data.get("calle")
@@ -823,6 +857,13 @@ class AlumnosService:
                     a.numeroControl,
                     a.statusAlumno,
                     a.curp,
+                    a.modalidad_estudio,
+                    a.dia_pago,
+                    a.moodle_user_id,
+                    a.moodle_username,
+                    a.moodle_password,
+                    a.semana_actual_pagada,
+                    a.fecha_proximo_pago,
                     g.generacion AS nombreGeneracionTexto,
                     gr.clave AS nombreGrupoTexto,
                     d.calle,
@@ -909,6 +950,13 @@ class AlumnosService:
                     a.numeroControl,
                     a.statusAlumno,
                     a.curp,
+                    a.modalidad_estudio,
+                    a.dia_pago,
+                    a.moodle_user_id,
+                    a.moodle_username,
+                    a.moodle_password,
+                    a.semana_actual_pagada,
+                    a.fecha_proximo_pago,
                     g.generacion AS nombreGeneracionTexto,
                     d.calle,
                     d.colonia,
@@ -951,6 +999,312 @@ class AlumnosService:
             )
             conexion.commit()
             return {"mensaje": "Alumno asignado al grupo correctamente"}
+        finally:
+            cursor.close()
+            conexion.close()
+
+    @staticmethod
+    def _calcular_proxima_fecha_pago(dia_pago_nombre, semanas_adelante=1):
+        """Calcula la fecha del próximo día de cobro (SABADO o DOMINGO)"""
+        import datetime
+        dias_map = {
+            'LUNES': 0, 'MARTES': 1, 'MIERCOLES': 2, 'JUEVES': 3,
+            'VIERNES': 4, 'SABADO': 5, 'DOMINGO': 6
+        }
+        target_day = dias_map.get(str(dia_pago_nombre).upper(), 5) # Default SABADO
+        hoy = datetime.date.today()
+        dias_faltantes = (target_day - hoy.weekday()) % 7
+        if dias_faltantes == 0 and semanas_adelante > 0:
+            dias_faltantes = 7
+        fecha_proxima = hoy + datetime.timedelta(days=dias_faltantes)
+        return fecha_proxima
+
+    @staticmethod
+    def cambiar_modalidad_online(id_alumno, data):
+        from app.services.moodle_service import MoodleService
+        import datetime
+        conexion = get_connection()
+        cursor = conexion.cursor()
+        try:
+            cursor.execute("SELECT * FROM tb_alumnos WHERE idAlumno = %s", (id_alumno,))
+            alumno = cursor.fetchone()
+            if not alumno:
+                return {"success": False, "error": "Alumno no encontrado"}, 404
+
+            # REGLA ESTRICTA: El alumno debe estar ligado sí o sí a un grupo
+            id_grupo = data.get("idGrupo") or alumno.get("idGrupo")
+            if not id_grupo or int(id_grupo) <= 0:
+                return {
+                    "success": False,
+                    "error": "El alumno debe estar asignado sí o sí a un grupo antes de cambiar a modalidad en línea."
+                }, 400
+
+            dia_pago = str(data.get("dia_pago", "SABADO")).upper()
+            if dia_pago not in ['LUNES','MARTES','MIERCOLES','JUEVES','VIERNES','SABADO','DOMINGO']:
+                dia_pago = 'SABADO'
+
+            num_ctrl = alumno.get("numeroControl") or alumno.get("curp") or f"alu{id_alumno}"
+            username = str(data.get("moodle_username") or num_ctrl).lower().strip()
+            password = str(data.get("moodle_password") or f"Bti.{username}*")
+
+            cursor.execute("SELECT id_curso_moodle, clave FROM tb_grupos WHERE id = %s", (id_grupo,))
+            grupo_info = cursor.fetchone() or {}
+            course_id = data.get("id_curso_moodle") or grupo_info.get("id_curso_moodle") or 50
+
+            moodle_res = MoodleService.crear_usuario(
+                username=username,
+                password=password,
+                firstname=alumno.get("nombre"),
+                lastname=f"{alumno.get('apPaterno', '')} {alumno.get('apMaterno', '')}".strip(),
+                email=alumno.get("correoAlumno")
+            )
+            moodle_user_id = moodle_res.get("moodle_user_id")
+
+            if moodle_user_id and course_id:
+                MoodleService.matricular_en_curso(moodle_user_id, course_id)
+
+            fecha_prox = AlumnosService._calcular_proxima_fecha_pago(dia_pago, semanas_adelante=1)
+
+            query = """
+                UPDATE tb_alumnos SET
+                    modalidad_estudio = 'ONLINE',
+                    dia_pago = %s,
+                    idGrupo = %s,
+                    moodle_user_id = %s,
+                    moodle_username = %s,
+                    moodle_password = %s,
+                    fecha_proximo_pago = %s
+                WHERE idAlumno = %s
+            """
+            cursor.execute(query, (
+                dia_pago,
+                id_grupo,
+                moodle_user_id,
+                username,
+                password,
+                fecha_prox,
+                id_alumno
+            ))
+            conexion.commit()
+
+            return {
+                "success": True,
+                "mensaje": "Alumno asignado a modalidad en línea exitosamente.",
+                "alumno": {
+                    "idAlumno": id_alumno,
+                    "modalidad_estudio": "ONLINE",
+                    "dia_pago": dia_pago,
+                    "idGrupo": id_grupo,
+                    "fecha_proximo_pago": str(fecha_prox),
+                    "moodle_user_id": moodle_user_id,
+                    "moodle_username": username,
+                    "moodle_password": password
+                }
+            }, 200
+        except Exception as e:
+            conexion.rollback()
+            return {"success": False, "error": str(e)}, 500
+        finally:
+            cursor.close()
+            conexion.close()
+
+    @staticmethod
+    def cambiar_modalidad_presencial(id_alumno):
+        conexion = get_connection()
+        cursor = conexion.cursor()
+        try:
+            cursor.execute("UPDATE tb_alumnos SET modalidad_estudio = 'PRESENCIAL' WHERE idAlumno = %s", (id_alumno,))
+            conexion.commit()
+            return {"success": True, "mensaje": "Alumno retornado a modalidad presencial exitosamente."}, 200
+        except Exception as e:
+            conexion.rollback()
+            return {"success": False, "error": str(e)}, 500
+        finally:
+            cursor.close()
+            conexion.close()
+
+    @staticmethod
+    def registrar_pago_online(id_alumno, data):
+        from app.services.moodle_service import MoodleService
+        import datetime
+        conexion = get_connection()
+        cursor = conexion.cursor()
+        try:
+            cursor.execute("""
+                SELECT a.*, gr.id_curso_moodle, gr.clave AS nombreGrupo 
+                FROM tb_alumnos a
+                LEFT JOIN tb_grupos gr ON a.idGrupo = gr.id
+                WHERE a.idAlumno = %s
+            """, (id_alumno,))
+            alumno = cursor.fetchone()
+            if not alumno:
+                return {"success": False, "error": "Alumno no encontrado"}, 404
+
+            folio_ticket = str(data.get("folio_ticket", "")).strip()
+            if not folio_ticket:
+                return {"success": False, "error": "El folio del ticket es obligatorio."}, 400
+
+            fecha_pago = data.get("fecha_pago")
+            if not fecha_pago:
+                fecha_pago = str(datetime.date.today())
+
+            try:
+                semana_cubierta = int(data.get("semana_cubierta", 1))
+                if semana_cubierta < 1 or semana_cubierta > 4:
+                    return {"success": False, "error": "La semana cubierta debe ser entre 1 y 4."}, 400
+            except ValueError:
+                return {"success": False, "error": "Semana cubierta inválida."}, 400
+
+            monto = float(data.get("monto", 0.0) or 0.0)
+            metodo_pago = str(data.get("metodo_pago", "EFECTIVO")).upper()
+            observaciones = data.get("observaciones", "")
+            registrado_por = data.get("registrado_por", "SISTEMA")
+
+            sql_pago = """
+                INSERT INTO tb_alumno_pagos 
+                (id_alumno, fecha_pago, folio_ticket, semana_cubierta, monto, metodo_pago, observaciones, registrado_por)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """
+            cursor.execute(sql_pago, (
+                id_alumno, fecha_pago, folio_ticket, semana_cubierta, monto, metodo_pago, observaciones, registrado_por
+            ))
+            id_pago = cursor.lastrowid
+
+            moodle_user_id = alumno.get("moodle_user_id")
+            course_id = alumno.get("id_curso_moodle") or 50
+            sincronizado_moodle = 0
+
+            if moodle_user_id and course_id:
+                moodle_res = MoodleService.desbloquear_semana(moodle_user_id, course_id, semana_cubierta)
+                if moodle_res.get("success"):
+                    sincronizado_moodle = 1
+                    cursor.execute("""
+                        UPDATE tb_alumno_pagos 
+                        SET sincronizado_moodle = 1, fecha_sincronizacion_moodle = NOW() 
+                        WHERE id = %s
+                    """, (id_pago,))
+
+            nueva_semana = max(int(alumno.get("semana_actual_pagada") or 0), semana_cubierta)
+            dia_pago = alumno.get("dia_pago") or "SABADO"
+            nueva_fecha_prox = AlumnosService._calcular_proxima_fecha_pago(dia_pago, semanas_adelante=1)
+
+            cursor.execute("""
+                UPDATE tb_alumnos SET
+                    semana_actual_pagada = %s,
+                    fecha_proximo_pago = %s
+                WHERE idAlumno = %s
+            """, (nueva_semana, nueva_fecha_prox, id_alumno))
+
+            conexion.commit()
+
+            return {
+                "success": True,
+                "mensaje": f"Pago registrado exitosamente con ticket {folio_ticket}. Semana {semana_cubierta} habilitada en Moodle.",
+                "pago": {
+                    "id": id_pago,
+                    "folio_ticket": folio_ticket,
+                    "semana_cubierta": semana_cubierta,
+                    "fecha_pago": str(fecha_pago),
+                    "monto": monto,
+                    "sincronizado_moodle": bool(sincronizado_moodle),
+                    "nueva_semana_pagada": nueva_semana,
+                    "fecha_proximo_pago": str(nueva_fecha_prox)
+                }
+            }, 200
+        except Exception as e:
+            conexion.rollback()
+            return {"success": False, "error": str(e)}, 500
+        finally:
+            cursor.close()
+            conexion.close()
+
+    @staticmethod
+    def get_pagos_alumno(id_alumno):
+        conexion = get_connection()
+        cursor = conexion.cursor()
+        try:
+            cursor.execute("""
+                SELECT 
+                    id, id_alumno, fecha_pago, folio_ticket, semana_cubierta,
+                    monto, metodo_pago, observaciones, registrado_por,
+                    sincronizado_moodle, fecha_sincronizacion_moodle, created_at
+                FROM tb_alumno_pagos
+                WHERE id_alumno = %s
+                ORDER BY semana_cubierta DESC, fecha_pago DESC, id DESC
+            """, (id_alumno,))
+            pagos = cursor.fetchall()
+            return {"success": True, "data": pagos}, 200
+        finally:
+            cursor.close()
+            conexion.close()
+
+    @staticmethod
+    def get_widget_data(moodle_user_id=None, id_alumno=None):
+        import datetime
+        conexion = get_connection()
+        cursor = conexion.cursor()
+        try:
+            where_clause = ""
+            param = None
+            if moodle_user_id:
+                where_clause = "a.moodle_user_id = %s"
+                param = moodle_user_id
+            elif id_alumno:
+                where_clause = "a.idAlumno = %s"
+                param = id_alumno
+            else:
+                return {"es_online": False, "mensaje": "Falta parámetro moodle_user_id o id_alumno"}, 400
+
+            cursor.execute(f"""
+                SELECT 
+                    a.idAlumno, a.nombre, a.apPaterno, a.apMaterno,
+                    a.modalidad_estudio, a.dia_pago, a.moodle_user_id,
+                    a.semana_actual_pagada, a.fecha_proximo_pago,
+                    gr.clave AS nombreGrupo,
+                    m.nombreMateria
+                FROM tb_alumnos a
+                LEFT JOIN tb_grupos gr ON a.idGrupo = gr.id
+                LEFT JOIN tb_materias m ON m.id = (
+                    SELECT MIN(pem.idMateria) FROM plan_estudio_materia pem WHERE pem.idPlanEstudio = gr.id_planEstudios
+                )
+                WHERE {where_clause}
+            """, (param,))
+            alumno = cursor.fetchone()
+
+            if not alumno or alumno.get("modalidad_estudio") != "ONLINE":
+                return {"es_online": False}, 200
+
+            hoy = datetime.date.today()
+            prox_pago = alumno.get("fecha_proximo_pago")
+            semana = int(alumno.get("semana_actual_pagada") or 0)
+            
+            meses = ["", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", 
+                     "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
+            fecha_str = "Pronto"
+            al_corriente = True
+
+            if prox_pago:
+                if isinstance(prox_pago, str):
+                    prox_pago = datetime.datetime.strptime(prox_pago, "%Y-%m-%d").date()
+                dia_semana_nombre = alumno.get("dia_pago", "SABADO").capitalize()
+                fecha_str = f"{dia_semana_nombre} {prox_pago.day} de {meses[prox_pago.month]}"
+                if hoy > prox_pago:
+                    al_corriente = False
+
+            return {
+                "es_online": True,
+                "id_alumno": alumno["idAlumno"],
+                "nombre_completo": f"{alumno['nombre']} {alumno['apPaterno']}".strip(),
+                "estado_pago": "Al corriente" if al_corriente else "Pago pendiente",
+                "estado_color": "#16a34a" if al_corriente else "#dc2626",
+                "semana_actual": semana,
+                "total_semanas": 4,
+                "porcentaje_progreso": int((semana / 4.0) * 100),
+                "fecha_proximo_pago": fecha_str,
+                "dia_pago": alumno.get("dia_pago", "SABADO"),
+                "materia_en_curso": alumno.get("nombreMateria") or "Materia Online Asignada",
+                "grupo": alumno.get("nombreGrupo")
+            }, 200
         finally:
             cursor.close()
             conexion.close()

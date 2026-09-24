@@ -86,6 +86,7 @@ def get_alumnos():
         search = request.args.get("search", "").strip()
         id_centro_trabajo = request.args.get("idCentroTrabajo") or request.args.get("id_centro_trabajo")
         status_alumno = request.args.get("statusAlumno") or request.args.get("status_alumno") or request.args.get("status")
+        modalidad_estudio = request.args.get("modalidad_estudio") or request.args.get("modalidad")
         order = request.args.get("order") or request.args.get("orden", "ASC")
 
         resultado = AlumnosService.get_alumnos(
@@ -96,6 +97,7 @@ def get_alumnos():
             search=search,
             id_centro_trabajo=id_centro_trabajo,
             status_alumno=status_alumno,
+            modalidad_estudio=modalidad_estudio,
             order=order
         )
         return jsonify(resultado)
@@ -446,3 +448,68 @@ def create_alumno_grupo():
         return jsonify(AlumnosService.create_alumno_grupo(data))
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@alumnos_bp.route("/alumnos/<int:id_alumno>/modalidad-online", methods=["POST"])
+def cambiar_modalidad_online(id_alumno):
+    """
+    Cambia a un alumno a modalidad en línea, valida asignación a grupo y crea usuario en Moodle.
+    """
+    try:
+        data = request.get_json(silent=True) or {}
+        resultado, status = AlumnosService.cambiar_modalidad_online(id_alumno, data)
+        return jsonify(resultado), status
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@alumnos_bp.route("/alumnos/<int:id_alumno>/modalidad-presencial", methods=["POST"])
+def cambiar_modalidad_presencial(id_alumno):
+    """
+    Retorna a un alumno a modalidad presencial.
+    """
+    try:
+        resultado, status = AlumnosService.cambiar_modalidad_presencial(id_alumno)
+        return jsonify(resultado), status
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@alumnos_bp.route("/alumnos/<int:id_alumno>/pagos", methods=["POST"])
+def registrar_pago_online(id_alumno):
+    """
+    Registra el pago de una colegiatura/semana con folio de ticket y desbloquea en Moodle.
+    """
+    try:
+        data = request.get_json(silent=True) or {}
+        resultado, status = AlumnosService.registrar_pago_online(id_alumno, data)
+        return jsonify(resultado), status
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@alumnos_bp.route("/alumnos/<int:id_alumno>/pagos", methods=["GET"])
+def get_pagos_alumno(id_alumno):
+    """
+    Obtiene el historial de pagos y folios de tickets de un alumno.
+    """
+    try:
+        resultado, status = AlumnosService.get_pagos_alumno(id_alumno)
+        return jsonify(resultado), status
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@alumnos_bp.route("/alumnos/widget-data", methods=["GET"])
+def get_widget_data():
+    """
+    Endpoint para el widget del tablero en Moodle (Mi situación actual).
+    Oculto si el alumno no es en línea.
+    """
+    try:
+        moodle_user_id = request.args.get("moodle_user_id") or request.args.get("moodle_id")
+        id_alumno = request.args.get("id_alumno") or request.args.get("idAlumno")
+        resultado, status = AlumnosService.get_widget_data(moodle_user_id=moodle_user_id, id_alumno=id_alumno)
+        return jsonify(resultado), status
+    except Exception as e:
+        return jsonify({"es_online": False, "error": str(e)}), 500
