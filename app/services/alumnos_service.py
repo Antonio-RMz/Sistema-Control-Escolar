@@ -5,6 +5,32 @@ import math
 
 class AlumnosService:
     @staticmethod
+    def _has_moodle_columns(cursor):
+        try:
+            cursor.execute("SHOW COLUMNS FROM tb_alumnos LIKE 'modalidad_estudio'")
+            return cursor.fetchone() is not None
+        except Exception:
+            return False
+
+    @staticmethod
+    def _get_online_select_fields(has_moodle):
+        if has_moodle:
+            return """COALESCE(a.modalidad_estudio, 'PRESENCIAL') AS modalidad_estudio,
+                    COALESCE(a.dia_pago, 'SABADO') AS dia_pago,
+                    a.moodle_user_id,
+                    a.moodle_username,
+                    a.moodle_password,
+                    COALESCE(a.semana_actual_pagada, 0) AS semana_actual_pagada,
+                    a.fecha_proximo_pago"""
+        else:
+            return """'PRESENCIAL' AS modalidad_estudio,
+                    'SABADO' AS dia_pago,
+                    NULL AS moodle_user_id,
+                    NULL AS moodle_username,
+                    NULL AS moodle_password,
+                    0 AS semana_actual_pagada,
+                    NULL AS fecha_proximo_pago"""
+    @staticmethod
     def get_alumnos(page=1, limit=50, generacion=None, idGrupo=None, search="", id_centro_trabajo=None, status_alumno=None, modalidad_estudio=None, order="ASC"):
         conexion = get_connection()
         cursor = conexion.cursor()
@@ -37,7 +63,8 @@ class AlumnosService:
                 where.append("a.statusAlumno = %s")
                 valores.append(status_alumno)
 
-            if modalidad_estudio:
+            has_moodle = AlumnosService._has_moodle_columns(cursor)
+            if modalidad_estudio and has_moodle:
                 where.append("a.modalidad_estudio = %s")
                 valores.append(modalidad_estudio)
 
@@ -101,13 +128,7 @@ class AlumnosService:
                     CONCAT_WS(' ', c.nombre, c.apPaterno, c.apMaterno) AS tutor,
                     ac.parentesco,
                     COALESCE(c.telefono, c.celular) AS telefonoTutor,
-                    COALESCE(a.modalidad_estudio, 'PRESENCIAL') AS modalidad_estudio,
-                    COALESCE(a.dia_pago, 'SABADO') AS dia_pago,
-                    a.moodle_user_id,
-                    a.moodle_username,
-                    a.moodle_password,
-                    COALESCE(a.semana_actual_pagada, 0) AS semana_actual_pagada,
-                    a.fecha_proximo_pago
+                    {AlumnosService._get_online_select_fields(has_moodle)}
                 FROM tb_alumnos a
                 LEFT JOIN tb_generaciones g ON a.idGeneracion = g.id
                 LEFT JOIN tb_grupos gr ON a.idGrupo = gr.id
@@ -587,7 +608,7 @@ class AlumnosService:
         conexion = get_connection()
         cursor = conexion.cursor()
         try:
-            sql = """
+            sql = f"""
                 SELECT 
                     a.idAlumno,
                     a.nombre,
@@ -635,13 +656,7 @@ class AlumnosService:
                     CONCAT_WS(' ', c.nombre, c.apPaterno, c.apMaterno) AS tutor,
                     ac.parentesco,
                     COALESCE(c.telefono, c.celular) AS telefonoTutor,
-                    COALESCE(a.modalidad_estudio, 'PRESENCIAL') AS modalidad_estudio,
-                    COALESCE(a.dia_pago, 'SABADO') AS dia_pago,
-                    a.moodle_user_id,
-                    a.moodle_username,
-                    a.moodle_password,
-                    COALESCE(a.semana_actual_pagada, 0) AS semana_actual_pagada,
-                    a.fecha_proximo_pago
+                    {AlumnosService._get_online_select_fields(AlumnosService._has_moodle_columns(cursor))}
                 FROM tb_alumnos a
                 LEFT JOIN tb_generaciones g ON a.idGeneracion = g.id
                 LEFT JOIN tb_grupos gr ON a.idGrupo = gr.id
@@ -719,7 +734,7 @@ class AlumnosService:
             cursor.execute(query, values)
 
             # 1.1 Actualizar modalidad de estudio y dia_pago si se especifican
-            if "modalidad_estudio" in data or "dia_pago" in data:
+            if AlumnosService._has_moodle_columns(cursor) and ("modalidad_estudio" in data or "dia_pago" in data):
                 mod_est = data.get("modalidad_estudio") or "PRESENCIAL"
                 dia_p = data.get("dia_pago") or "SABADO"
                 cursor.execute(
@@ -833,7 +848,8 @@ class AlumnosService:
         conexion = get_connection()
         cursor = conexion.cursor()
         try:
-            query = """
+            has_moodle = AlumnosService._has_moodle_columns(cursor)
+            query = f"""
                 SELECT 
                     a.idAlumno,
                     a.nombre,
@@ -850,13 +866,7 @@ class AlumnosService:
                     a.numeroControl,
                     a.statusAlumno,
                     a.curp,
-                    a.modalidad_estudio,
-                    a.dia_pago,
-                    a.moodle_user_id,
-                    a.moodle_username,
-                    a.moodle_password,
-                    a.semana_actual_pagada,
-                    a.fecha_proximo_pago,
+                    {AlumnosService._get_online_select_fields(has_moodle)},
                     g.generacion AS nombreGeneracionTexto,
                     gr.clave AS nombreGrupoTexto,
                     d.calle,
@@ -943,13 +953,7 @@ class AlumnosService:
                     a.numeroControl,
                     a.statusAlumno,
                     a.curp,
-                    a.modalidad_estudio,
-                    a.dia_pago,
-                    a.moodle_user_id,
-                    a.moodle_username,
-                    a.moodle_password,
-                    a.semana_actual_pagada,
-                    a.fecha_proximo_pago,
+                    {AlumnosService._get_online_select_fields(AlumnosService._has_moodle_columns(cursor))},
                     g.generacion AS nombreGeneracionTexto,
                     d.calle,
                     d.colonia,
@@ -1237,6 +1241,9 @@ class AlumnosService:
         conexion = get_connection()
         cursor = conexion.cursor()
         try:
+            if not AlumnosService._has_moodle_columns(cursor):
+                return {"es_online": False}, 200
+
             where_clause = ""
             param = None
             if moodle_user_id:
