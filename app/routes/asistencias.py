@@ -257,7 +257,13 @@ def guardar_asistencias_alumnos():
     try:
         data = request.json
         id_grupo = data.get("id_grupo")
-        id_materia = int(data.get("id_materia")) if data.get("id_materia") is not None else None
+        raw_materia = data.get("id_materia")
+        id_materia = None
+        if raw_materia is not None and str(raw_materia).lower() != 'general':
+            try:
+                id_materia = int(raw_materia)
+            except (ValueError, TypeError):
+                id_materia = None
         id_docente = int(data.get("id_docente")) if data.get("id_docente") is not None else None
         asistencias_list = data.get("asistencias", [])
         

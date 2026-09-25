@@ -68,22 +68,37 @@ class AsistenciasAlumnosService:
                         else:
                             dias_clase = ["SABADO"]
 
-            # 3. Generar lista de todas las fechas de clase en el rango
+                        # 3. Generar lista de todas las fechas de clase en el rango
             fechas_clase = AsistenciasAlumnosService._generar_fechas_clase(fecha_inicio, fecha_fin, dias_clase)
 
-            # 4. Precalcular los rangos de nivel académico para el grupo
-            rangos_niveles = AsistenciasAlumnosService._calcular_rangos_niveles(fecha_inicio, id_tipo_periodo, cursor)
-
-            # 5. Mapear cada fecha de clase con su respectivo nivel académico
-            fechas_mapeadas = []
-            for f in fechas_clase:
-                rango = AsistenciasAlumnosService._obtener_nivel_para_fecha(f, rangos_niveles)
-                fechas_mapeadas.append({
+            if id_tipo_periodo == 1:
+                # Grupos semestrales (BTI): todas las fechas de clase pertenecen al semestre activo del grupo
+                active_lvl = grupo.get("active_level") or grupo.get("id_nivel_academico") or 7
+                cursor.execute("SELECT id, nombre, numero FROM tb_niveles_academicos WHERE id = %s", (active_lvl,))
+                lvl_info = cursor.fetchone()
+                if not lvl_info:
+                    sem_num = active_lvl - 6 if active_lvl > 6 else 1
+                    lvl_info = {"id": active_lvl, "nombre": f"{sem_num}er Semestre" if sem_num in [1, 3] else (f"{sem_num}do Semestre" if sem_num == 2 else f"{sem_num}to Semestre"), "numero": sem_num}
+                fechas_mapeadas = [{
                     "fecha": f.strftime("%Y-%m-%d"),
-                    "id_nivel_academico": rango["id_nivel"],
-                    "nombreNivel": rango["nombreNivel"],
-                    "numeroNivel": rango["numeroNivel"]
-                })
+                    "id_nivel_academico": lvl_info["id"],
+                    "nombreNivel": lvl_info["nombre"],
+                    "numeroNivel": lvl_info["numero"]
+                } for f in fechas_clase]
+            else:
+                # 4. Precalcular los rangos de nivel academico para el grupo (modular trimestral)
+                rangos_niveles = AsistenciasAlumnosService._calcular_rangos_niveles(fecha_inicio, id_tipo_periodo, cursor)
+
+                # 5. Mapear cada fecha de clase con su respectivo nivel academico
+                fechas_mapeadas = []
+                for f in fechas_clase:
+                    rango = AsistenciasAlumnosService._obtener_nivel_para_fecha(f, rangos_niveles)
+                    fechas_mapeadas.append({
+                        "fecha": f.strftime("%Y-%m-%d"),
+                        "id_nivel_academico": rango["id_nivel"],
+                        "nombreNivel": rango["nombreNivel"],
+                        "numeroNivel": rango["numeroNivel"]
+                    })
 
             # 6. Obtener alumnos del grupo
             cursor.execute("""
@@ -150,12 +165,20 @@ class AsistenciasAlumnosService:
 
             # 7. Obtener pases de lista registrados para este grupo y materia
             asistencias_raw = []
-            if id_materia:
+            if id_materia and str(id_materia).lower() != 'general':
                 cursor.execute("""
                     SELECT id_alumno, fecha, id_nivel_academico, estatus, observaciones
                     FROM tb_asistencias_alumnos
                     WHERE id_grupo = %s AND id_materia = %s
                 """, (id_grupo, id_materia))
+                asistencias_raw = cursor.fetchall()
+            else:
+                cursor.execute("""
+                    SELECT id_alumno, fecha, id_nivel_academico, estatus, observaciones
+                    FROM tb_asistencias_alumnos
+                    WHERE id_grupo = %s
+                    ORDER BY updated_at DESC
+                """, (id_grupo,))
                 asistencias_raw = cursor.fetchall()
 
             # 8. Obtener justificaciones del administrador en el rango de fechas
@@ -232,7 +255,7 @@ class AsistenciasAlumnosService:
                 "fechas": fechas_mapeadas,
                 "asistencias": asistencias_resultado,
                 "materias": materias,
-                "selected_materia_id": id_materia
+                "selected_materia_id": "general" if (not id_materia or str(id_materia).lower() == 'general') else id_materia
             }
         finally:
             cursor.close()
@@ -243,22 +266,8 @@ class AsistenciasAlumnosService:
         conexion = get_connection()
         cursor = conexion.cursor()
         try:
-            # Fallback de docente desde horarios si no viene provisto
-            if not id_docente and id_materia:
-                cursor.execute("""
-                    SELECT id_docente 
-                    FROM tb_horarios 
-                    WHERE id_grupo = %s AND id_materia = %s 
-                    LIMIT 1
-                """, (id_grupo, id_materia))
-                row = cursor.fetchone()
-                if row:
-                    id_docente = row[0]
-
-            # Fallback a docente por defecto si sigue vacío
-            if not id_docente:
-                id_docente = 1
-
+            es_general = (not id_materia or str(id_materia).lower() == 'general')
+            
             query = """
                 INSERT INTO tb_asistencias_alumnos 
                 (id_alumno, id_materia, id_docente, id_grupo, fecha, id_nivel_academico, estatus, observaciones)
@@ -269,14 +278,69 @@ class AsistenciasAlumnosService:
                     observaciones = VALUES(observaciones),
                     id_docente = VALUES(id_docente)
             """
-            for a in asistencias_list:
-                id_alumno = a.get("id_alumno")
-                fecha = a.get("fecha")
-                id_nivel = a.get("id_nivel_academico")
-                estatus = a.get("estatus")
-                obs = a.get("observaciones") or None
 
-                cursor.execute(query, (id_alumno, id_materia, id_docente, id_grupo, fecha, id_nivel, estatus, obs))
+            if es_general:
+                # Obtener todas las materias y docentes del grupo desde tb_horarios
+                cursor.execute("""
+                    SELECT DISTINCT h.id_materia, h.id_docente, m.id_nivel_academico 
+                    FROM tb_horarios h
+                    JOIN tb_materias m ON h.id_materia = m.id
+                    WHERE h.id_grupo = %s
+                """, (id_grupo,))
+                horarios = cursor.fetchall()
+                if not horarios:
+                    cursor.execute("SELECT id_centroTrabajo FROM tb_grupos WHERE id = %s", (id_grupo,))
+                    grp = cursor.fetchone()
+                    cct = (grp.get("id_centroTrabajo") if isinstance(grp, dict) else grp[0]) if grp else 3
+                    cursor.execute("""
+                        SELECT id AS id_materia, 1 AS id_docente, id_nivel_academico 
+                        FROM tb_materias 
+                        WHERE idCentroTrabajo = %s OR idCentroTrabajo IS NULL
+                    """, (cct,))
+                    horarios = cursor.fetchall()
+
+                for a in asistencias_list:
+                    id_alumno = a.get("id_alumno")
+                    fecha = a.get("fecha")
+                    id_nivel = a.get("id_nivel_academico")
+                    estatus = a.get("estatus")
+                    obs = a.get("observaciones") or None
+
+                    if estatus is None or estatus == "":
+                        cursor.execute("DELETE FROM tb_asistencias_alumnos WHERE id_grupo = %s AND id_alumno = %s AND fecha = %s", (id_grupo, id_alumno, fecha))
+                    else:
+                        for h in horarios:
+                            m_id = h.get("id_materia") if isinstance(h, dict) else h[0]
+                            d_id = (h.get("id_docente") if isinstance(h, dict) else h[1]) or 1
+                            n_id = id_nivel or (h.get("id_nivel_academico") if isinstance(h, dict) else h[2])
+                            cursor.execute(query, (id_alumno, m_id, d_id, id_grupo, fecha, n_id, estatus, obs))
+            else:
+                # Fallback de docente desde horarios si no viene provisto
+                if not id_docente and id_materia:
+                    cursor.execute("""
+                        SELECT id_docente 
+                        FROM tb_horarios 
+                        WHERE id_grupo = %s AND id_materia = %s 
+                        LIMIT 1
+                    """, (id_grupo, id_materia))
+                    row = cursor.fetchone()
+                    if row:
+                        id_docente = row[0]
+
+                if not id_docente:
+                    id_docente = 1
+
+                for a in asistencias_list:
+                    id_alumno = a.get("id_alumno")
+                    fecha = a.get("fecha")
+                    id_nivel = a.get("id_nivel_academico")
+                    estatus = a.get("estatus")
+                    obs = a.get("observaciones") or None
+
+                    if estatus is None or estatus == "":
+                        cursor.execute("DELETE FROM tb_asistencias_alumnos WHERE id_grupo = %s AND id_materia = %s AND id_alumno = %s AND fecha = %s", (id_grupo, id_materia, id_alumno, fecha))
+                    else:
+                        cursor.execute(query, (id_alumno, id_materia, id_docente, id_grupo, fecha, id_nivel, estatus, obs))
 
             conexion.commit()
             return {"mensaje": "Asistencias guardadas correctamente"}
