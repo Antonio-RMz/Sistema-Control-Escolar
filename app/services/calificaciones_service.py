@@ -1,4 +1,4 @@
-from app.config.conexion import get_connection
+﻿from app.config.conexion import get_connection
 from datetime import date, datetime
 import pymysql
 import unicodedata
@@ -17,14 +17,14 @@ def normalize_subject_name(name):
     
     # Standardize abbreviations and punctuation
     name = name.replace("MET. DE LA INVESTIGACION II", "METODOLOGIA DE LA INVESTIGACION II")
-    name = name.replace("MET. DE LA INVESTIGACIÓN II", "METODOLOGIA DE LA INVESTIGACION II")
+    name = name.replace("MET. DE LA INVESTIGACIÃ“N II", "METODOLOGIA DE LA INVESTIGACION II")
     name = name.replace("MET. DE LA INVESTIGACION I", "METODOLOGIA DE LA INVESTIGACION I")
-    name = name.replace("MET. DE LA INVESTIGACIÓN I", "METODOLOGIA DE LA INVESTIGACION I")
+    name = name.replace("MET. DE LA INVESTIGACIÃ“N I", "METODOLOGIA DE LA INVESTIGACION I")
     name = name.replace("MET. DE LA INVESTIGACION", "METODOLOGIA DE LA INVESTIGACION I")
-    name = name.replace("MET. DE LA INVESTIGACIÓN", "METODOLOGIA DE LA INVESTIGACION I")
+    name = name.replace("MET. DE LA INVESTIGACIÃ“N", "METODOLOGIA DE LA INVESTIGACION I")
     name = name.replace("ECOLOGIA Y MED. AMBIENTE", "ECOLOGIA Y MEDIO AMBIENTE")
     name = name.replace("ESTRUCTURA SOCIO EC. DE MEXICO", "ESTRUCTURA SOCIOECONOMICA DE MEXICO")
-    name = name.replace("ESTRUCTURA SOCIO EC. DE MÉXICO", "ESTRUCTURA SOCIOECONOMICA DE MEXICO")
+    name = name.replace("ESTRUCTURA SOCIO EC. DE MÃ‰XICO", "ESTRUCTURA SOCIOECONOMICA DE MEXICO")
     name = name.replace("INGLES 1", "INGLES I")
     name = name.replace("INGLES 2", "INGLES II")
     name = name.replace("INGLES 3", "INGLES III")
@@ -34,29 +34,29 @@ def normalize_subject_name(name):
     
     # Force numeric replacements for user prompt matches
     name = name.replace("MATEMATICAS 4", "MATEMATICAS IV")
-    name = name.replace("MATEMÁTICAS 4", "MATEMATICAS IV")
+    name = name.replace("MATEMÃTICAS 4", "MATEMATICAS IV")
     name = name.replace("MATEMATICAS 1", "MATEMATICAS I")
     name = name.replace("MATEMATICAS 2", "MATEMATICAS II")
     name = name.replace("MATEMATICAS 3", "MATEMATICAS III")
     
     name = name.replace("METODO DE LA INVESTIGACION 1", "METODOLOGIA DE LA INVESTIGACION I")
-    name = name.replace("METODO DE LA INVESTIGACIÓN 1", "METODOLOGIA DE LA INVESTIGACION I")
+    name = name.replace("METODO DE LA INVESTIGACIÃ“N 1", "METODOLOGIA DE LA INVESTIGACION I")
     name = name.replace("METODOLOGIA DE LA INVESTIGACION 1", "METODOLOGIA DE LA INVESTIGACION I")
-    name = name.replace("METODOLOGÍA DE LA INVESTIGACIÓN 1", "METODOLOGIA DE LA INVESTIGACION I")
+    name = name.replace("METODOLOGÃA DE LA INVESTIGACIÃ“N 1", "METODOLOGIA DE LA INVESTIGACION I")
     name = name.replace("METODO DE LA INVESTIGACION 2", "METODOLOGIA DE LA INVESTIGACION II")
-    name = name.replace("METODO DE LA INVESTIGACIÓN 2", "METODOLOGIA DE LA INVESTIGACION II")
+    name = name.replace("METODO DE LA INVESTIGACIÃ“N 2", "METODOLOGIA DE LA INVESTIGACION II")
     name = name.replace("METODOLOGIA DE LA INVESTIGACION 2", "METODOLOGIA DE LA INVESTIGACION II")
-    name = name.replace("METODOLOGÍA DE LA INVESTIGACIÓN 2", "METODOLOGIA DE LA INVESTIGACION II")
+    name = name.replace("METODOLOGÃA DE LA INVESTIGACIÃ“N 2", "METODOLOGIA DE LA INVESTIGACION II")
     
     name = name.replace("BIOLOGIA 1", "BIOLOGIA I")
-    name = name.replace("BIOLOGÍA 1", "BIOLOGIA I")
+    name = name.replace("BIOLOGÃA 1", "BIOLOGIA I")
     name = name.replace("BIOLOGIA 2", "BIOLOGIA II")
-    name = name.replace("BIOLOGÍA 2", "BIOLOGIA II")
+    name = name.replace("BIOLOGÃA 2", "BIOLOGIA II")
     
     name = name.replace("FISICA 1", "FISICA I")
-    name = name.replace("FÍSICA 1", "FISICA I")
+    name = name.replace("FÃSICA 1", "FISICA I")
     name = name.replace("FISICA 2", "FISICA II")
-    name = name.replace("FÍSICA 2", "FISICA II")
+    name = name.replace("FÃSICA 2", "FISICA II")
     
     name = name.replace("LITERATURA 1", "LITERATURA I")
     name = name.replace("LITERATURA 2", "LITERATURA II")
@@ -65,18 +65,18 @@ def normalize_subject_name(name):
     name = name.replace("CONTABILIDAD 2", "CONTABILIDAD II")
     
     name = name.replace("TEMAS SELECTOS DE BIOLOGIA 1", "TEMAS SELECTOS DE BIOLOGIA I")
-    name = name.replace("TEMAS SELECTOS DE BIOLOGÍA 1", "TEMAS SELECTOS DE BIOLOGIA I")
+    name = name.replace("TEMAS SELECTOS DE BIOLOGÃA 1", "TEMAS SELECTOS DE BIOLOGIA I")
     name = name.replace("TEMAS SELECTOS DE BIOLOGIA 2", "TEMAS SELECTOS DE BIOLOGIA II")
-    name = name.replace("TEMAS SELECTOS DE BIOLOGÍA 2", "TEMAS SELECTOS DE BIOLOGIA II")
+    name = name.replace("TEMAS SELECTOS DE BIOLOGÃA 2", "TEMAS SELECTOS DE BIOLOGIA II")
     
     name = name.replace("INFORMATICA 1", "INFORMATICA I")
     name = name.replace("INFORMATICA 2", "INFORMATICA II")
     name = name.replace("INFORMATICA 3", "INFORMATICA III")
     name = name.replace("INFORMATICA 4", "INFORMATICA IV")
-    name = name.replace("INFORMÁTICA 1", "INFORMATICA I")
-    name = name.replace("INFORMÁTICA 2", "INFORMATICA II")
-    name = name.replace("INFORMÁTICA 3", "INFORMATICA III")
-    name = name.replace("INFORMÁTICA 4", "INFORMATICA IV")
+    name = name.replace("INFORMÃTICA 1", "INFORMATICA I")
+    name = name.replace("INFORMÃTICA 2", "INFORMATICA II")
+    name = name.replace("INFORMÃTICA 3", "INFORMATICA III")
+    name = name.replace("INFORMÃTICA 4", "INFORMATICA IV")
     
     name = re.sub(r'[^A-Z0-9]', ' ', name)
     name = " ".join(name.split())
@@ -98,7 +98,7 @@ class CalificacionesService:
     @staticmethod
     def get_kardex_alumno(id_alumno):
         """
-        Obtiene el Kárdex completo del alumno organizado por Periodos/Niveles Académicos,
+        Obtiene el KÃ¡rdex completo del alumno organizado por Periodos/Niveles AcadÃ©micos,
         calculando los promedios por periodo y el promedio global.
         """
         conexion = get_connection()
@@ -137,7 +137,7 @@ class CalificacionesService:
 
             id_cct = alumno["id_centroTrabajo"]
 
-            # 2. Obtener los niveles académicos correspondientes a este CCT (ej. 1º a 6º Trimestre o Semestre)
+            # 2. Obtener los niveles acadÃ©micos correspondientes a este CCT (ej. 1Âº a 6Âº Trimestre o Semestre)
             cursor.execute("""
                 SELECT 
                     n.id AS idNivel,
@@ -226,10 +226,10 @@ class CalificacionesService:
                             mat["id_nivel_academico"] = canonical_level
                             materias_filtradas.append(mat)
                         else:
-                            # Registro duplicado de materia en otro nivel - omitir del kárdex
+                            # Registro duplicado de materia en otro nivel - omitir del kÃ¡rdex
                             continue
                     else:
-                        # Materia no canónica - conservar en su nivel actual
+                        # Materia no canÃ³nica - conservar en su nivel actual
                         materias_filtradas.append(mat)
                         
                 # Combinar materias y calificaciones
@@ -293,7 +293,7 @@ class CalificacionesService:
                 """, (id_alumno, id_cct))
                 materias_califs = cursor.fetchall()
 
-            # 4. Agrupar materias y calificaciones por Nivel Académico
+            # 4. Agrupar materias y calificaciones por Nivel AcadÃ©mico
             kardex_periodos = []
             suma_calif_global = 0.0
             total_materias_evaluadas = 0
@@ -390,14 +390,14 @@ class CalificacionesService:
                     continue
 
                 if calificacion is None:
-                    # Si la calificación se envía vacía o se revierte a equivalencia, eliminar la calificación si existe
+                    # Si la calificaciÃ³n se envÃ­a vacÃ­a o se revierte a equivalencia, eliminar la calificaciÃ³n si existe
                     cursor.execute("""
                         DELETE FROM tb_calificaciones 
                         WHERE idAlumno = %s AND idMateria = %s AND tipoAcreditacion = %s
                     """, (id_alumno, id_materia, tipo_acred))
                     continue
 
-                # Verificar si ya existe calificación para este alumno, materia y tipo de acreditación
+                # Verificar si ya existe calificaciÃ³n para este alumno, materia y tipo de acreditaciÃ³n
                 cursor.execute("""
                     SELECT id FROM tb_calificaciones 
                     WHERE idAlumno = %s AND idMateria = %s AND tipoAcreditacion = %s
@@ -460,7 +460,7 @@ class CalificacionesService:
             if not id_docente:
                 return {
                     'allowed': False,
-                    'reason': 'Identificación de docente no encontrada.'
+                    'reason': 'IdentificaciÃ³n de docente no encontrada.'
                 }
 
             hoy = date.today().strftime('%Y-%m-%d')
@@ -481,7 +481,7 @@ class CalificacionesService:
             if permiso and not permiso.get('habilitado'):
                 return {
                     'allowed': False,
-                    'reason': 'La captura de calificaciones ha sido deshabilitada para esta asignatura por administración.'
+                    'reason': 'La captura de calificaciones ha sido deshabilitada para esta asignatura por administraciÃ³n.'
                 }
 
             if not permiso:
@@ -516,14 +516,14 @@ class CalificacionesService:
                 if grp_config and not grp_config.get('captura_habilitada'):
                     return {
                         'allowed': False,
-                        'reason': 'La captura de calificaciones está deshabilitada temporalmente para este grupo.'
+                        'reason': 'La captura de calificaciones estÃ¡ deshabilitada temporalmente para este grupo.'
                     }
 
             if grupo.get('statusGrupo') and grupo.get('statusGrupo').upper() != 'ACTIVO':
                 if not permiso or not permiso.get('permitir_modificar_pasados'):
                     return {
                         'allowed': False,
-                        'reason': 'El grupo se encuentra inactivo. Requiere autorización especial de administración.'
+                        'reason': 'El grupo se encuentra inactivo. Requiere autorizaciÃ³n especial de administraciÃ³n.'
                     }
 
             if grupo and materia:
@@ -540,7 +540,7 @@ class CalificacionesService:
                             if not permiso or not permiso.get('permitir_modificar_pasados'):
                                 return {
                                     'allowed': False,
-                                    'reason': f"Esta asignatura pertenece a un periodo anterior ({nivel_materia.get('nombre')}). Requiere autorización de administración para modificar calificaciones pasadas."
+                                    'reason': f"Esta asignatura pertenece a un periodo anterior ({nivel_materia.get('nombre')}). Requiere autorizaciÃ³n de administraciÃ³n para modificar calificaciones pasadas."
                                 }
 
             if permiso and permiso.get('fecha_limite'):
@@ -548,7 +548,7 @@ class CalificacionesService:
                 if hoy > fecha_limite_str:
                     return {
                         'allowed': False,
-                        'reason': f"El periodo extraordinario de captura expiró el {datetime.strptime(fecha_limite_str, '%Y-%m-%d').strftime('%d/%m/%Y')}."
+                        'reason': f"El periodo extraordinario de captura expirÃ³ el {datetime.strptime(fecha_limite_str, '%Y-%m-%d').strftime('%d/%m/%Y')}."
                     }
             else:
                 if grupo.get('fechaFin'):
@@ -556,7 +556,7 @@ class CalificacionesService:
                     if hoy > fecha_fin_str:
                         return {
                             'allowed': False,
-                            'reason': f"El periodo ordinario de captura finalizó el {datetime.strptime(fecha_fin_str, '%Y-%m-%d').strftime('%d/%m/%Y')}."
+                            'reason': f"El periodo ordinario de captura finalizÃ³ el {datetime.strptime(fecha_fin_str, '%Y-%m-%d').strftime('%d/%m/%Y')}."
                         }
 
             return {
@@ -577,7 +577,7 @@ class CalificacionesService:
         conexion = get_connection()
         cursor = conexion.cursor(pymysql.cursors.DictCursor)
         try:
-            # 1. Información del grupo
+            # 1. InformaciÃ³n del grupo
             cursor.execute("""
                 SELECT 
                     g.id,
@@ -690,7 +690,7 @@ class CalificacionesService:
                     )
                 )
 
-            # Si se proporcionó id_materia pero no pertenece a las materias del grupo (p. ej. en BTI), reajustar
+            # Si se proporcionÃ³ id_materia pero no pertenece a las materias del grupo (p. ej. en BTI), reajustar
             if id_materia and materias_horario:
                 if not any(str(m["idMateria"]) == str(id_materia) for m in materias_horario):
                     id_materia = None
@@ -723,7 +723,7 @@ class CalificacionesService:
                     materia_seleccionada = m
                     break
 
-            # Si el rol es DOCENTE y id_materia no está en materias_horario, reajustarla
+            # Si el rol es DOCENTE y id_materia no estÃ¡ en materias_horario, reajustarla
             if is_docente and id_docente and id_materia and not materia_seleccionada:
                 for m in materias_horario:
                     if str(m["idMateria"]) == str(id_materia) and m.get("id_docente") is not None and int(m["id_docente"]) == int(id_docente):
@@ -733,7 +733,7 @@ class CalificacionesService:
             # 3. Lista de alumnos del grupo con sus calificaciones en esta materia
             alumnos_califs = []
             if id_materia:
-                # Obtener el número de nivel de la materia actual
+                # Obtener el nÃºmero de nivel de la materia actual
                 numero_nivel_materia = 1
                 if materia_seleccionada and materia_seleccionada.get("numeroNivel") is not None:
                     numero_nivel_materia = int(materia_seleccionada["numeroNivel"])
@@ -777,12 +777,12 @@ class CalificacionesService:
                 # Determinar si cada alumno tiene estatus de equivalencia para este periodo
                 for a in alumnos_califs:
                     is_equiv = False
-                    # Se considera equivalencia si ya está registrado explícitamente como EQUIVALENCIA
+                    # Se considera equivalencia si ya estÃ¡ registrado explÃ­citamente como EQUIVALENCIA
                     if str(a.get("tipoAcreditacion") or "").upper() == "EQUIVALENCIA":
                         is_equiv = True
                     a["es_equivalencia"] = is_equiv
 
-            # 4. Lógica de permisos de captura
+            # 4. LÃ³gica de permisos de captura
             solo_lectura = False
             mensaje_restriccion = ""
             
@@ -807,7 +807,7 @@ class CalificacionesService:
             cfg = cursor.fetchone()
 
             if is_docente and id_materia:
-                # Validar permisos básicos
+                # Validar permisos bÃ¡sicos
                 perm_res = CalificacionesService.check_captura_permission(id_grupo, id_materia, id_docente, rol)
                 if not perm_res['allowed']:
                     solo_lectura = True
@@ -828,7 +828,7 @@ class CalificacionesService:
                     nivel_row = cursor.fetchone()
                     level_name = nivel_row['nombre'] if nivel_row else f"Nivel {cfg['id_nivel_academico']}"
                     solo_lectura = True
-                    mensaje_restriccion = f"La captura para este semestre está deshabilitada. El semestre habilitado es: {level_name}."
+                    mensaje_restriccion = f"La captura para este semestre estÃ¡ deshabilitada. El semestre habilitado es: {level_name}."
 
             # Armar cct_config
             def is_period_open(enabled, start, end):
@@ -892,8 +892,8 @@ class CalificacionesService:
                         if val is not None and val != "":
                             try:
                                 f_val = float(val)
-                                if f_val < 1.0 or f_val > 10.0:
-                                    return {"error": f"La calificacion '{fld}' ({f_val}) debe ser un numero entero del 1 al 10."}
+                                if f_val < 0.0 or f_val > 10.0:
+                                    return {"error": f"La calificacion '{fld}' ({f_val}) debe ser un numero entero del 0 al 10."}
                             except ValueError:
                                 return {"error": f"La calificacion '{fld}' no es un numero valido."}
 
@@ -964,19 +964,19 @@ class CalificacionesService:
 
                 cursor.execute("""
                     SELECT id FROM tb_calificaciones 
-                    WHERE idAlumno = %s AND idMateria = %s AND tipoAcreditacion = %s
-                """, (id_alumno, id_materia, tipo_acred))
+                    WHERE idAlumno = %s AND idMateria = %s AND tipoAcreditacion != 'EQUIVALENCIA'
+                """, (id_alumno, id_materia))
                 existente = cursor.fetchone()
 
                 if existente:
                     cursor.execute("""
                         UPDATE tb_calificaciones 
-                        SET calificacion = %s, idGrupo = %s, observaciones = %s, 
+                        SET calificacion = %s, tipoAcreditacion = %s, idGrupo = %s, observaciones = %s, 
                             parcial1 = %s, parcial2 = %s, parcial3 = %s, semestral = %s, extraordinario = %s, 
                             asistencias = %s, total_asistencias = %s,
                             updateBy = %s, updateAt = CURRENT_TIMESTAMP
                         WHERE id = %s
-                    """, (calif_val, id_grupo, observaciones, p1_val, p2_val, p3_val, sem_val, ext_val, asist_val, tot_asist_val, create_by, existente["id"]))
+                    """, (calif_val, tipo_acred, id_grupo, observaciones, p1_val, p2_val, p3_val, sem_val, ext_val, asist_val, tot_asist_val, create_by, existente["id"]))
                 else:
                     cursor.execute("""
                         INSERT INTO tb_calificaciones (
@@ -1013,3 +1013,4 @@ class CalificacionesService:
         finally:
             cursor.close()
             conexion.close()
+
