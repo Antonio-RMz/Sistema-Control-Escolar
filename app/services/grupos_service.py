@@ -172,6 +172,21 @@ class GruposService:
                     from app.services.periodos_academico import PeriodoAcademicoService
                     res_nivel = PeriodoAcademicoService.calcularNivelGrupo(row["id"])
                     if res_nivel:
+                        if res_nivel.get("cambiado"):
+                            try:
+                                PeriodoAcademicoService.actualizarNivelGrupo(row["id"])
+                            except Exception as ex_act:
+                                print(f"Error actualizando nivel en BD para grupo {row['id']}:", ex_act)
+
+                        nuevo_nivel = res_nivel.get("id_nivel_academico")
+                        if nuevo_nivel:
+                            row["id_nivel_academico"] = nuevo_nivel
+                            if nuevo_nivel <= 6:
+                                row["nombre_nivel"] = f"{nuevo_nivel}er Trimestre" if nuevo_nivel in [1, 3] else (f"{nuevo_nivel}do Trimestre" if nuevo_nivel == 2 else f"{nuevo_nivel}to Trimestre")
+                            else:
+                                sem_n = nuevo_nivel - 6
+                                row["nombre_nivel"] = f"{sem_n}er Semestre" if sem_n in [1, 3] else (f"{sem_n}do Semestre" if sem_n == 2 else f"{sem_n}to Semestre")
+
                         # Convert to string to ensure clean JSON serialization in Flask
                         row["fechaInicioNivel"] = str(res_nivel.get("fechaInicioNivel")) if res_nivel.get("fechaInicioNivel") else None
                         row["fechaFinNivel"] = str(res_nivel.get("fechaFinNivel")) if res_nivel.get("fechaFinNivel") else None
