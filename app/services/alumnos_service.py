@@ -1,6 +1,15 @@
 from app.config.conexion import get_connection
 import pandas as pd
 import math
+import datetime
+
+
+def get_mexico_now():
+    try:
+        from zoneinfo import ZoneInfo
+        return datetime.datetime.now(ZoneInfo("America/Mexico_City"))
+    except Exception:
+        return datetime.datetime.utcnow() - datetime.timedelta(hours=6)
 
 
 class AlumnosService:
@@ -316,6 +325,7 @@ class AlumnosService:
                     es_nuevo_alumno = False
 
             if not id_alumno:
+                now_mexico_str = get_mexico_now().strftime("%Y-%m-%d %H:%M:%S")
                 # Insertar en tb_alumnos
                 query_alumno = """
                     INSERT INTO tb_alumnos (
@@ -324,7 +334,7 @@ class AlumnosService:
                         idGrupo, equivalencia, numeroControl, statusAlumno, curp, createBy, createAt, id_nivel_ingreso,
                         certificado_incompleto, fecha_entrega_certificado, trae_boleta, estado_pago_equivalencia
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """
                 cursor.execute(
                     query_alumno,
@@ -344,6 +354,7 @@ class AlumnosService:
                         status_alumno,
                         curp,
                         create_by,
+                        now_mexico_str,
                         id_nivel_academico,
                         certificado_incompleto,
                         fecha_entrega_certificado,

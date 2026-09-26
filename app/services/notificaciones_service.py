@@ -1,6 +1,14 @@
 import datetime
 from app.config.conexion import get_connection
 
+
+def get_mexico_now():
+    try:
+        from zoneinfo import ZoneInfo
+        return datetime.datetime.now(ZoneInfo("America/Mexico_City"))
+    except Exception:
+        return datetime.datetime.utcnow() - datetime.timedelta(hours=6)
+
 class NotificacionesService:
     @staticmethod
     def _asegurar_tabla_alertas(cursor):
@@ -573,6 +581,18 @@ class NotificacionesService:
                             })
 
             # 4. NUEVOS ALUMNOS REGISTRADOS (Alerta para el Administrador)
+            try:
+                # Ajuste de retrocompatibilidad: convertir a hora local México registros guardados en UTC
+                cursor.execute("""
+                    UPDATE tb_alumnos 
+                    SET createAt = DATE_SUB(createAt, INTERVAL 6 HOUR) 
+                    WHERE createAt >= '2026-09-26 18:00:00' 
+                      AND createAt <= '2026-09-27 06:00:00'
+                """)
+                conexion.commit()
+            except Exception:
+                pass
+
             cursor.execute("""
                 SELECT 
                     a.idAlumno,
@@ -593,6 +613,7 @@ class NotificacionesService:
             nuevos_alumnos_rows = cursor.fetchall()
             
             alertas_nuevos_alumnos = []
+            now_mx = get_mexico_now().replace(tzinfo=None)
             for al in nuevos_alumnos_rows:
                 id_al = al["idAlumno"]
                 subtipo = "nuevo_registro"
@@ -601,8 +622,17 @@ class NotificacionesService:
 
                 creador = al["createBy"] or "Personal Escolar"
                 f_creacion = al["createAt"]
-                fecha_str = f_creacion.strftime("%d/%m/%Y") if hasattr(f_creacion, "strftime") else str(f_creacion)
-                hora_str = f_creacion.strftime("%H:%M:%S") if hasattr(f_creacion, "strftime") else ""
+
+                if hasattr(f_creacion, "strftime"):
+                    dt_creacion = f_creacion.replace(tzinfo=None) if hasattr(f_creacion, "tzinfo") and f_creacion.tzinfo else f_creacion
+                    # Salvaguarda: Si la fecha está en el futuro respecto a la hora local de México (indicando registro guardado en UTC)
+                    if dt_creacion > now_mx:
+                        dt_creacion = dt_creacion - datetime.timedelta(hours=6)
+                    fecha_str = dt_creacion.strftime("%d/%m/%Y")
+                    hora_str = dt_creacion.strftime("%H:%M:%S")
+                else:
+                    fecha_str = str(f_creacion)
+                    hora_str = ""
                 
                 hora_txt = f" a las {hora_str}" if hora_str else ""
                 detalle = f"Registrado por el usuario '{creador}' en el grupo {al['nombreGrupo']} ({al['nombreCentroTrabajo']}) el {fecha_str}{hora_txt}."
