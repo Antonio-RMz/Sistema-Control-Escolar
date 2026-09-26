@@ -170,10 +170,10 @@ class AlumnosService:
             academico_data = data.get("academico") if isinstance(data.get("academico"), dict) else data
             equiv_data = data.get("equivalencia") if isinstance(data.get("equivalencia"), dict) else {}
 
-            nombre = (alumno_data.get("nombre") or "").strip()
-            ap_paterno = (alumno_data.get("apPaterno") or "").strip() or None
-            ap_materno = (alumno_data.get("apMaterno") or "").strip() or None
-            curp = (alumno_data.get("curp") or "").strip() or None
+            nombre = (alumno_data.get("nombre") or "").strip().upper()
+            ap_paterno = (alumno_data.get("apPaterno") or "").strip().upper() or None
+            ap_materno = (alumno_data.get("apMaterno") or "").strip().upper() or None
+            curp = (alumno_data.get("curp") or "").strip().upper() or None
             fecha_nacimiento = alumno_data.get("fechaNacimiento") or None
             celular_alumno = alumno_data.get("celularAlumno") or None
             correo_alumno = alumno_data.get("correoAlumno") or None
