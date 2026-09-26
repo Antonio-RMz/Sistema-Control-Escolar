@@ -32,7 +32,7 @@ class NotificacionesService:
             nombre = None
             cct = None
             grupo = None
-            if tipo in ('documentos', 'equivalencias'):
+            if tipo in ('documentos', 'equivalencias', 'nuevos_alumnos'):
                 cursor.execute("""
                     SELECT CONCAT_WS(' ', a.nombre, a.apPaterno, a.apMaterno) AS nombre,
                            gr.clave AS grupo, ct.nombre AS cct
@@ -129,6 +129,7 @@ class NotificacionesService:
             """)
             filas_ignoradas = cursor.fetchall()
             set_ignoradas = {(r['tipo'], r['id_referencia']) for r in filas_ignoradas}
+            set_ignoradas_subtipos = {(r['tipo'], r['id_referencia'], r['subtipo']) for r in filas_ignoradas}
 
             # 1. DOCUMENTOS FALTANTES / EXPIRADOS
             # Alumnos con certificado incompleto expirado o sin boleta
@@ -263,71 +264,368 @@ class NotificacionesService:
                     "esCritico": es_critico
                 })
 
-            # 3. GRUPOS PRÓXIMOS A TERMINAR (Próximos 30 días)
+            # 3. GRUPOS: EVALUACIÓN DE TÉRMINO, FALTA DE HORARIO Y MATERIAS INCOMPLETAS
+            from app.services.periodos_academico import PeriodoAcademicoService
+
             cursor.execute("""
                 SELECT 
                     g.id AS idGrupo,
                     g.clave AS claveGrupo,
                     g.fechaInicio,
                     g.fechaFin,
+                    g.id_centroTrabajo,
                     ct.nombre AS nombreCentroTrabajo,
-                    g.id_centroTrabajo
+                    g.id_tipoPeriodo,
+                    g.id_nivel_academico,
+                    na.nombre AS nombre_nivel,
+                    g.statusGrupo
                 FROM tb_grupos g
                 LEFT JOIN tb_centrotrabajo ct ON g.id_centroTrabajo = ct.id
+                LEFT JOIN tb_niveles_academicos na ON g.id_nivel_academico = na.id
                 WHERE (g.statusGrupo = 'ACTIVO' OR g.statusGrupo IS NULL)
-                  AND g.fechaFin >= CURRENT_DATE
-                  AND g.fechaFin <= DATE_ADD(CURRENT_DATE, INTERVAL 30 DAY)
-                ORDER BY g.fechaFin ASC
+                ORDER BY g.fechaFin ASC, g.id ASC
             """)
-            grupos_termino = cursor.fetchall()
-            
-            alertas_grupos = []
-            for g in grupos_termino:
-                if ('grupos', g['idGrupo']) in set_ignoradas:
-                    continue
+            grupos_activos = cursor.fetchall()
 
-                fecha_fin = g["fechaFin"]
-                if isinstance(fecha_fin, str):
+            alertas_grupos = []
+
+            for g in grupos_activos:
+                id_grupo = g["idGrupo"]
+                cct_id = g["id_centroTrabajo"]
+                es_bgne = (cct_id == 3 or g.get("id_tipoPeriodo") == 2)
+                cct_nombre = g["nombreCentroTrabajo"] or ("BGNE" if es_bgne else "BTI")
+
+                # 1. Nivel actual y fechas efectivas
+                res_nivel = PeriodoAcademicoService.calcularNivelGrupo(id_grupo)
+                nivel_actual_id = (res_nivel.get("id_nivel_academico") if res_nivel else None) or g["id_nivel_academico"]
+                fecha_fin_eval = (res_nivel.get("fechaFinNivel") if res_nivel else None) or g["fechaFin"]
+                fecha_inicio_eval = (res_nivel.get("fechaInicioNivel") if res_nivel else None) or g["fechaInicio"]
+
+                nombre_nivel = g.get("nombre_nivel")
+                if not nombre_nivel and nivel_actual_id:
+                    cursor.execute("SELECT nombre FROM tb_niveles_academicos WHERE id = %s", (nivel_actual_id,))
+                    n_row = cursor.fetchone()
+                    if n_row:
+                        nombre_nivel = n_row["nombre"] if isinstance(n_row, dict) else n_row[0]
+                if not nombre_nivel:
+                    nombre_nivel = f"Nivel {nivel_actual_id}" if nivel_actual_id else "Nivel Asignado"
+
+                # 2. Materias requeridas del nivel actual
+                materias_req_actual = []
+                if nivel_actual_id:
+                    cursor.execute("""
+                        SELECT id, nombreMateria 
+                        FROM tb_materias 
+                        WHERE id_nivel_academico = %s 
+                          AND (idCentroTrabajo = %s OR idCentroTrabajo IS NULL)
+                          AND (estatusMateria = 'ACTIVA' OR estatusMateria IS NULL)
+                        ORDER BY orden ASC, id ASC
+                    """, (nivel_actual_id, cct_id))
+                    materias_req_actual = cursor.fetchall()
+
+                req_actual_dict = {
+                    (m["id"] if isinstance(m, dict) else m[0]): (m["nombreMateria"] if isinstance(m, dict) else m[1])
+                    for m in materias_req_actual
+                }
+
+                # 3. Materias programadas en horario regular (es_prehorario=0) y pre-horario (es_prehorario=1)
+                cursor.execute("""
+                    SELECT DISTINCT h.id_materia, m.nombreMateria, m.id_nivel_academico, h.es_prehorario
+                    FROM tb_horarios h
+                    JOIN tb_materias m ON h.id_materia = m.id
+                    WHERE h.id_grupo = %s
+                """, (id_grupo,))
+                horarios_rows = cursor.fetchall()
+
+                sched_regulares_ids = set()
+                sched_prehorario_ids = set()
+                for h in horarios_rows:
+                    mid = h["id_materia"] if isinstance(h, dict) else h[0]
+                    es_pre = h["es_prehorario"] if isinstance(h, dict) else h[3]
+                    if int(es_pre or 0) == 1:
+                        sched_prehorario_ids.add(mid)
+                    else:
+                        sched_regulares_ids.add(mid)
+
+                total_clases_programadas = len(sched_regulares_ids) + len(sched_prehorario_ids)
+
+                # 4. Cálculo de días restantes
+                if isinstance(fecha_fin_eval, str):
                     try:
-                        fecha_fin = datetime.datetime.strptime(fecha_fin, "%Y-%m-%d").date()
+                        fecha_fin_eval = datetime.datetime.strptime(fecha_fin_eval, "%Y-%m-%d").date()
                     except ValueError:
                         pass
+
+                dias_restantes = None
+                fecha_fin_str = str(fecha_fin_eval)
+                if isinstance(fecha_fin_eval, datetime.date):
+                    dias_restantes = (fecha_fin_eval - ahora).days
+                    fecha_fin_str = fecha_fin_eval.strftime("%d/%m/%Y")
+
+                # 5. Siguiente nivel académico y sus materias
+                next_nivel_id = None
+                if nivel_actual_id:
+                    if es_bgne and nivel_actual_id < 6:
+                        next_nivel_id = nivel_actual_id + 1
+                    elif not es_bgne and nivel_actual_id < 12:
+                        next_nivel_id = nivel_actual_id + 1
+
+                next_req_dict = {}
+                next_nivel_nom = None
+                if next_nivel_id:
+                    cursor.execute("""
+                        SELECT id, nombreMateria 
+                        FROM tb_materias 
+                        WHERE id_nivel_academico = %s 
+                          AND (idCentroTrabajo = %s OR idCentroTrabajo IS NULL)
+                          AND (estatusMateria = 'ACTIVA' OR estatusMateria IS NULL)
+                        ORDER BY orden ASC, id ASC
+                    """, (next_nivel_id, cct_id))
+                    mats_next_rows = cursor.fetchall()
+                    next_req_dict = {
+                        (m["id"] if isinstance(m, dict) else m[0]): (m["nombreMateria"] if isinstance(m, dict) else m[1])
+                        for m in mats_next_rows
+                    }
+
+                    cursor.execute("SELECT nombre FROM tb_niveles_academicos WHERE id = %s", (next_nivel_id,))
+                    n_next_row = cursor.fetchone()
+                    if n_next_row:
+                        next_nivel_nom = n_next_row["nombre"] if isinstance(n_next_row, dict) else n_next_row[0]
+                    else:
+                        next_nivel_nom = f"Nivel {next_nivel_id}"
+
+                all_assigned_ids = sched_regulares_ids.union(sched_prehorario_ids)
+                next_cubiertas = all_assigned_ids.intersection(next_req_dict.keys())
+                horario_siguiente_armado = (len(next_cubiertas) >= len(next_req_dict) and len(next_req_dict) > 0)
+
+                # --- ALERTA 1: GRUPO SIN NINGÚN HORARIO ---
+                if total_clases_programadas == 0:
+                    subtipo = "sin_horario"
+                    if ('grupos', id_grupo, subtipo) not in set_ignoradas_subtipos and ('grupos', id_grupo, 'general') not in set_ignoradas_subtipos:
+                        mats_nombres = list(req_actual_dict.values())
+                        if len(mats_nombres) > 4:
+                            str_mats = ", ".join(mats_nombres[:4]) + f" y {len(mats_nombres)-4} materias más"
+                        elif mats_nombres:
+                            str_mats = ", ".join(mats_nombres)
+                        else:
+                            str_mats = "materias del plan"
+
+                        detalle = f"El grupo no cuenta con horario asignado. Un grupo no puede estar sin horario ni materias registradas. Debe cursar {nombre_nivel} ({str_mats})."
+                        alertas_grupos.append({
+                            "idGrupo": id_grupo,
+                            "clave": g["claveGrupo"],
+                            "cct": cct_nombre,
+                            "tipo": "sin_horario",
+                            "subtipo": subtipo,
+                            "badge_tipo": "Sin Horario",
+                            "badge_color": "bg-danger text-white",
+                            "icono": "bi-calendar-x-fill text-danger",
+                            "fechaFin": fecha_fin_str,
+                            "diasRestantes": dias_restantes,
+                            "detalle": detalle,
+                            "esCritico": True,
+                            "id_centroTrabajo": cct_id,
+                            "accion_tipo": "armar_horario",
+                            "es_prehorario": 0
+                        })
+
+                # --- ALERTA 2: HORARIO INCOMPLETO (FALTAN MATERIAS POR INDICAR) ---
+                elif len(req_actual_dict) > 0:
+                    cubiertas_actual = sched_regulares_ids.intersection(req_actual_dict.keys())
+                    faltantes_actual = [
+                        nom for mid, nom in req_actual_dict.items() 
+                        if mid not in sched_regulares_ids
+                    ]
+                    if faltantes_actual:
+                        subtipo = "materias_incompletas"
+                        if ('grupos', id_grupo, subtipo) not in set_ignoradas_subtipos and ('grupos', id_grupo, 'general') not in set_ignoradas_subtipos:
+                            str_faltantes = ", ".join(faltantes_actual)
+                            detalle = f"Horario incompleto ({len(cubiertas_actual)} de {len(req_actual_dict)} materias indicadas para {nombre_nivel}). Faltan por programar: {str_faltantes}."
+                            alertas_grupos.append({
+                                "idGrupo": id_grupo,
+                                "clave": g["claveGrupo"],
+                                "cct": cct_nombre,
+                                "tipo": "materias_incompletas",
+                                "subtipo": subtipo,
+                                "badge_tipo": "Horario Incompleto",
+                                "badge_color": "bg-warning text-dark",
+                                "icono": "bi-exclamation-diamond-fill text-warning",
+                                "fechaFin": fecha_fin_str,
+                                "diasRestantes": dias_restantes,
+                                "detalle": detalle,
+                                "esCritico": (len(cubiertas_actual) == 0),
+                                "id_centroTrabajo": cct_id,
+                                "accion_tipo": "completar_horario",
+                                "es_prehorario": 0
+                            })
+
+                # --- ALERTA 3: CICLO TERMINADO O PRÓXIMO A TERMINAR Y AÚN NO SE HA ARMADO SU HORARIO ---
+                if dias_restantes is not None and dias_restantes <= 30:
+                    if dias_restantes < 0:
+                        dias_venc = -dias_restantes
+                        badge_tipo = "Ciclo Vencido"
+                        badge_color = "bg-danger text-white"
+                        icono = "bi-exclamation-triangle-fill text-danger"
+                        es_critico = True
+                        tiempo_msg = f"El ciclo de {nombre_nivel} concluyó hace {dias_venc} días ({fecha_fin_str})."
+                    elif dias_restantes == 0:
+                        badge_tipo = "Concluye Hoy"
+                        badge_color = "bg-danger text-white"
+                        icono = "bi-alarm-fill text-danger"
+                        es_critico = True
+                        tiempo_msg = f"El ciclo de {nombre_nivel} concluye hoy {fecha_fin_str}."
+                    elif 1 <= dias_restantes <= 7:
+                        badge_tipo = "Término Ciclo"
+                        badge_color = "bg-warning text-dark"
+                        icono = "bi-clock-history text-warning"
+                        es_critico = True
+                        tiempo_msg = f"El ciclo de {nombre_nivel} concluye el {fecha_fin_str} (falta 1 semana o menos: {dias_restantes} días)."
+                    elif 8 <= dias_restantes <= 14:
+                        badge_tipo = "Término Ciclo"
+                        badge_color = "bg-info text-dark"
+                        icono = "bi-clock-history text-info"
+                        es_critico = False
+                        tiempo_msg = f"El ciclo de {nombre_nivel} concluye el {fecha_fin_str} (faltan 2 semanas: {dias_restantes} días)."
+                    elif 15 <= dias_restantes <= 21:
+                        badge_tipo = "Término Ciclo"
+                        badge_color = "bg-info text-dark"
+                        icono = "bi-clock-history text-info"
+                        es_critico = False
+                        tiempo_msg = f"El ciclo de {nombre_nivel} concluye el {fecha_fin_str} (faltan 3 semanas: {dias_restantes} días)."
+                    else:
+                        badge_tipo = "Término Ciclo"
+                        badge_color = "bg-info text-dark"
+                        icono = "bi-clock-history text-info"
+                        es_critico = False
+                        tiempo_msg = f"El ciclo de {nombre_nivel} concluye el {fecha_fin_str} (faltan {dias_restantes} días)."
+
+                    if next_nivel_id:
+                        mats_next_nombres = list(next_req_dict.values())
+                        if len(mats_next_nombres) > 4:
+                            str_mats_next = ", ".join(mats_next_nombres[:4]) + f" y {len(mats_next_nombres)-4} más"
+                        elif mats_next_nombres:
+                            str_mats_next = ", ".join(mats_next_nombres)
+                        else:
+                            str_mats_next = "materias correspondientes"
+
+                        if not horario_siguiente_armado:
+                            subtipo = "termino_sin_horario"
+                            if ('grupos', id_grupo, subtipo) not in set_ignoradas_subtipos and ('grupos', id_grupo, 'general') not in set_ignoradas_subtipos:
+                                detalle_termino = f"{tiempo_msg} [ATENCIÓN: Aún no se ha armado el horario para el siguiente periodo ({next_nivel_nom})]. Materias a cursar: {str_mats_next}."
+                                alertas_grupos.append({
+                                    "idGrupo": id_grupo,
+                                    "clave": g["claveGrupo"],
+                                    "cct": cct_nombre,
+                                    "tipo": "termino_sin_horario",
+                                    "subtipo": subtipo,
+                                    "badge_tipo": badge_tipo,
+                                    "badge_color": badge_color,
+                                    "icono": icono,
+                                    "fechaFin": fecha_fin_str,
+                                    "diasRestantes": dias_restantes,
+                                    "detalle": detalle_termino,
+                                    "esCritico": es_critico,
+                                    "id_centroTrabajo": cct_id,
+                                    "accion_tipo": "armar_prehorario" if es_bgne else "armar_horario",
+                                    "es_prehorario": 1 if es_bgne else 0
+                                })
+                        else:
+                            subtipo = "termino_ciclo"
+                            if ('grupos', id_grupo, subtipo) not in set_ignoradas_subtipos and ('grupos', id_grupo, 'general') not in set_ignoradas_subtipos:
+                                detalle_termino = f"{tiempo_msg} El horario para {next_nivel_nom} ya se encuentra armado."
+                                alertas_grupos.append({
+                                    "idGrupo": id_grupo,
+                                    "clave": g["claveGrupo"],
+                                    "cct": cct_nombre,
+                                    "tipo": "termino_ciclo",
+                                    "subtipo": subtipo,
+                                    "badge_tipo": badge_tipo,
+                                    "badge_color": "bg-secondary text-white" if dias_restantes >= 0 else badge_color,
+                                    "icono": "bi-calendar-check text-secondary",
+                                    "fechaFin": fecha_fin_str,
+                                    "diasRestantes": dias_restantes,
+                                    "detalle": detalle_termino,
+                                    "esCritico": False,
+                                    "id_centroTrabajo": cct_id,
+                                    "accion_tipo": "captura_notas",
+                                    "es_prehorario": 0
+                                })
+                    else:
+                        subtipo = "termino_ciclo"
+                        if ('grupos', id_grupo, subtipo) not in set_ignoradas_subtipos and ('grupos', id_grupo, 'general') not in set_ignoradas_subtipos:
+                            detalle_termino = f"{tiempo_msg} Conclusión definitiva de estudios de bachillerato ({nombre_nivel}). Generación lista para captura de actas y certificados."
+                            alertas_grupos.append({
+                                "idGrupo": id_grupo,
+                                "clave": g["claveGrupo"],
+                                "cct": cct_nombre,
+                                "tipo": "termino_ciclo",
+                                "subtipo": subtipo,
+                                "badge_tipo": "Fin de Generación" if dias_restantes >= 0 else "Generación Egresada",
+                                "badge_color": "bg-primary text-white",
+                                "icono": "bi-mortarboard-fill text-primary",
+                                "fechaFin": fecha_fin_str,
+                                "diasRestantes": dias_restantes,
+                                "detalle": detalle_termino,
+                                "esCritico": es_critico,
+                                "id_centroTrabajo": cct_id,
+                                "accion_tipo": "captura_notas",
+                                "es_prehorario": 0
+                            })
+
+            # 4. NUEVOS ALUMNOS REGISTRADOS (Alerta para el Administrador)
+            cursor.execute("""
+                SELECT 
+                    a.idAlumno,
+                    CONCAT_WS(' ', a.nombre, a.apPaterno, a.apMaterno) AS nombreAlumno,
+                    a.numeroControl AS matricula,
+                    a.createBy,
+                    a.createAt,
+                    a.idGrupo,
+                    COALESCE(gr.clave, 'Sin Grupo') AS nombreGrupo,
+                    COALESCE(ct.nombre, 'Sin CCT') AS nombreCentroTrabajo
+                FROM tb_alumnos a
+                LEFT JOIN tb_grupos gr ON a.idGrupo = gr.id
+                LEFT JOIN tb_centrotrabajo ct ON COALESCE(gr.id_centroTrabajo, a.id_nivel_ingreso) = ct.id
+                WHERE a.createAt IS NOT NULL
+                  AND a.createAt >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+                ORDER BY a.createAt DESC, a.idAlumno DESC
+            """)
+            nuevos_alumnos_rows = cursor.fetchall()
+            
+            alertas_nuevos_alumnos = []
+            for al in nuevos_alumnos_rows:
+                id_al = al["idAlumno"]
+                subtipo = "nuevo_registro"
+                if ('nuevos_alumnos', id_al, subtipo) in set_ignoradas_subtipos or ('nuevos_alumnos', id_al) in set_ignoradas:
+                    continue
+
+                creador = al["createBy"] or "Personal Escolar"
+                f_creacion = al["createAt"]
+                fecha_str = f_creacion.strftime("%d/%m/%Y") if hasattr(f_creacion, "strftime") else str(f_creacion)
+                hora_str = f_creacion.strftime("%H:%M:%S") if hasattr(f_creacion, "strftime") else ""
                 
-                dias_restantes = 0
-                if isinstance(fecha_fin, datetime.date):
-                    dias_restantes = (fecha_fin - ahora).days
-                    fecha_fin_str = fecha_fin.strftime("%d/%m/%Y")
-                else:
-                    fecha_fin_str = str(fecha_fin)
-                
-                if 15 <= dias_restantes <= 21:
-                    semanas_msg = "Faltan 3 semanas para concluir el ciclo."
-                elif 8 <= dias_restantes <= 14:
-                    semanas_msg = "Faltan 2 semanas para concluir el ciclo."
-                elif 0 <= dias_restantes <= 7:
-                    semanas_msg = "Falta 1 semana o menos para concluir el ciclo."
-                elif dias_restantes < 0:
-                    semanas_msg = f"Ciclo vencido hace {-dias_restantes} días."
-                else:
-                    semanas_msg = f"Faltan {dias_restantes} días para concluir el ciclo."
+                hora_txt = f" a las {hora_str}" if hora_str else ""
+                detalle = f"Registrado por el usuario '{creador}' en el grupo {al['nombreGrupo']} ({al['nombreCentroTrabajo']}) el {fecha_str}{hora_txt}."
 
-                detalle = f"El ciclo del grupo concluye el {fecha_fin_str}. {semanas_msg}"
-
-                if g["id_centroTrabajo"] == 3:
-                    detalle += " [ATENCIÓN: Se debe armar el nuevo horario para el grupo]"
-
-                alertas_grupos.append({
-                    "idGrupo": g["idGrupo"],
-                    "clave": g["claveGrupo"],
-                    "cct": g["nombreCentroTrabajo"] or "BGNE",
-                    "fechaFin": fecha_fin_str,
-                    "diasRestantes": dias_restantes,
+                alertas_nuevos_alumnos.append({
+                    "idAlumno": id_al,
+                    "nombre": al["nombreAlumno"],
+                    "matricula": al["matricula"] or "Sin Matrícula",
+                    "creador": creador,
+                    "grupo": al["nombreGrupo"],
+                    "cct": al["nombreCentroTrabajo"],
+                    "fecha_creacion": fecha_str,
+                    "hora_creacion": hora_str,
                     "detalle": detalle,
-                    "subtipo": "termino_ciclo",
-                    "id_centroTrabajo": g["id_centroTrabajo"]
+                    "tipo": "nuevos_alumnos",
+                    "subtipo": subtipo,
+                    "badge_tipo": "Nuevo Alumno",
+                    "badge_color": "bg-success text-white",
+                    "icono": "bi-person-plus-fill text-success",
+                    "esCritico": False
                 })
 
-            # 4. LISTADO DE ALERTAS RESUELTAS / OMITIDAS
+            # 5. LISTADO DE ALERTAS RESUELTAS / OMITIDAS
             alertas_resueltas = []
             for r in filas_ignoradas:
                 fecha_str = r["created_at"].strftime("%d/%m/%Y %H:%M") if hasattr(r["created_at"], "strftime") else str(r["created_at"])
@@ -351,13 +649,15 @@ class NotificacionesService:
                     "documentos": alertas_documentos,
                     "equivalencias": alertas_equivalencias,
                     "grupos": alertas_grupos,
+                    "nuevos_alumnos": alertas_nuevos_alumnos,
                     "resueltas": alertas_resueltas,
                     "totales": {
                         "documentos": len(alertas_documentos),
                         "equivalencias": len(alertas_equivalencias),
                         "grupos": len(alertas_grupos),
+                        "nuevos_alumnos": len(alertas_nuevos_alumnos),
                         "resueltas": len(alertas_resueltas),
-                        "total": len(alertas_documentos) + len(alertas_equivalencias) + len(alertas_grupos)
+                        "total": len(alertas_documentos) + len(alertas_equivalencias) + len(alertas_grupos) + len(alertas_nuevos_alumnos)
                     }
                 }
             }

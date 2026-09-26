@@ -321,10 +321,10 @@ class AlumnosService:
                     INSERT INTO tb_alumnos (
                         nombre, apPaterno, apMaterno, fechaNacimiento, celularAlumno,
                         correoAlumno, escuelaProcedencia, observaciones, idGeneracion,
-                        idGrupo, equivalencia, numeroControl, statusAlumno, curp, createBy, id_nivel_ingreso,
+                        idGrupo, equivalencia, numeroControl, statusAlumno, curp, createBy, createAt, id_nivel_ingreso,
                         certificado_incompleto, fecha_entrega_certificado, trae_boleta, estado_pago_equivalencia
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), %s, %s, %s, %s, %s)
                 """
                 cursor.execute(
                     query_alumno,
