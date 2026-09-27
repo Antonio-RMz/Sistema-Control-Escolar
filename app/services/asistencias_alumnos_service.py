@@ -110,54 +110,136 @@ class AsistenciasAlumnosService:
             """, (id_grupo,))
             alumnos = cursor.fetchall()
 
-            # Obtener materias asociadas a este grupo (filtrado por docente si aplica)
-            if id_docente:
-                cursor.execute("""
-                    SELECT DISTINCT 
-                        m.id AS idMateria,
-                        m.nombreMateria,
-                        m.clave AS claveMateria,
-                        m.id_nivel_academico,
-                        h.id_docente,
-                        CONCAT_WS(' ', d.nombreDocente, COALESCE(d.apPaternoDocente, ''), COALESCE(d.apMaternoDocente, '')) AS nombreDocente
-                    FROM tb_horarios h
-                    JOIN tb_materias m ON h.id_materia = m.id
-                    LEFT JOIN tb_docentes d ON h.id_docente = d.idDocente
-                    WHERE h.id_grupo = %s AND h.id_docente = %s
-                    ORDER BY m.nombreMateria ASC
-                """, (id_grupo, id_docente))
-            else:
-                cursor.execute("""
-                    SELECT DISTINCT 
-                        m.id AS idMateria,
-                        m.nombreMateria,
-                        m.clave AS claveMateria,
-                        m.id_nivel_academico,
-                        h.id_docente,
-                        CONCAT_WS(' ', d.nombreDocente, COALESCE(d.apPaternoDocente, ''), COALESCE(d.apMaternoDocente, '')) AS nombreDocente
-                    FROM tb_horarios h
-                    JOIN tb_materias m ON h.id_materia = m.id
-                    LEFT JOIN tb_docentes d ON h.id_docente = d.idDocente
-                    WHERE h.id_grupo = %s
-                    ORDER BY m.nombreMateria ASC
-                """, (id_grupo,))
-            materias = cursor.fetchall()
+            # Asegurar existencia de tabla de reaperturas
+            AsistenciasAlumnosService._asegurar_tabla_reaperturas(cursor)
 
-            if not materias:
-                # Si no hay materias configuradas en tb_horarios para el grupo, traer del CCT
-                cursor.execute("""
-                    SELECT 
-                        m.id AS idMateria,
-                        m.nombreMateria,
-                        m.clave AS claveMateria,
-                        m.id_nivel_academico,
-                        NULL AS id_docente,
-                        'Sin docente asignado' AS nombreDocente
-                    FROM tb_materias m
-                    WHERE m.idCentroTrabajo = %s OR m.idCentroTrabajo IS NULL
-                    ORDER BY m.id_nivel_academico ASC, m.nombreMateria ASC
-                """, (grupo.get("id_centroTrabajo") or 3,))
+            # Obtener fechas con permiso de reapertura activo para docentes
+            cursor.execute("""
+                SELECT DISTINCT fecha 
+                FROM tb_asistencias_reaperturas 
+                WHERE id_grupo = %s AND habilitado = 1
+            """, (id_grupo,))
+            reaperturas_raw = cursor.fetchall()
+            reaperturas_fechas = [
+                r["fecha"].strftime("%Y-%m-%d") if hasattr(r["fecha"], "strftime") else str(r["fecha"]) 
+                for r in reaperturas_raw
+            ]
+
+            # Obtener materias asociadas estrictamente al horario armado de este grupo
+            # 1. Determinar si existe horario oficial armado (es_prehorario = 0)
+            cursor.execute("SELECT 1 FROM tb_horarios WHERE id_grupo = %s AND es_prehorario = 0 LIMIT 1", (id_grupo,))
+            tiene_horario_oficial = cursor.fetchone() is not None
+            filtro_prehorario = 0 if tiene_horario_oficial else 1
+
+            active_level = grupo.get("active_level")
+            materias = []
+
+            # 2. Si el grupo tiene nivel académico activo (ej. 4to Trimestre),
+            # buscar prioritariamente las materias asignadas en el armado del horario para ese nivel
+            if active_level is not None:
+                if id_docente:
+                    cursor.execute("""
+                        SELECT DISTINCT 
+                            m.id AS idMateria,
+                            m.nombreMateria,
+                            m.clave AS claveMateria,
+                            m.id_nivel_academico,
+                            h.id_docente,
+                            CONCAT_WS(' ', d.nombreDocente, COALESCE(d.apPaternoDocente, ''), COALESCE(d.apMaternoDocente, '')) AS nombreDocente
+                        FROM tb_horarios h
+                        JOIN tb_materias m ON h.id_materia = m.id
+                        LEFT JOIN tb_docentes d ON h.id_docente = d.idDocente
+                        WHERE h.id_grupo = %s 
+                          AND h.es_prehorario = %s 
+                          AND (m.id_nivel_academico = %s OR m.id_nivel_academico IS NULL)
+                          AND h.id_docente = %s
+                        ORDER BY m.nombreMateria ASC
+                    """, (id_grupo, filtro_prehorario, active_level, id_docente))
+                else:
+                    cursor.execute("""
+                        SELECT DISTINCT 
+                            m.id AS idMateria,
+                            m.nombreMateria,
+                            m.clave AS claveMateria,
+                            m.id_nivel_academico,
+                            h.id_docente,
+                            CONCAT_WS(' ', d.nombreDocente, COALESCE(d.apPaternoDocente, ''), COALESCE(d.apMaternoDocente, '')) AS nombreDocente
+                        FROM tb_horarios h
+                        JOIN tb_materias m ON h.id_materia = m.id
+                        LEFT JOIN tb_docentes d ON h.id_docente = d.idDocente
+                        WHERE h.id_grupo = %s 
+                          AND h.es_prehorario = %s 
+                          AND (m.id_nivel_academico = %s OR m.id_nivel_academico IS NULL)
+                        ORDER BY m.nombreMateria ASC
+                    """, (id_grupo, filtro_prehorario, active_level))
                 materias = cursor.fetchall()
+
+            # 3. Si no hubo materias con el nivel activo (o el grupo no tiene active_level), buscar todas las del horario armado
+            if not materias:
+                if id_docente:
+                    cursor.execute("""
+                        SELECT DISTINCT 
+                            m.id AS idMateria,
+                            m.nombreMateria,
+                            m.clave AS claveMateria,
+                            m.id_nivel_academico,
+                            h.id_docente,
+                            CONCAT_WS(' ', d.nombreDocente, COALESCE(d.apPaternoDocente, ''), COALESCE(d.apMaternoDocente, '')) AS nombreDocente
+                        FROM tb_horarios h
+                        JOIN tb_materias m ON h.id_materia = m.id
+                        LEFT JOIN tb_docentes d ON h.id_docente = d.idDocente
+                        WHERE h.id_grupo = %s AND h.es_prehorario = %s AND h.id_docente = %s
+                        ORDER BY m.nombreMateria ASC
+                    """, (id_grupo, filtro_prehorario, id_docente))
+                else:
+                    cursor.execute("""
+                        SELECT DISTINCT 
+                            m.id AS idMateria,
+                            m.nombreMateria,
+                            m.clave AS claveMateria,
+                            m.id_nivel_academico,
+                            h.id_docente,
+                            CONCAT_WS(' ', d.nombreDocente, COALESCE(d.apPaternoDocente, ''), COALESCE(d.apMaternoDocente, '')) AS nombreDocente
+                        FROM tb_horarios h
+                        JOIN tb_materias m ON h.id_materia = m.id
+                        LEFT JOIN tb_docentes d ON h.id_docente = d.idDocente
+                        WHERE h.id_grupo = %s AND h.es_prehorario = %s
+                        ORDER BY m.nombreMateria ASC
+                    """, (id_grupo, filtro_prehorario))
+                materias = cursor.fetchall()
+
+            # 4. Solamente si el grupo no tiene NINGÚN registro en tb_horarios, fallback a tb_materias
+            if not materias and not tiene_horario_oficial:
+                if active_level is not None:
+                    cursor.execute("""
+                        SELECT 
+                            m.id AS idMateria,
+                            m.nombreMateria,
+                            m.clave AS claveMateria,
+                            m.id_nivel_academico,
+                            NULL AS id_docente,
+                            'Sin docente asignado' AS nombreDocente
+                        FROM tb_materias m
+                        WHERE (m.idCentroTrabajo = %s OR m.idCentroTrabajo IS NULL)
+                          AND (m.id_nivel_academico = %s OR m.id_nivel_academico IS NULL)
+                        ORDER BY m.nombreMateria ASC
+                    """, (grupo.get("id_centroTrabajo") or 3, active_level))
+                    materias = cursor.fetchall()
+
+                if not materias:
+                    cursor.execute("""
+                        SELECT 
+                            m.id AS idMateria,
+                            m.nombreMateria,
+                            m.clave AS claveMateria,
+                            m.id_nivel_academico,
+                            NULL AS id_docente,
+                            'Sin docente asignado' AS nombreDocente
+                        FROM tb_materias m
+                        WHERE m.idCentroTrabajo = %s OR m.idCentroTrabajo IS NULL
+                        ORDER BY m.id_nivel_academico ASC, m.nombreMateria ASC
+                    """, (grupo.get("id_centroTrabajo") or 3,))
+                    materias = cursor.fetchall()
 
             # Asignar materia por defecto si no se pasa
             if not id_materia and materias:
@@ -255,8 +337,59 @@ class AsistenciasAlumnosService:
                 "fechas": fechas_mapeadas,
                 "asistencias": asistencias_resultado,
                 "materias": materias,
+                "reaperturas_fechas": reaperturas_fechas,
                 "selected_materia_id": "general" if (not id_materia or str(id_materia).lower() == 'general') else id_materia
             }
+        finally:
+            cursor.close()
+            conexion.close()
+
+    @staticmethod
+    def _asegurar_tabla_reaperturas(cursor):
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS tb_asistencias_reaperturas (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                id_grupo INT NOT NULL,
+                id_materia INT NULL,
+                fecha DATE NOT NULL,
+                autorizado_por VARCHAR(100) NULL,
+                habilitado TINYINT(1) NOT NULL DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                KEY idx_reapertura_lookup (id_grupo, fecha, habilitado)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+        """)
+
+    @staticmethod
+    def reabrir_pase(id_grupo, fecha, id_materia=None, autorizado_por=None, habilitar=True):
+        conexion = get_connection()
+        cursor = conexion.cursor()
+        try:
+            AsistenciasAlumnosService._asegurar_tabla_reaperturas(cursor)
+            mat_id = int(id_materia) if (id_materia and str(id_materia).lower() != 'general') else None
+            
+            if habilitar:
+                cursor.execute("""
+                    INSERT INTO tb_asistencias_reaperturas 
+                    (id_grupo, id_materia, fecha, autorizado_por, habilitado)
+                    VALUES (%s, %s, %s, %s, 1)
+                """, (id_grupo, mat_id, fecha, autorizado_por))
+            else:
+                cursor.execute("""
+                    UPDATE tb_asistencias_reaperturas 
+                    SET habilitado = 0, updated_at = CURRENT_TIMESTAMP
+                    WHERE id_grupo = %s AND fecha = %s
+                """, (id_grupo, fecha))
+            
+            conexion.commit()
+            return {
+                "success": True, 
+                "habilitado": bool(habilitar), 
+                "mensaje": f"Permiso de pase de lista {'habilitado' if habilitar else 'bloqueado'} correctamente para el docente."
+            }
+        except Exception as e:
+            conexion.rollback()
+            return {"error": str(e)}
         finally:
             cursor.close()
             conexion.close()
@@ -266,6 +399,32 @@ class AsistenciasAlumnosService:
         conexion = get_connection()
         cursor = conexion.cursor()
         try:
+            AsistenciasAlumnosService._asegurar_tabla_reaperturas(cursor)
+            hoy_str = datetime.date.today().strftime("%Y-%m-%d")
+
+            # Si es docente, verificar si el pase de lista de hoy ya fue enviado previamente
+            if id_docente:
+                cursor.execute("""
+                    SELECT 1 FROM tb_asistencias_alumnos 
+                    WHERE id_grupo = %s AND fecha = %s AND estatus IS NOT NULL AND estatus != ''
+                    LIMIT 1
+                """, (id_grupo, hoy_str))
+                ya_enviado = cursor.fetchone() is not None
+
+                if ya_enviado:
+                    # Validar si administración otorgó permiso de reapertura para hoy
+                    cursor.execute("""
+                        SELECT 1 FROM tb_asistencias_reaperturas 
+                        WHERE id_grupo = %s AND fecha = %s AND habilitado = 1
+                        LIMIT 1
+                    """, (id_grupo, hoy_str))
+                    reapertura_activa = cursor.fetchone() is not None
+
+                    if not reapertura_activa:
+                        return {
+                            "error": "El pase de lista de hoy ya fue enviado previamente y se encuentra cerrado. Solo el administrador puede realizar modificaciones."
+                        }, 403
+
             es_general = (not id_materia or str(id_materia).lower() == 'general')
             
             query = """
@@ -280,13 +439,17 @@ class AsistenciasAlumnosService:
             """
 
             if es_general:
-                # Obtener todas las materias y docentes del grupo desde tb_horarios
+                # Obtener materias y docentes del grupo desde el horario armado oficial
+                cursor.execute("SELECT 1 FROM tb_horarios WHERE id_grupo = %s AND es_prehorario = 0 LIMIT 1", (id_grupo,))
+                tiene_oficial = cursor.fetchone() is not None
+                filtro_pre = 0 if tiene_oficial else 1
+
                 cursor.execute("""
                     SELECT DISTINCT h.id_materia, h.id_docente, m.id_nivel_academico 
                     FROM tb_horarios h
                     JOIN tb_materias m ON h.id_materia = m.id
-                    WHERE h.id_grupo = %s
-                """, (id_grupo,))
+                    WHERE h.id_grupo = %s AND h.es_prehorario = %s
+                """, (id_grupo, filtro_pre))
                 horarios = cursor.fetchall()
                 if not horarios:
                     cursor.execute("SELECT id_centroTrabajo FROM tb_grupos WHERE id = %s", (id_grupo,))
@@ -321,6 +484,7 @@ class AsistenciasAlumnosService:
                         SELECT id_docente 
                         FROM tb_horarios 
                         WHERE id_grupo = %s AND id_materia = %s 
+                        ORDER BY es_prehorario ASC
                         LIMIT 1
                     """, (id_grupo, id_materia))
                     row = cursor.fetchone()
@@ -341,6 +505,14 @@ class AsistenciasAlumnosService:
                         cursor.execute("DELETE FROM tb_asistencias_alumnos WHERE id_grupo = %s AND id_materia = %s AND id_alumno = %s AND fecha = %s", (id_grupo, id_materia, id_alumno, fecha))
                     else:
                         cursor.execute(query, (id_alumno, id_materia, id_docente, id_grupo, fecha, id_nivel, estatus, obs))
+
+            # Si el docente completó y guardó su pase de lista, consumir la reapertura para que vuelva a quedar cerrado
+            if id_docente:
+                cursor.execute("""
+                    UPDATE tb_asistencias_reaperturas 
+                    SET habilitado = 0, updated_at = CURRENT_TIMESTAMP
+                    WHERE id_grupo = %s AND fecha = %s AND habilitado = 1
+                """, (id_grupo, hoy_str))
 
             conexion.commit()
             return {"mensaje": "Asistencias guardadas correctamente"}

@@ -272,6 +272,31 @@ def guardar_asistencias_alumnos():
             
         from app.services.asistencias_alumnos_service import AsistenciasAlumnosService
         resultado = AsistenciasAlumnosService.guardar_asistencias(id_grupo, asistencias_list, id_materia, id_docente)
+        if isinstance(resultado, tuple):
+            return jsonify(resultado[0]), resultado[1]
+        return jsonify(resultado)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@asistencias_bp.route("/asistencias/alumnos/reabrir", methods=["POST"])
+def reabrir_asistencias_alumnos():
+    """
+    Reabrir permiso de pase de lista para docente
+    """
+    try:
+        data = request.json or {}
+        id_grupo = data.get("id_grupo")
+        fecha = data.get("fecha")
+        id_materia = data.get("id_materia")
+        autorizado_por = data.get("autorizado_por")
+        habilitar = data.get("habilitar", True)
+
+        if not id_grupo or not fecha:
+            return jsonify({"error": "id_grupo y fecha son requeridos"}), 400
+
+        from app.services.asistencias_alumnos_service import AsistenciasAlumnosService
+        resultado = AsistenciasAlumnosService.reabrir_pase(id_grupo, fecha, id_materia, autorizado_por, habilitar)
         return jsonify(resultado)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
