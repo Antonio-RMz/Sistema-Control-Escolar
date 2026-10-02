@@ -24,10 +24,19 @@ class NotificacionesService:
                 cct VARCHAR(100) NULL,
                 grupo VARCHAR(100) NULL,
                 usuario VARCHAR(100) NULL,
+                limpiado TINYINT(1) DEFAULT 0,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE KEY uk_alerta (tipo, id_referencia, subtipo)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
         """)
+        cursor.execute("""
+            SELECT COUNT(*) AS total FROM information_schema.COLUMNS 
+            WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tb_alertas_ignoradas' AND COLUMN_NAME = 'limpiado';
+        """)
+        row_col = cursor.fetchone()
+        col_exists = (row_col[0] if isinstance(row_col, (list, tuple)) else (row_col.get('total', 0) if isinstance(row_col, dict) else 0)) > 0
+        if not col_exists:
+            cursor.execute("ALTER TABLE tb_alertas_ignoradas ADD COLUMN limpiado TINYINT(1) DEFAULT 0;")
 
     @staticmethod
     def resolver_alerta(tipo, id_referencia, accion='resuelto', subtipo='general', motivo=None, usuario=None):
@@ -67,11 +76,11 @@ class NotificacionesService:
                     nombre = f"Grupo {grupo}"
                     cct = row["cct"] if isinstance(row, dict) else row[1]
 
-            # Registrar en tb_alertas_ignoradas
+            # Registrar en tb_alertas_ignoradas (limpiado en 0)
             cursor.execute("""
                 INSERT INTO tb_alertas_ignoradas 
-                (tipo, id_referencia, subtipo, accion, motivo, nombre, cct, grupo, usuario, created_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+                (tipo, id_referencia, subtipo, accion, motivo, nombre, cct, grupo, usuario, limpiado, created_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 0, NOW())
                 ON DUPLICATE KEY UPDATE 
                     accion = VALUES(accion),
                     motivo = VALUES(motivo),
@@ -79,6 +88,7 @@ class NotificacionesService:
                     cct = VALUES(cct),
                     grupo = VALUES(grupo),
                     usuario = VALUES(usuario),
+                    limpiado = 0,
                     created_at = NOW()
             """, (tipo, id_referencia, subtipo, accion, motivo, nombre, cct, grupo, usuario))
 
@@ -122,6 +132,23 @@ class NotificacionesService:
             conexion.close()
 
     @staticmethod
+    def limpiar_resueltas():
+        conexion = get_connection()
+        cursor = conexion.cursor()
+        try:
+            NotificacionesService._asegurar_tabla_alertas(cursor)
+            cursor.execute("UPDATE tb_alertas_ignoradas SET limpiado = 1 WHERE COALESCE(limpiado, 0) = 0")
+            afectadas = cursor.rowcount
+            conexion.commit()
+            return {"success": True, "message": "Sección de resueltas y omitidas limpiada correctamente", "afectadas": afectadas}
+        except Exception as e:
+            conexion.rollback()
+            return {"error": str(e)}
+        finally:
+            cursor.close()
+            conexion.close()
+
+    @staticmethod
     def obtener_avisos_y_pendientes():
         conexion = get_connection()
         cursor = conexion.cursor()
@@ -131,7 +158,7 @@ class NotificacionesService:
 
             # Obtener alertas resueltas / omitidas para excluirlas de activas
             cursor.execute("""
-                SELECT id, tipo, id_referencia, subtipo, accion, motivo, nombre, cct, grupo, usuario, created_at 
+                SELECT id, tipo, id_referencia, subtipo, accion, motivo, nombre, cct, grupo, usuario, limpiado, created_at 
                 FROM tb_alertas_ignoradas 
                 ORDER BY created_at DESC
             """)
@@ -655,9 +682,11 @@ class NotificacionesService:
                     "esCritico": False
                 })
 
-            # 5. LISTADO DE ALERTAS RESUELTAS / OMITIDAS
+            # 5. LISTADO DE ALERTAS RESUELTAS / OMITIDAS (solo no limpiadas)
             alertas_resueltas = []
             for r in filas_ignoradas:
+                if r.get("limpiado") == 1 or r.get("limpiado") == "1":
+                    continue
                 fecha_str = r["created_at"].strftime("%d/%m/%Y %H:%M") if hasattr(r["created_at"], "strftime") else str(r["created_at"])
                 alertas_resueltas.append({
                     "id": r["id"],

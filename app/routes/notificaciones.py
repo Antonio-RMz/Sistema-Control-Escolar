@@ -75,3 +75,18 @@ def reactivar_notificacion():
         return jsonify(res)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@notificaciones_bp.route("/notificaciones/limpiar", methods=["POST"])
+def limpiar_notificaciones():
+    """
+    Limpiar / archivar alertas resueltas u omitidas
+    """
+    try:
+        res = NotificacionesService.limpiar_resueltas()
+        if "error" in res:
+            return jsonify({"error": res["error"]}), 500
+        return jsonify(res)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
