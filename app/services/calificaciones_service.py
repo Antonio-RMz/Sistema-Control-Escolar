@@ -397,9 +397,10 @@ class CalificacionesService:
                     """, (id_alumno, id_materia, tipo_acred))
                     continue
 
-                # Verificar si ya existe calificaciÃ³n para este alumno, materia y tipo de acreditaciÃ³n
+                # Verificar si ya existe calificación para este alumno, materia y tipo de acreditación
                 cursor.execute("""
-                    SELECT id FROM tb_calificaciones 
+                    SELECT id, parcial1, parcial2, parcial3, semestral, extraordinario, asistencias, total_asistencias 
+                    FROM tb_calificaciones 
                     WHERE idAlumno = %s AND idMateria = %s AND tipoAcreditacion = %s
                 """, (id_alumno, id_materia, tipo_acred))
                 existente = cursor.fetchone()
@@ -421,6 +422,15 @@ class CalificacionesService:
                 tot_asist_val = int(total_asistencias) if (total_asistencias is not None and total_asistencias != "") else None
 
                 if existente:
+                    # Si un campo no viene en el item (ej. actualización desde Kárdex), conservar el valor existente en BD
+                    p1_final = p1_val if "parcial1" in item else existente.get("parcial1")
+                    p2_final = p2_val if "parcial2" in item else existente.get("parcial2")
+                    p3_final = p3_val if "parcial3" in item else existente.get("parcial3")
+                    sem_final = sem_val if "semestral" in item else existente.get("semestral")
+                    ext_final = ext_val if "extraordinario" in item else existente.get("extraordinario")
+                    asist_final = asist_val if "asistencias" in item else existente.get("asistencias")
+                    tot_asist_final = tot_asist_val if "total_asistencias" in item else existente.get("total_asistencias")
+
                     cursor.execute("""
                         UPDATE tb_calificaciones 
                         SET calificacion = %s, id_nivel_academico = %s, idGrupo = %s, observaciones = %s,
@@ -428,7 +438,7 @@ class CalificacionesService:
                             asistencias = %s, total_asistencias = %s,
                             updateBy = %s, updateAt = CURRENT_TIMESTAMP
                         WHERE id = %s
-                    """, (calificacion, id_nivel, id_grupo, observaciones, p1_val, p2_val, p3_val, sem_val, ext_val, asist_val, tot_asist_val, create_by, existente["id"]))
+                    """, (calificacion, id_nivel, id_grupo, observaciones, p1_final, p2_final, p3_final, sem_final, ext_final, asist_final, tot_asist_final, create_by, existente["id"]))
                 else:
                     cursor.execute("""
                         INSERT INTO tb_calificaciones (
