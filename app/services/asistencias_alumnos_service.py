@@ -605,3 +605,278 @@ class AsistenciasAlumnosService:
         if rangos:
             return rangos[-1]
         return {"id_nivel": None, "nombreNivel": "Sin periodo", "numeroNivel": 1}
+
+    @staticmethod
+    def _format_time(val):
+        if val is None:
+            return '--:--'
+        if isinstance(val, datetime.timedelta):
+            total_seconds = int(val.total_seconds())
+            hours = total_seconds // 3600
+            minutes = (total_seconds % 3600) // 60
+            return f'{hours:02d}:{minutes:02d}'
+        if isinstance(val, (datetime.time, datetime.datetime)):
+            return val.strftime('%H:%M')
+        return str(val)[:5]
+
+    @staticmethod
+    def get_reporte_grupo(id_grupo):
+        conn = get_connection()
+        cursor = conn.cursor()
+        try:
+            # 1. Grupo
+            cursor.execute('''
+                SELECT id, clave, horario, modalidadHorario, id_centroTrabajo
+                FROM tb_grupos
+                WHERE id = %s
+            ''', (id_grupo,))
+            grupo = cursor.fetchone()
+            if not grupo:
+                return {'error': 'Grupo no encontrado'}, 404
+
+            # 2. Alumnos inscritos activos
+            cursor.execute('''
+                SELECT a.idAlumno, a.nombre, a.apPaterno, a.apMaterno, a.numeroControl
+                FROM tb_alumnogrupo ag
+                JOIN tb_alumnos a ON ag.idAlumno = a.idAlumno
+                WHERE ag.idGrupo = %s AND ag.estado = 'ACTIVO'
+                ORDER BY a.apPaterno ASC, a.apMaterno ASC, a.nombre ASC
+            ''', (id_grupo,))
+            alumnos = cursor.fetchall()
+            if not alumnos:
+                cursor.execute('''
+                    SELECT idAlumno, nombre, apPaterno, apMaterno, numeroControl
+                    FROM tb_alumnos
+                    WHERE idGrupo = %s AND (statusAlumno IS NULL OR statusAlumno NOT IN ('BAJA_DEFINITIVA', 'INACTIVO'))
+                    ORDER BY apPaterno ASC, apMaterno ASC, nombre ASC
+                ''', (id_grupo,))
+                alumnos = cursor.fetchall()
+
+            # 3. Materias del horario
+            cursor.execute('''
+                SELECT DISTINCT m.id AS id_materia, m.nombreMateria, m.clave, h.id_docente,
+                       TRIM(CONCAT_WS(' ', d.nombreDocente, COALESCE(d.apPaternoDocente, ''), COALESCE(d.apMaternoDocente, ''))) AS docente_nombre
+                FROM tb_horarios h
+                JOIN tb_materias m ON h.id_materia = m.id
+                LEFT JOIN tb_docentes d ON h.id_docente = d.idDocente
+                WHERE h.id_grupo = %s AND h.es_prehorario = 0
+                ORDER BY m.nombreMateria ASC
+            ''', (id_grupo,))
+            materias = cursor.fetchall()
+
+            if not materias:
+                cursor.execute('''
+                    SELECT id AS id_materia, nombreMateria, clave, NULL AS id_docente, 'Sin docente asignado' AS docente_nombre
+                    FROM tb_materias
+                    WHERE idCentroTrabajo = %s OR idCentroTrabajo IS NULL
+                    ORDER BY nombreMateria ASC
+                ''', (grupo.get('id_centroTrabajo'),))
+                materias = cursor.fetchall()
+
+            # 4. Estadisticas
+            cursor.execute('''
+                SELECT id_materia,
+                       SUM(CASE WHEN estatus = 'A' THEN 1 ELSE 0 END) AS total_a,
+                       SUM(CASE WHEN estatus = 'F' THEN 1 ELSE 0 END) AS total_f,
+                       SUM(CASE WHEN estatus = 'R' THEN 1 ELSE 0 END) AS total_r,
+                       SUM(CASE WHEN estatus = 'J' THEN 1 ELSE 0 END) AS total_j,
+                       COUNT(*) AS total_registros
+                FROM tb_asistencias_alumnos
+                WHERE id_grupo = %s
+                GROUP BY id_materia
+            ''', (id_grupo,))
+            stats_rows = cursor.fetchall()
+            stats_map = {r['id_materia']: r for r in stats_rows}
+
+            reporte_materias = []
+            for mat in materias:
+                s = stats_map.get(mat['id_materia'], {})
+                tot_a = int(s.get('total_a') or 0)
+                tot_f = int(s.get('total_f') or 0)
+                tot_r = int(s.get('total_r') or 0)
+                tot_j = int(s.get('total_j') or 0)
+                tot_reg = int(s.get('total_registros') or 0)
+
+                valid_denom = tot_a + tot_r + tot_f
+                if valid_denom > 0:
+                    pct = round(((tot_a + tot_r) / valid_denom) * 100, 1)
+                elif tot_reg == 0:
+                    pct = None
+                else:
+                    pct = 100.0
+
+                docente_name = mat.get('docente_nombre')
+                if not docente_name:
+                    docente_name = 'Sin docente asignado'
+
+                reporte_materias.append({
+                    'id_materia': mat['id_materia'],
+                    'nombreMateria': mat['nombreMateria'],
+                    'clave': mat.get('clave') or '',
+                    'docente_nombre': docente_name,
+                    'asistencias': tot_a,
+                    'faltas': tot_f,
+                    'retardos': tot_r,
+                    'justificadas': tot_j,
+                    'total_registros': tot_reg,
+                    'porcentaje': pct
+                })
+
+            return {
+                'success': True,
+                'grupo': {
+                    'id': grupo['id'],
+                    'clave': grupo.get('clave') or '',
+                    'horario': grupo.get('horario') or '',
+                    'modalidad': grupo.get('modalidadHorario') or ''
+                },
+                'alumnos': [
+                    {
+                        'idAlumno': al['idAlumno'],
+                        'nombre': al.get('nombre') or '',
+                        'apPaterno': al.get('apPaterno') or '',
+                        'apMaterno': al.get('apMaterno') or '',
+                        'numeroControl': al.get('numeroControl') or ''
+                    }
+                    for al in alumnos
+                ],
+                'materias_reporte': reporte_materias
+            }
+        finally:
+            cursor.close()
+            conn.close()
+
+    @staticmethod
+    def get_historial_alumno(id_grupo, id_alumno):
+        dias_nombre = {
+            1: 'Lunes',
+            2: 'Martes',
+            3: 'Miércoles',
+            4: 'Jueves',
+            5: 'Viernes',
+            6: 'Sábado',
+            7: 'Domingo'
+        }
+        conn = get_connection()
+        cursor = conn.cursor()
+        try:
+            # 1. Alumno
+            cursor.execute('''
+                SELECT idAlumno, nombre, apPaterno, apMaterno, numeroControl
+                FROM tb_alumnos
+                WHERE idAlumno = %s
+            ''', (id_alumno,))
+            alumno = cursor.fetchone()
+            if not alumno:
+                return {'error': 'Alumno no encontrado'}, 404
+
+            # 2. Fechas unicas de asistencias registradas para este grupo
+            cursor.execute('''
+                SELECT DISTINCT fecha
+                FROM tb_asistencias_alumnos
+                WHERE id_grupo = %s
+                ORDER BY fecha DESC
+            ''', (id_grupo,))
+            fechas_rows = cursor.fetchall()
+            fechas_reg = [r['fecha'] for r in fechas_rows]
+
+            # 3. Horarios programados del grupo
+            cursor.execute('''
+                SELECT h.id_horario, h.diaSemana, h.horaInicio, h.horaFin, h.aula, h.id_materia,
+                       m.nombreMateria, h.id_docente,
+                       TRIM(CONCAT_WS(' ', d.nombreDocente, COALESCE(d.apPaternoDocente, ''), COALESCE(d.apMaternoDocente, ''))) AS docente_nombre
+                FROM tb_horarios h
+                JOIN tb_materias m ON h.id_materia = m.id
+                LEFT JOIN tb_docentes d ON h.id_docente = d.idDocente
+                WHERE h.id_grupo = %s AND h.es_prehorario = 0
+                ORDER BY h.horaInicio ASC
+            ''', (id_grupo,))
+            horarios_grupo = cursor.fetchall()
+
+            # 4. Asistencias del alumno agrupadas por fecha
+            cursor.execute('''
+                SELECT id, id_materia, id_docente, fecha, estatus, observaciones
+                FROM tb_asistencias_alumnos
+                WHERE id_grupo = %s AND id_alumno = %s
+            ''', (id_grupo, id_alumno))
+            asistencias_raw = cursor.fetchall()
+            asistencias_alumno = {}
+            for a in asistencias_raw:
+                f_str = a['fecha'].strftime('%Y-%m-%d') if isinstance(a['fecha'], (datetime.date, datetime.datetime)) else str(a['fecha'])
+                if f_str not in asistencias_alumno:
+                    asistencias_alumno[f_str] = []
+                asistencias_alumno[f_str].append(a)
+
+            # 5. Armar historial
+            historial = []
+            for fecha_val in fechas_reg:
+                f_date = fecha_val if isinstance(fecha_val, (datetime.date, datetime.datetime)) else datetime.datetime.strptime(str(fecha_val), '%Y-%m-%d').date()
+                f_str = f_date.strftime('%Y-%m-%d')
+                day_of_week = f_date.isoweekday()
+
+                clases_del_dia = [h for h in horarios_grupo if int(h.get('diaSemana') or 0) == day_of_week]
+                asist_dia = asistencias_alumno.get(f_str, [])
+
+                clases_list = []
+                for clase in clases_del_dia:
+                    reg = next((x for x in asist_dia if int(x['id_materia']) == int(clase['id_materia'])), None)
+                    estatus = reg['estatus'] if reg and reg.get('estatus') else 'SIN_REGISTRO'
+                    obs = reg['observaciones'] if reg and reg.get('observaciones') else ''
+
+                    doc_name = clase.get('docente_nombre')
+                    if not doc_name:
+                        doc_name = 'Sin docente asignado'
+
+                    clases_list.append({
+                        'horaInicio': AsistenciasAlumnosService._format_time(clase.get('horaInicio')),
+                        'horaFin': AsistenciasAlumnosService._format_time(clase.get('horaFin')),
+                        'nombreMateria': clase.get('nombreMateria') or '',
+                        'docente_nombre': doc_name,
+                        'aula': clase.get('aula') or 'Sin aula',
+                        'estatus': estatus,
+                        'observaciones': obs
+                    })
+
+                # Si no hay clases del dia programadas pero hay asistencias
+                if not clases_del_dia and asist_dia:
+                    for reg in asist_dia:
+                        cursor.execute('SELECT nombreMateria FROM tb_materias WHERE id = %s', (reg['id_materia'],))
+                        mat_row = cursor.fetchone()
+                        mat_name = mat_row['nombreMateria'] if mat_row else 'Materia Desconocida'
+
+                        cursor.execute('''
+                            SELECT TRIM(CONCAT_WS(' ', nombreDocente, COALESCE(apPaternoDocente, ''), COALESCE(apMaternoDocente, ''))) AS nombre
+                            FROM tb_docentes WHERE idDocente = %s
+                        ''', (reg.get('id_docente'),))
+                        doc_row = cursor.fetchone()
+                        doc_name = doc_row['nombre'] if doc_row and doc_row['nombre'] else 'Sin docente asignado'
+
+                        clases_list.append({
+                            'horaInicio': '--:--',
+                            'horaFin': '--:--',
+                            'nombreMateria': mat_name,
+                            'docente_nombre': doc_name,
+                            'aula': 'Extraordinaria',
+                            'estatus': reg.get('estatus') or 'SIN_REGISTRO',
+                            'observaciones': reg.get('observaciones') or ''
+                        })
+
+                if clases_list:
+                    historial.append({
+                        'fecha': f_date.strftime('%d-%m-%Y'),
+                        'dia_nombre': dias_nombre.get(day_of_week, ''),
+                        'clases': clases_list
+                    })
+
+            nombre_completo = f"{alumno.get('apPaterno') or ''} {alumno.get('apMaterno') or ''} {alumno.get('nombre') or ''}".strip()
+            return {
+                'alumno': {
+                    'idAlumno': alumno['idAlumno'],
+                    'nombreCompleto': nombre_completo,
+                    'numeroControl': alumno.get('numeroControl')
+                },
+                'historial': historial
+            }
+        finally:
+            cursor.close()
+            conn.close()

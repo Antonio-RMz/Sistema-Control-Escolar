@@ -430,5 +430,31 @@ def clear_asistencias_personal():
         conexion.close()
 
 
+@asistencias_bp.route("/reportes/asistencias/grupo/<int:id_grupo>", methods=["GET"])
+def get_reporte_grupo(id_grupo):
+    """
+    Reporte estadístico de asistencias para un grupo
+    """
+    try:
+        from app.services.asistencias_alumnos_service import AsistenciasAlumnosService
+        resultado = AsistenciasAlumnosService.get_reporte_grupo(id_grupo)
+        if isinstance(resultado, tuple):
+            return jsonify(resultado[0]), resultado[1]
+        return jsonify(resultado)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
+@asistencias_bp.route("/reportes/asistencias/grupo/<int:id_grupo>/alumno/<int:id_alumno>", methods=["GET"])
+def get_historial_alumno(id_grupo, id_alumno):
+    """
+    Historial detallado cronológico de asistencias para un alumno en un grupo
+    """
+    try:
+        from app.services.asistencias_alumnos_service import AsistenciasAlumnosService
+        resultado = AsistenciasAlumnosService.get_historial_alumno(id_grupo, id_alumno)
+        if isinstance(resultado, tuple):
+            return jsonify(resultado[0]), resultado[1]
+        return jsonify(resultado)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
