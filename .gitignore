@@ -6,3 +6,6 @@ __pycache__/
 # IDEs
 .vscode/
 .idea/
+
+# Scratch temporal
+scratch/

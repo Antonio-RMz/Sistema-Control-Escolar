@@ -196,10 +196,10 @@ class PermisosCapturaService:
                     'id_nivel_academico': group.get('id_nivel_academico'),
                     'captura_habilitada': 1,
                     'p1_habilitado': 1, 'p1_fecha_inicio': None, 'p1_fecha_fin': None,
-                    'p2_habilitado': 1, 'p2_fecha_inicio': None, 'p2_fecha_fin': None,
-                    'p3_habilitado': 1, 'p3_fecha_inicio': None, 'p3_fecha_fin': None,
-                    'semestral_habilitado': 1, 'semestral_fecha_inicio': None, 'semestral_fecha_fin': None,
-                    'extraordinario_habilitado': 1, 'extraordinario_fecha_inicio': None, 'extraordinario_fecha_fin': None
+                    'p2_habilitado': 0, 'p2_fecha_inicio': None, 'p2_fecha_fin': None,
+                    'p3_habilitado': 0, 'p3_fecha_inicio': None, 'p3_fecha_fin': None,
+                    'semestral_habilitado': 0, 'semestral_fecha_inicio': None, 'semestral_fecha_fin': None,
+                    'extraordinario_habilitado': 0, 'extraordinario_fecha_inicio': None, 'extraordinario_fecha_fin': None
                 }
             
             return {

@@ -402,30 +402,46 @@ class AsistenciasAlumnosService:
             AsistenciasAlumnosService._asegurar_tabla_reaperturas(cursor)
             hoy_str = datetime.date.today().strftime("%Y-%m-%d")
 
+            es_general = (not id_materia or str(id_materia).lower() == 'general')
+            mat_id_int = None if es_general else int(id_materia)
+
             # Si es docente, verificar si el pase de lista de hoy ya fue enviado previamente
             if id_docente:
-                cursor.execute("""
-                    SELECT 1 FROM tb_asistencias_alumnos 
-                    WHERE id_grupo = %s AND fecha = %s AND estatus IS NOT NULL AND estatus != ''
-                    LIMIT 1
-                """, (id_grupo, hoy_str))
+                if not es_general:
+                    cursor.execute("""
+                        SELECT 1 FROM tb_asistencias_alumnos 
+                        WHERE id_grupo = %s AND id_materia = %s AND fecha = %s AND estatus IS NOT NULL AND estatus != ''
+                        LIMIT 1
+                    """, (id_grupo, mat_id_int, hoy_str))
+                else:
+                    cursor.execute("""
+                        SELECT 1 FROM tb_asistencias_alumnos 
+                        WHERE id_grupo = %s AND fecha = %s AND estatus IS NOT NULL AND estatus != ''
+                        LIMIT 1
+                    """, (id_grupo, hoy_str))
                 ya_enviado = cursor.fetchone() is not None
 
                 if ya_enviado:
                     # Validar si administración otorgó permiso de reapertura para hoy
-                    cursor.execute("""
-                        SELECT 1 FROM tb_asistencias_reaperturas 
-                        WHERE id_grupo = %s AND fecha = %s AND habilitado = 1
-                        LIMIT 1
-                    """, (id_grupo, hoy_str))
+                    if not es_general:
+                        cursor.execute("""
+                            SELECT 1 FROM tb_asistencias_reaperturas 
+                            WHERE id_grupo = %s AND fecha = %s AND habilitado = 1
+                              AND (id_materia IS NULL OR id_materia = 0 OR id_materia = %s)
+                            LIMIT 1
+                        """, (id_grupo, hoy_str, mat_id_int))
+                    else:
+                        cursor.execute("""
+                            SELECT 1 FROM tb_asistencias_reaperturas 
+                            WHERE id_grupo = %s AND fecha = %s AND habilitado = 1
+                            LIMIT 1
+                        """, (id_grupo, hoy_str))
                     reapertura_activa = cursor.fetchone() is not None
 
                     if not reapertura_activa:
                         return {
                             "error": "El pase de lista de hoy ya fue enviado previamente y se encuentra cerrado. Solo el administrador puede realizar modificaciones."
                         }, 403
-
-            es_general = (not id_materia or str(id_materia).lower() == 'general')
             
             query = """
                 INSERT INTO tb_asistencias_alumnos 
@@ -508,11 +524,19 @@ class AsistenciasAlumnosService:
 
             # Si el docente completó y guardó su pase de lista, consumir la reapertura para que vuelva a quedar cerrado
             if id_docente:
-                cursor.execute("""
-                    UPDATE tb_asistencias_reaperturas 
-                    SET habilitado = 0, updated_at = CURRENT_TIMESTAMP
-                    WHERE id_grupo = %s AND fecha = %s AND habilitado = 1
-                """, (id_grupo, hoy_str))
+                if not es_general:
+                    cursor.execute("""
+                        UPDATE tb_asistencias_reaperturas 
+                        SET habilitado = 0, updated_at = CURRENT_TIMESTAMP
+                        WHERE id_grupo = %s AND fecha = %s AND habilitado = 1
+                          AND (id_materia IS NULL OR id_materia = 0 OR id_materia = %s)
+                    """, (id_grupo, hoy_str, mat_id_int))
+                else:
+                    cursor.execute("""
+                        UPDATE tb_asistencias_reaperturas 
+                        SET habilitado = 0, updated_at = CURRENT_TIMESTAMP
+                        WHERE id_grupo = %s AND fecha = %s AND habilitado = 1
+                    """, (id_grupo, hoy_str))
 
             conexion.commit()
             return {"mensaje": "Asistencias guardadas correctamente"}

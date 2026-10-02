@@ -1,4 +1,4 @@
-﻿from app.config.conexion import get_connection
+from app.config.conexion import get_connection
 from datetime import date, datetime
 import pymysql
 import unicodedata
@@ -510,13 +510,19 @@ class CalificacionesService:
                     'reason': 'El grupo no existe.'
                 }
 
-            if not permiso:
-                cursor.execute("SELECT captura_habilitada FROM tb_grupo_periodos_captura WHERE id_grupo = %s", (id_grupo,))
-                grp_config = cursor.fetchone()
-                if grp_config and not grp_config.get('captura_habilitada'):
+            cursor.execute("SELECT captura_habilitada FROM tb_grupo_periodos_captura WHERE id_grupo = %s", (id_grupo,))
+            grp_config = cursor.fetchone()
+            if grp_config and not grp_config.get('captura_habilitada'):
+                has_prorroga_vigente = (
+                    permiso and permiso.get('habilitado') and
+                    not permiso.get('finalizado') and
+                    permiso.get('fecha_limite') and
+                    hoy <= str(permiso.get('fecha_limite'))
+                )
+                if not has_prorroga_vigente:
                     return {
                         'allowed': False,
-                        'reason': 'La captura de calificaciones estÃ¡ deshabilitada temporalmente para este grupo.'
+                        'reason': 'La captura de calificaciones está deshabilitada temporalmente para este grupo por administración.'
                     }
 
             if grupo.get('statusGrupo') and grupo.get('statusGrupo').upper() != 'ACTIVO':
@@ -807,20 +813,27 @@ class CalificacionesService:
             cfg = cursor.fetchone()
 
             if is_docente and id_materia:
-                # Validar permisos bÃ¡sicos
+                # Validar permisos básicos
                 perm_res = CalificacionesService.check_captura_permission(id_grupo, id_materia, id_docente, rol)
                 if not perm_res['allowed']:
                     solo_lectura = True
                     mensaje_restriccion = perm_res['reason']
 
-            # Bloqueo por semestre si no hay permiso especial activo
+            # Prórroga especial activa para este docente/asignatura
+            hoy = date.today().strftime('%Y-%m-%d')
             has_active_special_permission = False
-            if permiso and permiso.get('habilitado'):
+            if permiso and permiso.get('habilitado') and not permiso.get('finalizado'):
                 fecha_limite = permiso.get('fecha_limite')
-                hoy = date.today().strftime('%Y-%m-%d')
-                if not fecha_limite or hoy <= str(fecha_limite):
+                if fecha_limite and hoy <= str(fecha_limite):
                     has_active_special_permission = True
 
+            # Bloqueo explícito del grupo por el administrador
+            if is_docente and cfg and not cfg.get('captura_habilitada') and not has_active_special_permission:
+                solo_lectura = True
+                if not mensaje_restriccion:
+                    mensaje_restriccion = "La captura de calificaciones está deshabilitada para este grupo por administración."
+
+            # Bloqueo por semestre si no hay permiso especial activo
             if is_docente and not has_active_special_permission and cfg and cfg.get('id_nivel_academico') is not None and materia_seleccionada:
                 materia_nivel = materia_seleccionada.get('id_nivel_academico')
                 if materia_nivel is not None and int(materia_nivel) != int(cfg['id_nivel_academico']):
@@ -828,26 +841,50 @@ class CalificacionesService:
                     nivel_row = cursor.fetchone()
                     level_name = nivel_row['nombre'] if nivel_row else f"Nivel {cfg['id_nivel_academico']}"
                     solo_lectura = True
-                    mensaje_restriccion = f"La captura para este semestre estÃ¡ deshabilitada. El semestre habilitado es: {level_name}."
+                    mensaje_restriccion = f"La captura para este semestre está deshabilitada. El semestre habilitado es: {level_name}."
 
             # Armar cct_config
-            def is_period_open(enabled, start, end):
+            def is_period_open(enabled, start, end, has_prorroga=False):
                 if not enabled:
                     return False
-                hoy = date.today().strftime('%Y-%m-%d')
-                if start and hoy < str(start):
+                hoy_str = date.today().strftime('%Y-%m-%d')
+                if start and hoy_str < str(start):
                     return False
-                if end and hoy > str(end):
-                    return False
+                if end and hoy_str > str(end):
+                    if not has_prorroga:
+                        return False
                 return True
 
-            cct_config = {
-                'captura_p1': True if has_active_special_permission else is_period_open(cfg.get('p1_habilitado', 1) if cfg else 1, cfg.get('p1_fecha_inicio') if cfg else None, cfg.get('p1_fecha_fin') if cfg else None),
-                'captura_p2': True if has_active_special_permission else is_period_open(cfg.get('p2_habilitado', 1) if cfg else 1, cfg.get('p2_fecha_inicio') if cfg else None, cfg.get('p2_fecha_fin') if cfg else None),
-                'captura_p3': True if has_active_special_permission else is_period_open(cfg.get('p3_habilitado', 1) if cfg else 1, cfg.get('p3_fecha_inicio') if cfg else None, cfg.get('p3_fecha_fin') if cfg else None),
-                'captura_semestral': True if has_active_special_permission else is_period_open(cfg.get('semestral_habilitado', 1) if cfg else 1, cfg.get('semestral_fecha_inicio') if cfg else None, cfg.get('semestral_fecha_fin') if cfg else None),
-                'captura_extraordinario': True if has_active_special_permission else is_period_open(cfg.get('extraordinario_habilitado', 1) if cfg else 1, cfg.get('extraordinario_fecha_inicio') if cfg else None, cfg.get('extraordinario_fecha_fin') if cfg else None),
-            }
+            if not cfg:
+                cct_config = {
+                    'captura_p1': True,
+                    'captura_p2': True,
+                    'captura_p3': True,
+                    'captura_semestral': True,
+                    'captura_extraordinario': True,
+                }
+            elif not cfg.get('captura_habilitada') and not has_active_special_permission:
+                cct_config = {
+                    'captura_p1': False,
+                    'captura_p2': False,
+                    'captura_p3': False,
+                    'captura_semestral': False,
+                    'captura_extraordinario': False,
+                }
+            else:
+                cct_config = {
+                    'captura_p1': is_period_open(cfg.get('p1_habilitado', 0), cfg.get('p1_fecha_inicio'), cfg.get('p1_fecha_fin'), has_active_special_permission),
+                    'captura_p2': is_period_open(cfg.get('p2_habilitado', 0), cfg.get('p2_fecha_inicio'), cfg.get('p2_fecha_fin'), has_active_special_permission),
+                    'captura_p3': is_period_open(cfg.get('p3_habilitado', 0), cfg.get('p3_fecha_inicio'), cfg.get('p3_fecha_fin'), has_active_special_permission),
+                    'captura_semestral': is_period_open(cfg.get('semestral_habilitado', 0), cfg.get('semestral_fecha_inicio'), cfg.get('semestral_fecha_fin'), has_active_special_permission),
+                    'captura_extraordinario': is_period_open(cfg.get('extraordinario_habilitado', 0), cfg.get('extraordinario_fecha_inicio'), cfg.get('extraordinario_fecha_fin'), has_active_special_permission),
+                }
+
+            # Si es docente y ningún periodo está habilitado para captura, activar solo_lectura
+            if is_docente and not any(cct_config.values()):
+                solo_lectura = True
+                if not mensaje_restriccion:
+                    mensaje_restriccion = "No hay periodos de captura habilitados actualmente para este grupo."
 
             return {
                 "grupo": grupo,
@@ -877,7 +914,65 @@ class CalificacionesService:
                 if not perm_res['allowed']:
                     return {"error": perm_res['reason']}
 
-            # 2. Validar rango de calificaciones (enteros 1 a 10) para BTI (CCT 2) y BGNE (CCT 3)
+            # 2. Determinar periodos habilitados si el usuario es DOCENTE
+            is_docente = bool(rol and rol.upper() == 'DOCENTE')
+            allow_p1 = True
+            allow_p2 = True
+            allow_p3 = True
+            allow_sem = True
+            allow_ext = True
+
+            if is_docente:
+                cursor.execute("""
+                    SELECT p1_habilitado, p1_fecha_inicio, p1_fecha_fin,
+                           p2_habilitado, p2_fecha_inicio, p2_fecha_fin,
+                           p3_habilitado, p3_fecha_inicio, p3_fecha_fin,
+                           semestral_habilitado, semestral_fecha_inicio, semestral_fecha_fin,
+                           extraordinario_habilitado, extraordinario_fecha_inicio, extraordinario_fecha_fin,
+                           captura_habilitada
+                    FROM tb_grupo_periodos_captura WHERE id_grupo = %s
+                """, (id_grupo,))
+                cfg_grupo = cursor.fetchone()
+
+                has_prorroga = False
+                if id_docente:
+                    cursor.execute("""
+                        SELECT habilitado, fecha_limite, finalizado
+                        FROM tb_docente_permisos_captura
+                        WHERE id_docente = %s AND id_grupo = %s AND id_materia = %s
+                    """, (id_docente, id_grupo, id_materia))
+                    perm_doc = cursor.fetchone()
+                    if perm_doc and perm_doc.get('habilitado') and not perm_doc.get('finalizado'):
+                        fl = perm_doc.get('fecha_limite')
+                        hoy = date.today().strftime('%Y-%m-%d')
+                        if fl and hoy <= str(fl):
+                            has_prorroga = True
+
+                if cfg_grupo:
+                    if not cfg_grupo.get('captura_habilitada') and not has_prorroga:
+                        return {"error": "La captura de calificaciones está deshabilitada para este grupo por administración."}
+                    
+                    def check_period(en, st, en_date):
+                        if not en:
+                            return False
+                        hoy = date.today().strftime('%Y-%m-%d')
+                        if st and hoy < str(st):
+                            return False
+                        if en_date and hoy > str(en_date):
+                            if not has_prorroga:
+                                return False
+                        return True
+
+                    allow_p1 = check_period(cfg_grupo.get('p1_habilitado'), cfg_grupo.get('p1_fecha_inicio'), cfg_grupo.get('p1_fecha_fin'))
+                    allow_p2 = check_period(cfg_grupo.get('p2_habilitado'), cfg_grupo.get('p2_fecha_inicio'), cfg_grupo.get('p2_fecha_fin'))
+                    allow_p3 = check_period(cfg_grupo.get('p3_habilitado'), cfg_grupo.get('p3_fecha_inicio'), cfg_grupo.get('p3_fecha_fin'))
+                    allow_sem = check_period(cfg_grupo.get('semestral_habilitado'), cfg_grupo.get('semestral_fecha_inicio'), cfg_grupo.get('semestral_fecha_fin'))
+                    allow_ext = check_period(cfg_grupo.get('extraordinario_habilitado'), cfg_grupo.get('extraordinario_fecha_inicio'), cfg_grupo.get('extraordinario_fecha_fin'))
+
+                    if not any([allow_p1, allow_p2, allow_p3, allow_sem, allow_ext]):
+                        return {"error": "No hay periodos de captura habilitados actualmente para este grupo."}
+
+            # 3. Validar rango de calificaciones (enteros 1 a 10) para BTI (CCT 2) y BGNE (CCT 3)
             cursor.execute("SELECT id_centroTrabajo FROM tb_grupos WHERE id = %s", (id_grupo,))
             grupo_row = cursor.fetchone()
             id_cct = grupo_row.get("id_centroTrabajo") if grupo_row else None
@@ -963,10 +1058,48 @@ class CalificacionesService:
                 tot_asist_val = int(total_asistencias) if (total_asistencias is not None and total_asistencias != "") else None
 
                 cursor.execute("""
-                    SELECT id FROM tb_calificaciones 
+                    SELECT id, parcial1, parcial2, parcial3, semestral, extraordinario
+                    FROM tb_calificaciones 
                     WHERE idAlumno = %s AND idMateria = %s AND tipoAcreditacion != 'EQUIVALENCIA'
                 """, (id_alumno, id_materia))
                 existente = cursor.fetchone()
+
+                if is_docente:
+                    if existente:
+                        if not allow_p1:
+                            p1_val = float(existente["parcial1"]) if existente.get("parcial1") is not None else None
+                        if not allow_p2:
+                            p2_val = float(existente["parcial2"]) if existente.get("parcial2") is not None else None
+                        if not allow_p3:
+                            p3_val = float(existente["parcial3"]) if existente.get("parcial3") is not None else None
+                        if not allow_sem:
+                            sem_val = float(existente["semestral"]) if existente.get("semestral") is not None else None
+                        if not allow_ext:
+                            ext_val = float(existente["extraordinario"]) if existente.get("extraordinario") is not None else None
+                    else:
+                        if not allow_p1:
+                            p1_val = None
+                        if not allow_p2:
+                            p2_val = None
+                        if not allow_p3:
+                            p3_val = None
+                        if not allow_sem:
+                            sem_val = None
+                        if not allow_ext:
+                            ext_val = None
+
+                    # Recalcular calif_val a partir de los parciales válidos si existe algún parcial
+                    if any(x is not None for x in [p1_val, p2_val, p3_val, sem_val, ext_val]):
+                        if ext_val is not None:
+                            calif_val = float(min(round(ext_val), 7))
+                        elif sem_val is not None:
+                            parts = [p for p in [p1_val, p2_val, p3_val] if p is not None]
+                            count = 4 if len(parts) == 3 else (len(parts) + 1)
+                            calif_val = float(round((sum(parts) + sem_val) / count))
+                        else:
+                            parts = [p for p in [p1_val, p2_val, p3_val] if p is not None]
+                            if parts:
+                                calif_val = float(round(sum(parts) / len(parts)))
 
                 if existente:
                     cursor.execute("""
@@ -986,7 +1119,7 @@ class CalificacionesService:
                     """, (id_alumno, id_materia, id_grupo, calif_val, tipo_acred, observaciones, create_by, p1_val, p2_val, p3_val, sem_val, ext_val, asist_val, tot_asist_val))
 
             # 3. Registrar como finalizado si corresponde
-            if finalizar and id_docente and rol and rol.upper() == 'DOCENTE':
+            if finalizar and id_docente and is_docente and (allow_sem or allow_ext):
                 cursor.execute("""
                     SELECT id FROM tb_docente_permisos_captura 
                     WHERE id_docente = %s AND id_grupo = %s AND id_materia = %s
