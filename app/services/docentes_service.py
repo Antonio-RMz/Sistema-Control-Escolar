@@ -595,8 +595,10 @@ class DocentesService:
                     DATEDIFF(g.fechaFin, %s) as dias_restantes
                 FROM tb_horarios h
                 JOIN tb_grupos g ON h.id_grupo = g.id
+                JOIN tb_materias m ON h.id_materia = m.id
                 WHERE h.id_docente = %s
                   AND g.statusGrupo = 'ACTIVO'
+                  AND (m.id_nivel_academico IS NULL OR m.id_nivel_academico = g.id_nivel_academico)
                   AND g.fechaFin >= %s
                   AND g.fechaFin <= %s
                 ORDER BY g.fechaFin ASC

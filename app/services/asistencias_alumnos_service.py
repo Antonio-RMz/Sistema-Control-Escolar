@@ -174,8 +174,8 @@ class AsistenciasAlumnosService:
                     """, (id_grupo, filtro_prehorario, active_level))
                 materias = cursor.fetchall()
 
-            # 3. Si no hubo materias con el nivel activo (o el grupo no tiene active_level), buscar todas las del horario armado
-            if not materias:
+            # 3. Si no hubo materias y el grupo no tiene active_level definido, buscar todas las del horario armado
+            if not materias and active_level is None:
                 if id_docente:
                     cursor.execute("""
                         SELECT DISTINCT 

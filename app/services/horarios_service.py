@@ -72,9 +72,11 @@ class HorariosService:
                     m.id_nivel_academico AS id_nivel_materia,
                     d.colorDocente AS docente_color
                 FROM tb_horarios h
+                JOIN tb_grupos g ON h.id_grupo = g.id
                 LEFT JOIN tb_materias m ON h.id_materia = m.id
                 LEFT JOIN tb_docentes d ON h.id_docente = d.idDocente
                 WHERE h.id_grupo = %s AND h.es_prehorario = %s
+                  AND (g.id_nivel_academico IS NULL OR m.id_nivel_academico IS NULL OR m.id_nivel_academico = g.id_nivel_academico)
                 ORDER BY h.diaSemana, h.horaInicio
             """
             cursor.execute(sql, (id_grupo, es_prehorario))

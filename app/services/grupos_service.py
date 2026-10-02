@@ -21,7 +21,16 @@ class GruposService:
             params = []
 
             if id_docente:
-                where_clauses.append("g.id IN (SELECT DISTINCT id_grupo FROM tb_horarios WHERE id_docente = %s)")
+                where_clauses.append("""
+                    EXISTS (
+                        SELECT 1 
+                        FROM tb_horarios h
+                        JOIN tb_materias m ON h.id_materia = m.id
+                        WHERE h.id_grupo = g.id
+                          AND h.id_docente = %s
+                          AND (g.id_nivel_academico IS NULL OR m.id_nivel_academico IS NULL OR m.id_nivel_academico = g.id_nivel_academico)
+                    )
+                """)
                 params.append(id_docente)
 
             if search:
@@ -192,6 +201,25 @@ class GruposService:
                         row["fechaFinNivel"] = str(res_nivel.get("fechaFinNivel")) if res_nivel.get("fechaFinNivel") else None
                 except Exception as ex:
                     print("Error al calcular nivel del grupo:", ex)
+
+            if id_docente:
+                grupos_validos = []
+                for row in data:
+                    nivel_grp = row.get("id_nivel_academico")
+                    cursor.execute("""
+                        SELECT 1 
+                        FROM tb_horarios h
+                        JOIN tb_materias m ON h.id_materia = m.id
+                        WHERE h.id_grupo = %s 
+                          AND h.id_docente = %s
+                          AND (m.id_nivel_academico IS NULL OR %s IS NULL OR m.id_nivel_academico = %s)
+                        LIMIT 1
+                    """, (row["id"], id_docente, nivel_grp, nivel_grp))
+                    if cursor.fetchone():
+                        grupos_validos.append(row)
+                data = grupos_validos
+                if len(data) < total:
+                    total = len(data)
 
             return {
                 "page": page,
