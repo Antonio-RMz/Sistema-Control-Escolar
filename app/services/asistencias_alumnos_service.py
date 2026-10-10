@@ -405,43 +405,48 @@ class AsistenciasAlumnosService:
             es_general = (not id_materia or str(id_materia).lower() == 'general')
             mat_id_int = None if es_general else int(id_materia)
 
-            # Si es docente, verificar si el pase de lista de hoy ya fue enviado previamente
-            if id_docente:
-                if not es_general:
-                    cursor.execute("""
-                        SELECT 1 FROM tb_asistencias_alumnos 
-                        WHERE id_grupo = %s AND id_materia = %s AND fecha = %s AND estatus IS NOT NULL AND estatus != ''
-                        LIMIT 1
-                    """, (id_grupo, mat_id_int, hoy_str))
-                else:
-                    cursor.execute("""
-                        SELECT 1 FROM tb_asistencias_alumnos 
-                        WHERE id_grupo = %s AND fecha = %s AND estatus IS NOT NULL AND estatus != ''
-                        LIMIT 1
-                    """, (id_grupo, hoy_str))
-                ya_enviado = cursor.fetchone() is not None
+            fechas_en_lista = sorted(list(set(str(a.get("fecha")) for a in asistencias_list if a.get("fecha"))))
+            if not fechas_en_lista:
+                return {"mensaje": "No se recibieron registros para guardar."}
 
-                if ya_enviado:
-                    # Validar si administración otorgó permiso de reapertura para hoy
+            # Si es docente, verificar si el pase de lista para las fechas enviadas ya fue cerrado previamente
+            if id_docente:
+                for f_target in fechas_en_lista:
                     if not es_general:
                         cursor.execute("""
-                            SELECT 1 FROM tb_asistencias_reaperturas 
-                            WHERE id_grupo = %s AND fecha = %s AND habilitado = 1
-                              AND (id_materia IS NULL OR id_materia = 0 OR id_materia = %s)
+                            SELECT 1 FROM tb_asistencias_alumnos 
+                            WHERE id_grupo = %s AND id_materia = %s AND fecha = %s AND estatus IS NOT NULL AND estatus != ''
                             LIMIT 1
-                        """, (id_grupo, hoy_str, mat_id_int))
+                        """, (id_grupo, mat_id_int, f_target))
                     else:
                         cursor.execute("""
-                            SELECT 1 FROM tb_asistencias_reaperturas 
-                            WHERE id_grupo = %s AND fecha = %s AND habilitado = 1
+                            SELECT 1 FROM tb_asistencias_alumnos 
+                            WHERE id_grupo = %s AND fecha = %s AND estatus IS NOT NULL AND estatus != ''
                             LIMIT 1
-                        """, (id_grupo, hoy_str))
-                    reapertura_activa = cursor.fetchone() is not None
+                        """, (id_grupo, f_target))
+                    ya_enviado = cursor.fetchone() is not None
 
-                    if not reapertura_activa:
-                        return {
-                            "error": "El pase de lista de hoy ya fue enviado previamente y se encuentra cerrado. Solo el administrador puede realizar modificaciones."
-                        }, 403
+                    if ya_enviado:
+                        # Validar si administración otorgó permiso de reapertura para esta fecha
+                        if not es_general:
+                            cursor.execute("""
+                                SELECT 1 FROM tb_asistencias_reaperturas 
+                                WHERE id_grupo = %s AND fecha = %s AND habilitado = 1
+                                  AND (id_materia IS NULL OR id_materia = 0 OR id_materia = %s)
+                                LIMIT 1
+                            """, (id_grupo, f_target, mat_id_int))
+                        else:
+                            cursor.execute("""
+                                SELECT 1 FROM tb_asistencias_reaperturas 
+                                WHERE id_grupo = %s AND fecha = %s AND habilitado = 1
+                                LIMIT 1
+                            """, (id_grupo, f_target))
+                        reapertura_activa = cursor.fetchone() is not None
+
+                        if not reapertura_activa:
+                            return {
+                                "error": f"El pase de lista para la fecha {f_target} ya fue enviado previamente y se encuentra cerrado. Para realizar modificaciones, solicita la reapertura a la administración."
+                            }, 403
             
             query = """
                 INSERT INTO tb_asistencias_alumnos 
@@ -487,7 +492,7 @@ class AsistenciasAlumnosService:
 
                     if estatus is None or estatus == "":
                         cursor.execute("DELETE FROM tb_asistencias_alumnos WHERE id_grupo = %s AND id_alumno = %s AND fecha = %s", (id_grupo, id_alumno, fecha))
-                    else:
+                    elif estatus in ('A', 'F', 'R', 'J'):
                         for h in horarios:
                             m_id = h.get("id_materia") if isinstance(h, dict) else h[0]
                             d_id = (h.get("id_docente") if isinstance(h, dict) else h[1]) or 1
@@ -505,7 +510,7 @@ class AsistenciasAlumnosService:
                     """, (id_grupo, id_materia))
                     row = cursor.fetchone()
                     if row:
-                        id_docente = row[0]
+                        id_docente = row.get("id_docente") if isinstance(row, dict) else row[0]
 
                 if not id_docente:
                     id_docente = 1
@@ -519,30 +524,31 @@ class AsistenciasAlumnosService:
 
                     if estatus is None or estatus == "":
                         cursor.execute("DELETE FROM tb_asistencias_alumnos WHERE id_grupo = %s AND id_materia = %s AND id_alumno = %s AND fecha = %s", (id_grupo, id_materia, id_alumno, fecha))
-                    else:
+                    elif estatus in ('A', 'F', 'R', 'J'):
                         cursor.execute(query, (id_alumno, id_materia, id_docente, id_grupo, fecha, id_nivel, estatus, obs))
 
             # Si el docente completó y guardó su pase de lista, consumir la reapertura para que vuelva a quedar cerrado
             if id_docente:
-                if not es_general:
-                    cursor.execute("""
-                        UPDATE tb_asistencias_reaperturas 
-                        SET habilitado = 0, updated_at = CURRENT_TIMESTAMP
-                        WHERE id_grupo = %s AND fecha = %s AND habilitado = 1
-                          AND (id_materia IS NULL OR id_materia = 0 OR id_materia = %s)
-                    """, (id_grupo, hoy_str, mat_id_int))
-                else:
-                    cursor.execute("""
-                        UPDATE tb_asistencias_reaperturas 
-                        SET habilitado = 0, updated_at = CURRENT_TIMESTAMP
-                        WHERE id_grupo = %s AND fecha = %s AND habilitado = 1
-                    """, (id_grupo, hoy_str))
+                for f_target in fechas_en_lista:
+                    if not es_general:
+                        cursor.execute("""
+                            UPDATE tb_asistencias_reaperturas 
+                            SET habilitado = 0, updated_at = CURRENT_TIMESTAMP
+                            WHERE id_grupo = %s AND fecha = %s AND habilitado = 1
+                              AND (id_materia IS NULL OR id_materia = 0 OR id_materia = %s)
+                        """, (id_grupo, f_target, mat_id_int))
+                    else:
+                        cursor.execute("""
+                            UPDATE tb_asistencias_reaperturas 
+                            SET habilitado = 0, updated_at = CURRENT_TIMESTAMP
+                            WHERE id_grupo = %s AND fecha = %s AND habilitado = 1
+                        """, (id_grupo, f_target))
 
             conexion.commit()
             return {"mensaje": "Asistencias guardadas correctamente"}
         except Exception as e:
             conexion.rollback()
-            return {"error": str(e)}
+            return {"error": f"Error al guardar asistencias: {str(e)}"}, 500
         finally:
             cursor.close()
             conexion.close()
