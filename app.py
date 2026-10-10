@@ -18,6 +18,7 @@ from app.routes.calificaciones import calificaciones_bp
 from app.routes.notificaciones import notificaciones_bp
 from app.routes.personal import personal_bp
 from app.routes.permisos_captura import permisos_captura_bp
+from app.routes.reportes_indisciplina import reportes_indisciplina_bp
 
 
 def create_app():
@@ -51,6 +52,7 @@ def create_app():
     app.register_blueprint(notificaciones_bp)
     app.register_blueprint(personal_bp)
     app.register_blueprint(permisos_captura_bp)
+    app.register_blueprint(reportes_indisciplina_bp)
 
     # Iniciar programador de tareas diario (7:00 AM)
     from app.utils.scheduler import iniciar_scheduler
