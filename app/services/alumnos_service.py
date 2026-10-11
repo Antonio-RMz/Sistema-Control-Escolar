@@ -137,10 +137,15 @@ class AlumnosService:
                     CONCAT_WS(' ', c.nombre, c.apPaterno, c.apMaterno) AS tutor,
                     ac.parentesco,
                     COALESCE(c.telefono, c.celular) AS telefonoTutor,
+                    gr.id_centroTrabajo,
+                    gr.modalidadHorario,
+                    ct.clave AS claveCentroTrabajo,
+                    ct.nombre AS nombreCentroTrabajo,
                     {AlumnosService._get_online_select_fields(has_moodle)}
                 FROM tb_alumnos a
                 LEFT JOIN tb_generaciones g ON a.idGeneracion = g.id
                 LEFT JOIN tb_grupos gr ON a.idGrupo = gr.id
+                LEFT JOIN tb_centrotrabajo ct ON gr.id_centroTrabajo = ct.id
                 LEFT JOIN tb_direcciones_alumno d ON a.idAlumno = d.idAlumno
                 LEFT JOIN tb_certificados_alumno cert ON a.idAlumno = cert.idAlumno
                 LEFT JOIN tb_alumno_contacto ac ON ac.id = (
