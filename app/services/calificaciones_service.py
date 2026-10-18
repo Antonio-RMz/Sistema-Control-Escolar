@@ -1388,6 +1388,12 @@ class CalificacionesService:
             """, (id_nivel_academico, id_cct))
             materias = [m["id"] for m in (cursor.fetchall() or [])]
 
+            # También incluir materias que estén asignadas al grupo en tb_horarios
+            cursor.execute("SELECT DISTINCT idMateria FROM tb_horarios WHERE idGrupo = %s", (id_grupo,))
+            for h in (cursor.fetchall() or []):
+                if h.get("idMateria") and h["idMateria"] not in materias:
+                    materias.append(h["idMateria"])
+
             for item in asistencias_list:
                 id_alumno = item.get("idAlumno")
                 if not id_alumno:
@@ -1400,8 +1406,8 @@ class CalificacionesService:
                 mat_tuple = tuple(materias) if materias else (-1,)
                 cursor.execute("""
                     SELECT id, idMateria FROM tb_calificaciones
-                    WHERE idAlumno = %s AND (id_nivel_academico = %s OR idMateria IN %s)
-                """, (id_alumno, id_nivel_academico, mat_tuple))
+                    WHERE idAlumno = %s AND (id_nivel_academico = %s OR idGrupo = %s OR idMateria IN %s)
+                """, (id_alumno, id_nivel_academico, id_grupo, mat_tuple))
                 existentes = cursor.fetchall() or []
                 existentes_mat_ids = {e["idMateria"] for e in existentes}
 
@@ -1411,12 +1417,12 @@ class CalificacionesService:
                         UPDATE tb_calificaciones
                         SET asistencias = %s,
                             total_asistencias = %s,
-                            id_nivel_academico = %s,
+                            id_nivel_academico = COALESCE(id_nivel_academico, %s),
                             idGrupo = COALESCE(idGrupo, %s),
                             updateAt = NOW(),
                             updateBy = %s
-                        WHERE idAlumno = %s AND (id_nivel_academico = %s OR idMateria IN %s)
-                    """, (asist_val, tot_val, id_nivel_academico, id_grupo, create_by, id_alumno, id_nivel_academico, mat_tuple))
+                        WHERE idAlumno = %s AND (id_nivel_academico = %s OR idGrupo = %s OR idMateria IN %s)
+                    """, (asist_val, tot_val, id_nivel_academico, id_grupo, create_by, id_alumno, id_nivel_academico, id_grupo, mat_tuple))
 
                 # Insertar registros para las materias faltantes del nivel escolar
                 materias_faltantes = [m_id for m_id in materias if m_id not in existentes_mat_ids]
