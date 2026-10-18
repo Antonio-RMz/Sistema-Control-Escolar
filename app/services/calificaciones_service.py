@@ -1120,13 +1120,16 @@ class CalificacionesService:
                 is_calif_empty = (calificacion is None or calificacion == "" or str(calificacion).strip().lower() == "null")
                 all_partials_empty = all(v is None for v in [p1_val, p2_val, p3_val, sem_val, ext_val])
 
-                # Si las calificaciones se vaciaron (null / vacio), eliminar el registro existente de tb_calificaciones
+                # Si las calificaciones se vaciaron (null / vacio), eliminar el registro existente de tb_calificaciones únicamente si tampoco hay asistencias
                 if is_calif_empty and all_partials_empty:
-                    cursor.execute("""
-                        DELETE FROM tb_calificaciones 
-                        WHERE idAlumno = %s AND idMateria = %s AND tipoAcreditacion != 'EQUIVALENCIA'
-                    """, (id_alumno, id_materia))
-                    continue
+                    if asist_val is None and tot_asist_val is None:
+                        cursor.execute("""
+                            DELETE FROM tb_calificaciones 
+                            WHERE idAlumno = %s AND idMateria = %s AND tipoAcreditacion != 'EQUIVALENCIA'
+                        """, (id_alumno, id_materia))
+                        continue
+                    else:
+                        calif_val = 0.0
 
                 # Al guardar ordinario, asegurarse de limpiar cualquier registro previo de equivalencia
                 cursor.execute("""
@@ -1145,11 +1148,14 @@ class CalificacionesService:
                     elif valid_parts:
                         calif_val = float(round(sum(valid_parts) / len(valid_parts)))
                     else:
-                        cursor.execute("""
-                            DELETE FROM tb_calificaciones 
-                            WHERE idAlumno = %s AND idMateria = %s AND tipoAcreditacion != 'EQUIVALENCIA'
-                        """, (id_alumno, id_materia))
-                        continue
+                        if asist_val is None and tot_asist_val is None:
+                            cursor.execute("""
+                                DELETE FROM tb_calificaciones 
+                                WHERE idAlumno = %s AND idMateria = %s AND tipoAcreditacion != 'EQUIVALENCIA'
+                            """, (id_alumno, id_materia))
+                            continue
+                        else:
+                            calif_val = 0.0
                 else:
                     calif_val = float(calificacion)
                 
