@@ -529,6 +529,9 @@ class DocentesService:
         conexion = get_connection()
         cursor = conexion.cursor()
         try:
+            if not usuario:
+                return None
+            u_clean = usuario.strip()
             cursor.execute("""
                 SELECT 
                     idDocente, 
@@ -541,9 +544,18 @@ class DocentesService:
                     statusDocente,
                     permisos_modulos
                 FROM tb_docentes
-                WHERE (usuario = %s OR correoDocente = %s) AND statusDocente = 'ACTIVO'
+                WHERE (
+                    LOWER(TRIM(usuario)) = LOWER(%s)
+                    OR LOWER(TRIM(correoDocente)) = LOWER(%s)
+                    OR REPLACE(LOWER(TRIM(usuario)), 'ñ', 'n') = REPLACE(LOWER(%s), 'ñ', 'n')
+                    OR REPLACE(LOWER(TRIM(correoDocente)), 'ñ', 'n') = REPLACE(LOWER(%s), 'ñ', 'n')
+                    OR LOWER(CONCAT(TRIM(nombreDocente), '.', TRIM(apPaternoDocente))) = LOWER(%s)
+                    OR LOWER(CONCAT(TRIM(nombreDocente), '.', TRIM(IFNULL(apMaternoDocente, '')))) = LOWER(%s)
+                    OR REPLACE(LOWER(CONCAT(TRIM(nombreDocente), '.', TRIM(apPaternoDocente))), 'ñ', 'n') = REPLACE(LOWER(%s), 'ñ', 'n')
+                    OR REPLACE(LOWER(CONCAT(TRIM(nombreDocente), '.', TRIM(IFNULL(apMaternoDocente, '')))), 'ñ', 'n') = REPLACE(LOWER(%s), 'ñ', 'n')
+                ) AND UPPER(TRIM(statusDocente)) = 'ACTIVO'
                 LIMIT 1
-            """, (usuario, usuario))
+            """, (u_clean, u_clean, u_clean, u_clean, u_clean, u_clean, u_clean, u_clean))
             return cursor.fetchone()
         finally:
             cursor.close()

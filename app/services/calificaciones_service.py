@@ -293,7 +293,25 @@ class CalificacionesService:
                 """, (id_alumno, id_cct))
                 materias_califs = cursor.fetchall()
 
-            # 4. Agrupar materias y calificaciones por Nivel AcadÃ©mico
+            # Consultar asistencias registradas en tb_asistencias_alumnos (fallback automático)
+            cursor.execute("""
+                SELECT 
+                    id_materia,
+                    id_nivel_academico,
+                    COUNT(*) as total_sesiones,
+                    SUM(CASE WHEN estatus IN ('A', 'R') THEN 1 ELSE 0 END) as asistencias_alumno
+                FROM tb_asistencias_alumnos
+                WHERE id_alumno = %s
+                GROUP BY id_materia, id_nivel_academico
+            """, (id_alumno,))
+            asist_fallbacks = {}
+            for ar in (cursor.fetchall() or []):
+                asist_fallbacks[(ar["id_materia"], ar["id_nivel_academico"])] = {
+                    "asistencias": int(ar["asistencias_alumno"] or 0),
+                    "total_asistencias": int(ar["total_sesiones"] or 0)
+                }
+
+            # 4. Agrupar materias y calificaciones por Nivel Académico
             kardex_periodos = []
             suma_calif_global = 0.0
             total_materias_evaluadas = 0
@@ -322,6 +340,15 @@ class CalificacionesService:
                         suma_calif_global += c_num
                         total_materias_evaluadas += 1
 
+                    asist_num = int(mat["asistencias"]) if mat.get("asistencias") is not None else None
+                    tot_asist_num = int(mat["total_asistencias"]) if mat.get("total_asistencias") is not None else None
+
+                    if asist_num is None and tot_asist_num is None:
+                        fb = asist_fallbacks.get((mat["idMateria"], id_nivel))
+                        if fb and fb["total_asistencias"] > 0:
+                            asist_num = fb["asistencias"]
+                            tot_asist_num = fb["total_asistencias"]
+
                     lista_materias_periodo.append({
                         "idMateria": mat["idMateria"],
                         "nombreMateria": mat["nombreMateria"],
@@ -338,8 +365,8 @@ class CalificacionesService:
                         "parcial3": float(mat["parcial3"]) if mat.get("parcial3") is not None else None,
                         "semestral": float(mat["semestral"]) if mat.get("semestral") is not None else None,
                         "extraordinario": float(mat["extraordinario"]) if mat.get("extraordinario") is not None else None,
-                        "asistencias": int(mat["asistencias"]) if mat.get("asistencias") is not None else None,
-                        "total_asistencias": int(mat["total_asistencias"]) if mat.get("total_asistencias") is not None else None,
+                        "asistencias": asist_num,
+                        "total_asistencias": tot_asist_num,
                     })
 
                 promedio_periodo = round(suma_periodo / evaluadas_periodo, 1) if evaluadas_periodo > 0 else None
@@ -389,8 +416,8 @@ class CalificacionesService:
                 if not id_materia:
                     continue
 
-                if calificacion is None:
-                    # Si la calificaciÃ³n se envÃ­a vacÃ­a o se revierte a equivalencia, eliminar la calificaciÃ³n si existe
+                if calificacion is None or calificacion == "" or str(calificacion).strip().lower() == "null":
+                    # Si la calificacion se envia vacia o null, eliminar la calificacion si existe
                     cursor.execute("""
                         DELETE FROM tb_calificaciones 
                         WHERE idAlumno = %s AND idMateria = %s AND tipoAcreditacion = %s
@@ -494,19 +521,20 @@ class CalificacionesService:
                     'reason': 'La captura de calificaciones ha sido deshabilitada para esta asignatura por administraciÃ³n.'
                 }
 
-            if not permiso:
-                cursor.execute("""
-                    SELECT EXISTS(
-                        SELECT 1 FROM tb_horarios
-                        WHERE id_docente = %s AND id_grupo = %s AND id_materia = %s
-                    ) AS exist
-                """, (id_docente, id_grupo, id_materia))
-                horario_exist = cursor.fetchone()
-                if not horario_exist or not horario_exist.get('exist'):
-                    return {
-                        'allowed': False,
-                        'reason': 'No tienes asignada esta asignatura en este grupo.'
-                    }
+            cursor.execute("""
+                SELECT EXISTS(
+                    SELECT 1 FROM tb_horarios
+                    WHERE id_docente = %s AND id_grupo = %s AND id_materia = %s
+                ) AS exist
+            """, (id_docente, id_grupo, id_materia))
+            horario_exist = cursor.fetchone()
+            horario_asignado = bool(horario_exist and horario_exist.get('exist'))
+
+            if not permiso and not horario_asignado:
+                return {
+                    'allowed': False,
+                    'reason': 'No tienes asignada esta asignatura en este grupo.'
+                }
 
             cursor.execute("SELECT statusGrupo, fechaFin, id_nivel_academico FROM tb_grupos WHERE id = %s", (id_grupo,))
             grupo = cursor.fetchone()
@@ -522,7 +550,7 @@ class CalificacionesService:
 
             cursor.execute("SELECT captura_habilitada FROM tb_grupo_periodos_captura WHERE id_grupo = %s", (id_grupo,))
             grp_config = cursor.fetchone()
-            if grp_config and not grp_config.get('captura_habilitada'):
+            if grp_config and grp_config.get('captura_habilitada') is not None and not grp_config.get('captura_habilitada'):
                 has_prorroga_vigente = (
                     permiso and permiso.get('habilitado') and
                     not permiso.get('finalizado') and
@@ -539,10 +567,11 @@ class CalificacionesService:
                 if not permiso or not permiso.get('permitir_modificar_pasados'):
                     return {
                         'allowed': False,
-                        'reason': 'El grupo se encuentra inactivo. Requiere autorizaciÃ³n especial de administraciÃ³n.'
+                        'reason': 'El grupo se encuentra inactivo. Requiere autorización especial de administración.'
                     }
 
-            if grupo and materia:
+            # Si la asignatura está en tb_horarios asignada para este grupo, es una materia activa del grupo y no se bloquea por nivel
+            if grupo and materia and not horario_asignado:
                 g_lvl_id = grupo.get('id_nivel_academico')
                 m_lvl_id = materia.get('id_nivel_academico')
                 if g_lvl_id is not None and m_lvl_id is not None:
@@ -556,7 +585,7 @@ class CalificacionesService:
                             if not permiso or not permiso.get('permitir_modificar_pasados'):
                                 return {
                                     'allowed': False,
-                                    'reason': f"Esta asignatura pertenece a un periodo anterior ({nivel_materia.get('nombre')}). Requiere autorizaciÃ³n de administraciÃ³n para modificar calificaciones pasadas."
+                                    'reason': f"Esta asignatura pertenece a un periodo anterior ({nivel_materia.get('nombre')}). Requiere autorización de administración para modificar calificaciones pasadas."
                                 }
 
             if permiso and permiso.get('fecha_limite'):
@@ -564,15 +593,16 @@ class CalificacionesService:
                 if hoy > fecha_limite_str:
                     return {
                         'allowed': False,
-                        'reason': f"El periodo extraordinario de captura expirÃ³ el {datetime.strptime(fecha_limite_str, '%Y-%m-%d').strftime('%d/%m/%Y')}."
+                        'reason': f"El periodo extraordinario de captura expiró el {datetime.strptime(fecha_limite_str, '%Y-%m-%d').strftime('%d/%m/%Y')}."
                     }
             else:
-                if grupo.get('fechaFin'):
+                # Si el grupo no está ACTIVO, validar fechaFin
+                if grupo.get('statusGrupo') and grupo.get('statusGrupo').upper() != 'ACTIVO' and grupo.get('fechaFin'):
                     fecha_fin_str = str(grupo.get('fechaFin'))
                     if hoy > fecha_fin_str:
                         return {
                             'allowed': False,
-                            'reason': f"El periodo ordinario de captura finalizÃ³ el {datetime.strptime(fecha_fin_str, '%Y-%m-%d').strftime('%d/%m/%Y')}."
+                            'reason': f"El periodo ordinario de captura finalizó el {datetime.strptime(fecha_fin_str, '%Y-%m-%d').strftime('%d/%m/%Y')}."
                         }
 
             return {
@@ -647,13 +677,11 @@ class CalificacionesService:
             materias_horario_db = cursor.fetchall()
 
             if is_docente and id_docente:
-                # Si es rol DOCENTE: filtrar solo sus materias asignadas en este grupo
-                filtered_materias = []
-                for m in materias_horario_db:
-                    match_docente = m.get("id_docente") is not None and int(m["id_docente"]) == int(id_docente)
-                    match_level = m.get("id_nivel_academico") is None or (group_level is not None and int(m["id_nivel_academico"]) == int(group_level))
-                    if match_docente and match_level:
-                        filtered_materias.append(m)
+                # Si es rol DOCENTE: incluir las materias asignadas a este docente en tb_horarios para este grupo
+                filtered_materias = [
+                    m for m in materias_horario_db
+                    if m.get("id_docente") is not None and int(m["id_docente"]) == int(id_docente)
+                ]
                 materias_horario = filtered_materias
             else:
                 # Para Administrador y Control Escolar:
@@ -838,13 +866,15 @@ class CalificacionesService:
                     has_active_special_permission = True
 
             # Bloqueo explícito del grupo por el administrador
-            if is_docente and cfg and not cfg.get('captura_habilitada') and not has_active_special_permission:
+            if is_docente and cfg and cfg.get('captura_habilitada') is not None and not cfg.get('captura_habilitada') and not has_active_special_permission:
                 solo_lectura = True
                 if not mensaje_restriccion:
                     mensaje_restriccion = "La captura de calificaciones está deshabilitada para este grupo por administración."
 
             # Bloqueo por semestre si no hay permiso especial activo
-            if is_docente and not has_active_special_permission and cfg and cfg.get('id_nivel_academico') is not None and materia_seleccionada:
+            # (No bloquear si la materia está formalmente asignada al docente en tb_horarios para este grupo)
+            is_horario_assigned = any(int(m["idMateria"]) == int(id_materia) for m in materias_horario_db if m.get("id_docente") and int(m["id_docente"]) == int(id_docente)) if (id_materia and is_docente and id_docente) else False
+            if is_docente and not has_active_special_permission and not is_horario_assigned and cfg and cfg.get('id_nivel_academico') is not None and materia_seleccionada:
                 materia_nivel = materia_seleccionada.get('id_nivel_academico')
                 if materia_nivel is not None and int(materia_nivel) != int(cfg['id_nivel_academico']):
                     cursor.execute("SELECT nombre FROM tb_niveles_academicos WHERE id = %s", (cfg['id_nivel_academico'],))
@@ -873,7 +903,7 @@ class CalificacionesService:
                     'captura_semestral': True,
                     'captura_extraordinario': True,
                 }
-            elif not cfg.get('captura_habilitada') and not has_active_special_permission:
+            elif cfg.get('captura_habilitada') is not None and not cfg.get('captura_habilitada') and not has_active_special_permission:
                 cct_config = {
                     'captura_p1': False,
                     'captura_p2': False,
@@ -882,13 +912,29 @@ class CalificacionesService:
                     'captura_extraordinario': False,
                 }
             else:
+                p1_en = cfg.get('p1_habilitado') if cfg.get('p1_habilitado') is not None else 1
+                p2_en = cfg.get('p2_habilitado') if cfg.get('p2_habilitado') is not None else 1
+                p3_en = cfg.get('p3_habilitado') if cfg.get('p3_habilitado') is not None else 1
+                sem_en = cfg.get('semestral_habilitado') if cfg.get('semestral_habilitado') is not None else 1
+                ext_en = cfg.get('extraordinario_habilitado') if cfg.get('extraordinario_habilitado') is not None else 1
+
                 cct_config = {
-                    'captura_p1': is_period_open(cfg.get('p1_habilitado', 0), cfg.get('p1_fecha_inicio'), cfg.get('p1_fecha_fin'), has_active_special_permission),
-                    'captura_p2': is_period_open(cfg.get('p2_habilitado', 0), cfg.get('p2_fecha_inicio'), cfg.get('p2_fecha_fin'), has_active_special_permission),
-                    'captura_p3': is_period_open(cfg.get('p3_habilitado', 0), cfg.get('p3_fecha_inicio'), cfg.get('p3_fecha_fin'), has_active_special_permission),
-                    'captura_semestral': is_period_open(cfg.get('semestral_habilitado', 0), cfg.get('semestral_fecha_inicio'), cfg.get('semestral_fecha_fin'), has_active_special_permission),
-                    'captura_extraordinario': is_period_open(cfg.get('extraordinario_habilitado', 0), cfg.get('extraordinario_fecha_inicio'), cfg.get('extraordinario_fecha_fin'), has_active_special_permission),
+                    'captura_p1': is_period_open(p1_en, cfg.get('p1_fecha_inicio'), cfg.get('p1_fecha_fin'), has_active_special_permission),
+                    'captura_p2': is_period_open(p2_en, cfg.get('p2_fecha_inicio'), cfg.get('p2_fecha_fin'), has_active_special_permission),
+                    'captura_p3': is_period_open(p3_en, cfg.get('p3_fecha_inicio'), cfg.get('p3_fecha_fin'), has_active_special_permission),
+                    'captura_semestral': is_period_open(sem_en, cfg.get('semestral_fecha_inicio'), cfg.get('semestral_fecha_fin'), has_active_special_permission),
+                    'captura_extraordinario': is_period_open(ext_en, cfg.get('extraordinario_fecha_inicio'), cfg.get('extraordinario_fecha_fin'), has_active_special_permission),
                 }
+
+                # Si ningún periodo específico tiene fechas o habilitación explícita pero el grupo permite captura, habilitar periodos
+                if not any(cct_config.values()) and (cfg.get('captura_habilitada') or cfg.get('captura_habilitada') is None):
+                    cct_config = {
+                        'captura_p1': True,
+                        'captura_p2': True,
+                        'captura_p3': True,
+                        'captura_semestral': True,
+                        'captura_extraordinario': True,
+                    }
 
             # Si es docente y ningún periodo está habilitado para captura, activar solo_lectura
             if is_docente and not any(cct_config.values()):
@@ -919,13 +965,25 @@ class CalificacionesService:
         cursor = conexion.cursor()
         try:
             # 1. Validar permiso antes de guardar si es docente
-            if rol and rol.upper() == 'DOCENTE':
+            is_docente = bool(rol and rol.upper() == 'DOCENTE')
+            if is_docente and not id_docente and create_by:
+                cursor.execute("""
+                    SELECT idDocente FROM tb_docentes 
+                    WHERE (LOWER(TRIM(usuario)) = LOWER(TRIM(%s)) 
+                           OR LOWER(TRIM(correoDocente)) = LOWER(TRIM(%s))
+                           OR CONCAT(TRIM(nombreDocente), ' ', IFNULL(apPaternoDocente, ''), ' ', IFNULL(apMaternoDocente, '')) LIKE %s)
+                    LIMIT 1
+                """, (create_by, create_by, f"%{create_by}%"))
+                found_d = cursor.fetchone()
+                if found_d:
+                    id_docente = found_d['idDocente'] if isinstance(found_d, dict) else found_d[0]
+
+            if is_docente:
                 perm_res = CalificacionesService.check_captura_permission(id_grupo, id_materia, id_docente, rol)
                 if not perm_res['allowed']:
                     return {"error": perm_res['reason']}
 
             # 2. Determinar periodos habilitados si el usuario es DOCENTE
-            is_docente = bool(rol and rol.upper() == 'DOCENTE')
             allow_p1 = True
             allow_p2 = True
             allow_p3 = True
@@ -959,7 +1017,7 @@ class CalificacionesService:
                             has_prorroga = True
 
                 if cfg_grupo:
-                    if not cfg_grupo.get('captura_habilitada') and not has_prorroga:
+                    if cfg_grupo.get('captura_habilitada') is not None and not cfg_grupo.get('captura_habilitada') and not has_prorroga:
                         return {"error": "La captura de calificaciones está deshabilitada para este grupo por administración."}
                     
                     def check_period(en, st, en_date):
@@ -973,14 +1031,17 @@ class CalificacionesService:
                                 return False
                         return True
 
-                    allow_p1 = check_period(cfg_grupo.get('p1_habilitado'), cfg_grupo.get('p1_fecha_inicio'), cfg_grupo.get('p1_fecha_fin'))
-                    allow_p2 = check_period(cfg_grupo.get('p2_habilitado'), cfg_grupo.get('p2_fecha_inicio'), cfg_grupo.get('p2_fecha_fin'))
-                    allow_p3 = check_period(cfg_grupo.get('p3_habilitado'), cfg_grupo.get('p3_fecha_inicio'), cfg_grupo.get('p3_fecha_fin'))
-                    allow_sem = check_period(cfg_grupo.get('semestral_habilitado'), cfg_grupo.get('semestral_fecha_inicio'), cfg_grupo.get('semestral_fecha_fin'))
-                    allow_ext = check_period(cfg_grupo.get('extraordinario_habilitado'), cfg_grupo.get('extraordinario_fecha_inicio'), cfg_grupo.get('extraordinario_fecha_fin'))
+                    allow_p1 = check_period(cfg_grupo.get('p1_habilitado', 1), cfg_grupo.get('p1_fecha_inicio'), cfg_grupo.get('p1_fecha_fin'))
+                    allow_p2 = check_period(cfg_grupo.get('p2_habilitado', 1), cfg_grupo.get('p2_fecha_inicio'), cfg_grupo.get('p2_fecha_fin'))
+                    allow_p3 = check_period(cfg_grupo.get('p3_habilitado', 1), cfg_grupo.get('p3_fecha_inicio'), cfg_grupo.get('p3_fecha_fin'))
+                    allow_sem = check_period(cfg_grupo.get('semestral_habilitado', 1), cfg_grupo.get('semestral_fecha_inicio'), cfg_grupo.get('semestral_fecha_fin'))
+                    allow_ext = check_period(cfg_grupo.get('extraordinario_habilitado', 1), cfg_grupo.get('extraordinario_fecha_inicio'), cfg_grupo.get('extraordinario_fecha_fin'))
 
                     if not any([allow_p1, allow_p2, allow_p3, allow_sem, allow_ext]):
-                        return {"error": "No hay periodos de captura habilitados actualmente para este grupo."}
+                        if cfg_grupo.get('captura_habilitada') or cfg_grupo.get('captura_habilitada') is None:
+                            allow_p1 = allow_p2 = allow_p3 = allow_sem = allow_ext = True
+                        else:
+                            return {"error": "No hay periodos de captura habilitados actualmente para este grupo."}
 
             # 3. Validar rango de calificaciones (enteros 1 a 10) para BTI (CCT 2) y BGNE (CCT 3)
             cursor.execute("SELECT id_centroTrabajo FROM tb_grupos WHERE id = %s", (id_grupo,))
@@ -994,7 +1055,7 @@ class CalificacionesService:
                         continue
                     for fld in ["calificacion", "parcial1", "parcial2", "parcial3", "semestral", "extraordinario"]:
                         val = item.get(fld)
-                        if val is not None and val != "":
+                        if val is not None and val != "" and str(val).strip().lower() != "null":
                             try:
                                 f_val = float(val)
                                 if f_val < 0.0 or f_val > 10.0:
@@ -1040,7 +1101,31 @@ class CalificacionesService:
                         """, (id_alumno, id_materia, id_grupo, observaciones, create_by))
                     continue
 
-                if calificacion is None or calificacion == "":
+                parcial1 = item.get("parcial1")
+                parcial2 = item.get("parcial2")
+                parcial3 = item.get("parcial3")
+                semestral = item.get("semestral")
+                extraordinario = item.get("extraordinario")
+                asistencias = item.get("asistencias")
+                total_asistencias = item.get("total_asistencias")
+
+                p1_val = float(parcial1) if (parcial1 is not None and parcial1 != "") else None
+                p2_val = float(parcial2) if (parcial2 is not None and parcial2 != "") else None
+                p3_val = float(parcial3) if (parcial3 is not None and parcial3 != "") else None
+                sem_val = float(semestral) if (semestral is not None and semestral != "") else None
+                ext_val = float(extraordinario) if (extraordinario is not None and extraordinario != "") else None
+                asist_val = int(asistencias) if (asistencias is not None and asistencias != "") else None
+                tot_asist_val = int(total_asistencias) if (total_asistencias is not None and total_asistencias != "") else None
+
+                is_calif_empty = (calificacion is None or calificacion == "" or str(calificacion).strip().lower() == "null")
+                all_partials_empty = all(v is None for v in [p1_val, p2_val, p3_val, sem_val, ext_val])
+
+                # Si las calificaciones se vaciaron (null / vacio), eliminar el registro existente de tb_calificaciones
+                if is_calif_empty and all_partials_empty:
+                    cursor.execute("""
+                        DELETE FROM tb_calificaciones 
+                        WHERE idAlumno = %s AND idMateria = %s AND tipoAcreditacion != 'EQUIVALENCIA'
+                    """, (id_alumno, id_materia))
                     continue
 
                 # Al guardar ordinario, asegurarse de limpiar cualquier registro previo de equivalencia
@@ -1049,7 +1134,24 @@ class CalificacionesService:
                     WHERE idAlumno = %s AND idMateria = %s AND tipoAcreditacion = 'EQUIVALENCIA'
                 """, (id_alumno, id_materia))
 
-                calif_val = float(calificacion)
+                if is_calif_empty:
+                    # Si no viene calificacion final pero si parciales, calcular promedio
+                    valid_parts = [v for v in [p1_val, p2_val, p3_val] if v is not None]
+                    if ext_val is not None:
+                        calif_val = float(min(round(ext_val), 7))
+                    elif sem_val is not None:
+                        count = 4 if len(valid_parts) == 3 else (len(valid_parts) + 1)
+                        calif_val = float(round((sum(valid_parts) + sem_val) / count))
+                    elif valid_parts:
+                        calif_val = float(round(sum(valid_parts) / len(valid_parts)))
+                    else:
+                        cursor.execute("""
+                            DELETE FROM tb_calificaciones 
+                            WHERE idAlumno = %s AND idMateria = %s AND tipoAcreditacion != 'EQUIVALENCIA'
+                        """, (id_alumno, id_materia))
+                        continue
+                else:
+                    calif_val = float(calificacion)
                 
                 parcial1 = item.get("parcial1")
                 parcial2 = item.get("parcial2")
@@ -1156,4 +1258,176 @@ class CalificacionesService:
         finally:
             cursor.close()
             conexion.close()
+
+    @staticmethod
+    def get_asistencias_grupo_semestre(id_grupo, id_nivel_academico=None):
+        conexion = get_connection()
+        cursor = conexion.cursor()
+        try:
+            # 1. Grupo
+            cursor.execute("""
+                SELECT g.id, g.clave, g.id_centroTrabajo, g.id_nivel_academico, g.id_tipoPeriodo,
+                       ct.nombre AS nombreCentroTrabajo
+                FROM tb_grupos g
+                LEFT JOIN tb_centrotrabajo ct ON g.id_centroTrabajo = ct.id
+                WHERE g.id = %s
+            """, (id_grupo,))
+            grupo = cursor.fetchone()
+            if not grupo:
+                return {"error": "Grupo no encontrado"}
+
+            # Determinar id_nivel_academico activo o por defecto
+            if not id_nivel_academico:
+                cursor.execute("SELECT id_nivel_academico FROM tb_grupo_periodos_captura WHERE id_grupo = %s", (id_grupo,))
+                cfg = cursor.fetchone()
+                if cfg and cfg.get("id_nivel_academico"):
+                    id_nivel_academico = cfg["id_nivel_academico"]
+                else:
+                    id_nivel_academico = grupo.get("id_nivel_academico") or 7
+
+            id_nivel_academico = int(id_nivel_academico)
+
+            # Info de nivel académico
+            cursor.execute("SELECT id, nombre, numero, tipo FROM tb_niveles_academicos WHERE id = %s", (id_nivel_academico,))
+            nivel_info = cursor.fetchone() or {"id": id_nivel_academico, "nombre": f"{id_nivel_academico}º Periodo", "numero": id_nivel_academico}
+
+            # 2. Alumnos inscritos en el grupo
+            cursor.execute("""
+                SELECT a.idAlumno, a.nombre, a.apPaterno, a.apMaterno, a.numeroControl
+                FROM tb_alumnogrupo ag
+                JOIN tb_alumnos a ON ag.idAlumno = a.idAlumno
+                WHERE ag.idGrupo = %s
+                ORDER BY a.apPaterno ASC, a.apMaterno ASC, a.nombre ASC
+            """, (id_grupo,))
+            alumnos = cursor.fetchall() or []
+
+            # 3. Asistencias guardadas en tb_calificaciones para este grupo y nivel
+            cursor.execute("""
+                SELECT idAlumno,
+                       MAX(asistencias) as asistencias,
+                       MAX(total_asistencias) as total_asistencias
+                FROM tb_calificaciones
+                WHERE idGrupo = %s AND (id_nivel_academico = %s OR id_nivel_academico IS NULL)
+                GROUP BY idAlumno
+            """, (id_grupo, id_nivel_academico))
+            califs_asist = {c["idAlumno"]: c for c in (cursor.fetchall() or [])}
+
+            # 4. Asistencias en tb_asistencias_alumnos como fallback
+            cursor.execute("""
+                SELECT id_alumno,
+                       COUNT(*) as total_sesiones,
+                       SUM(CASE WHEN estatus IN ('A', 'R') THEN 1 ELSE 0 END) as asistencias_alumno
+                FROM tb_asistencias_alumnos
+                WHERE id_grupo = %s AND (id_nivel_academico = %s OR id_nivel_academico IS NULL)
+                GROUP BY id_alumno
+            """, (id_grupo, id_nivel_academico))
+            rollcall_asist = {r["id_alumno"]: r for r in (cursor.fetchall() or [])}
+
+            resultado_alumnos = []
+            for al in alumnos:
+                al_id = al["idAlumno"]
+                saved = califs_asist.get(al_id)
+                rc = rollcall_asist.get(al_id)
+
+                asist = None
+                tot = None
+                if saved and (saved.get("asistencias") is not None or saved.get("total_asistencias") is not None):
+                    asist = saved.get("asistencias")
+                    tot = saved.get("total_asistencias")
+                elif rc and rc.get("total_sesiones", 0) > 0:
+                    asist = int(rc.get("asistencias_alumno") or 0)
+                    tot = int(rc.get("total_sesiones") or 0)
+
+                pct = round((asist / tot * 100), 1) if (asist is not None and tot is not None and tot > 0) else None
+
+                resultado_alumnos.append({
+                    "idAlumno": al_id,
+                    "nombre": al["nombre"],
+                    "apPaterno": al["apPaterno"],
+                    "apMaterno": al["apMaterno"],
+                    "numeroControl": al["numeroControl"],
+                    "asistencias": asist,
+                    "total_asistencias": tot,
+                    "porcentaje": pct
+                })
+
+            return {
+                "success": True,
+                "grupo": grupo,
+                "nivel": nivel_info,
+                "id_nivel_academico": id_nivel_academico,
+                "alumnos": resultado_alumnos
+            }
+        finally:
+            cursor.close()
+            conexion.close()
+
+    @staticmethod
+    def guardar_asistencias_grupo_semestre(id_grupo, id_nivel_academico, asistencias_list, create_by="SISTEMA"):
+        conexion = get_connection()
+        cursor = conexion.cursor()
+        try:
+            # Validar grupo
+            cursor.execute("SELECT id, id_centroTrabajo FROM tb_grupos WHERE id = %s", (id_grupo,))
+            grupo = cursor.fetchone()
+            if not grupo:
+                return {"error": "Grupo no encontrado"}
+
+            id_cct = grupo["id_centroTrabajo"]
+
+            # Materias del nivel y CCT
+            cursor.execute("""
+                SELECT id FROM tb_materias
+                WHERE id_nivel_academico = %s AND (idCentroTrabajo = %s OR idCentroTrabajo IS NULL)
+            """, (id_nivel_academico, id_cct))
+            materias = [m["id"] for m in (cursor.fetchall() or [])]
+
+            for item in asistencias_list:
+                id_alumno = item.get("idAlumno")
+                if not id_alumno:
+                    continue
+
+                asist_val = int(item["asistencias"]) if (item.get("asistencias") is not None and str(item.get("asistencias")).strip() != "") else None
+                tot_val = int(item["total_asistencias"]) if (item.get("total_asistencias") is not None and str(item.get("total_asistencias")).strip() != "") else None
+
+                # Obtener IDs de materias ya existentes para este alumno en este nivel
+                mat_tuple = tuple(materias) if materias else (-1,)
+                cursor.execute("""
+                    SELECT id, idMateria FROM tb_calificaciones
+                    WHERE idAlumno = %s AND (id_nivel_academico = %s OR idMateria IN %s)
+                """, (id_alumno, id_nivel_academico, mat_tuple))
+                existentes = cursor.fetchall() or []
+                existentes_mat_ids = {e["idMateria"] for e in existentes}
+
+                # Actualizar los registros existentes
+                if existentes:
+                    cursor.execute("""
+                        UPDATE tb_calificaciones
+                        SET asistencias = %s,
+                            total_asistencias = %s,
+                            id_nivel_academico = %s,
+                            idGrupo = COALESCE(idGrupo, %s),
+                            updateAt = NOW(),
+                            updateBy = %s
+                        WHERE idAlumno = %s AND (id_nivel_academico = %s OR idMateria IN %s)
+                    """, (asist_val, tot_val, id_nivel_academico, id_grupo, create_by, id_alumno, id_nivel_academico, mat_tuple))
+
+                # Insertar registros para las materias faltantes del nivel escolar
+                materias_faltantes = [m_id for m_id in materias if m_id not in existentes_mat_ids]
+                for id_mat in materias_faltantes:
+                    cursor.execute("""
+                        INSERT INTO tb_calificaciones
+                        (idAlumno, idMateria, idGrupo, id_nivel_academico, calificacion, asistencias, total_asistencias, createBy, createAt, updateBy, updateAt)
+                        VALUES (%s, %s, %s, %s, 0.00, %s, %s, %s, NOW(), %s, NOW())
+                    """, (id_alumno, id_mat, id_grupo, id_nivel_academico, asist_val, tot_val, create_by, create_by))
+
+            conexion.commit()
+            return {"success": True, "message": "Asistencias guardadas exitosamente."}
+        except Exception as e:
+            conexion.rollback()
+            raise e
+        finally:
+            cursor.close()
+            conexion.close()
+
 

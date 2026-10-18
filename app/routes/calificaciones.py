@@ -191,3 +191,31 @@ def check_captura_permission(idGrupo, idMateria):
         return jsonify(resultado)
     except Exception as e:
         return jsonify({"error": str(e), "allowed": False}), 500
+
+
+@calificaciones_bp.route("/grupos/<int:idGrupo>/asistencias-semestre", methods=["GET"])
+def get_asistencias_grupo_semestre(idGrupo):
+    try:
+        id_nivel = request.args.get("id_nivel_academico")
+        resultado = CalificacionesService.get_asistencias_grupo_semestre(idGrupo, id_nivel)
+        if "error" in resultado:
+            return jsonify(resultado), 404 if resultado["error"] == "Grupo no encontrado" else 500
+        return jsonify(resultado), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@calificaciones_bp.route("/grupos/<int:idGrupo>/asistencias-semestre", methods=["POST"])
+def save_asistencias_grupo_semestre(idGrupo):
+    try:
+        body = request.get_json(silent=True) or {}
+        id_nivel = body.get("id_nivel_academico")
+        asistencias = body.get("asistencias") or []
+        user = body.get("user") or "SISTEMA"
+        resultado = CalificacionesService.guardar_asistencias_grupo_semestre(idGrupo, id_nivel, asistencias, user)
+        if "error" in resultado:
+            return jsonify(resultado), 404 if resultado["error"] == "Grupo no encontrado" else 500
+        return jsonify(resultado), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
