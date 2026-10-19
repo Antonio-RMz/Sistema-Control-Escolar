@@ -1389,10 +1389,10 @@ class CalificacionesService:
             materias = [m["id"] for m in (cursor.fetchall() or [])]
 
             # También incluir materias que estén asignadas al grupo en tb_horarios
-            cursor.execute("SELECT DISTINCT idMateria FROM tb_horarios WHERE idGrupo = %s", (id_grupo,))
+            cursor.execute("SELECT DISTINCT id_materia FROM tb_horarios WHERE id_grupo = %s", (id_grupo,))
             for h in (cursor.fetchall() or []):
-                if h.get("idMateria") and h["idMateria"] not in materias:
-                    materias.append(h["idMateria"])
+                if h.get("id_materia") and h["id_materia"] not in materias:
+                    materias.append(h["id_materia"])
 
             for item in asistencias_list:
                 id_alumno = item.get("idAlumno")
