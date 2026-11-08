@@ -216,25 +216,33 @@ class PermisosCapturaService:
         conexion = get_connection()
         cursor = conexion.cursor()
         try:
+            cursor.execute("SELECT id, id_tipoPeriodo, id_nivel_academico, id_centroTrabajo FROM tb_grupos WHERE id = %s", (grupo_id,))
+            group = cursor.fetchone()
+            if not group:
+                return {"success": False, "message": "Grupo no encontrado."}
+
+            nivel_id = data.get('id_nivel_academico') or group.get('id_nivel_academico')
+            captura_hab = 1 if data.get('captura_habilitada', True) else 0
+
             cursor.execute("SELECT 1 FROM tb_grupo_periodos_captura WHERE id_grupo = %s", (grupo_id,))
             exists = cursor.fetchone()
             
             params = (
-                data.get('id_nivel_academico') or None,
-                1 if data.get('captura_habilitada') else 0,
-                1 if data.get('p1_habilitado') else 0,
+                nivel_id,
+                captura_hab,
+                1 if data.get('p1_habilitado', True) else 0,
                 data.get('p1_fecha_inicio') or None,
                 data.get('p1_fecha_fin') or None,
-                1 if data.get('p2_habilitado') else 0,
+                1 if data.get('p2_habilitado', True) else 0,
                 data.get('p2_fecha_inicio') or None,
                 data.get('p2_fecha_fin') or None,
-                1 if data.get('p3_habilitado') else 0,
+                1 if data.get('p3_habilitado', True) else 0,
                 data.get('p3_fecha_inicio') or None,
                 data.get('p3_fecha_fin') or None,
-                1 if data.get('semestral_habilitado') else 0,
+                1 if data.get('semestral_habilitado', True) else 0,
                 data.get('semestral_fecha_inicio') or None,
                 data.get('semestral_fecha_fin') or None,
-                1 if data.get('extraordinario_habilitado') else 0,
+                1 if data.get('extraordinario_habilitado', True) else 0,
                 data.get('extraordinario_fecha_inicio') or None,
                 data.get('extraordinario_fecha_fin') or None,
                 grupo_id
@@ -265,9 +273,75 @@ class PermisosCapturaService:
                         id_grupo, created_at, updated_at
                     ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
                 """, params)
+
+            replicados = 0
+            if data.get('replicar_mismo_semestre'):
+                cct = group.get('id_centroTrabajo')
+                if cct and nivel_id:
+                    cursor.execute("""
+                        SELECT id FROM tb_grupos 
+                        WHERE id_centroTrabajo = %s 
+                          AND id_nivel_academico = %s 
+                          AND statusGrupo = 'ACTIVO' 
+                          AND id != %s
+                    """, (cct, nivel_id, grupo_id))
+                    otros_grupos = cursor.fetchall()
+                    for otro in otros_grupos:
+                        o_id = otro['id']
+                        cursor.execute("SELECT 1 FROM tb_grupo_periodos_captura WHERE id_grupo = %s", (o_id,))
+                        o_exists = cursor.fetchone()
+                        o_params = (
+                            nivel_id,
+                            captura_hab,
+                            1 if data.get('p1_habilitado', True) else 0,
+                            data.get('p1_fecha_inicio') or None,
+                            data.get('p1_fecha_fin') or None,
+                            1 if data.get('p2_habilitado', True) else 0,
+                            data.get('p2_fecha_inicio') or None,
+                            data.get('p2_fecha_fin') or None,
+                            1 if data.get('p3_habilitado', True) else 0,
+                            data.get('p3_fecha_inicio') or None,
+                            data.get('p3_fecha_fin') or None,
+                            1 if data.get('semestral_habilitado', True) else 0,
+                            data.get('semestral_fecha_inicio') or None,
+                            data.get('semestral_fecha_fin') or None,
+                            1 if data.get('extraordinario_habilitado', True) else 0,
+                            data.get('extraordinario_fecha_inicio') or None,
+                            data.get('extraordinario_fecha_fin') or None,
+                            o_id
+                        )
+                        if o_exists:
+                            cursor.execute("""
+                                UPDATE tb_grupo_periodos_captura SET
+                                    id_nivel_academico = %s,
+                                    captura_habilitada = %s,
+                                    p1_habilitado = %s, p1_fecha_inicio = %s, p1_fecha_fin = %s,
+                                    p2_habilitado = %s, p2_fecha_inicio = %s, p2_fecha_fin = %s,
+                                    p3_habilitado = %s, p3_fecha_inicio = %s, p3_fecha_fin = %s,
+                                    semestral_habilitado = %s, semestral_fecha_inicio = %s, semestral_fecha_fin = %s,
+                                    extraordinario_habilitado = %s, extraordinario_fecha_inicio = %s, extraordinario_fecha_fin = %s,
+                                    updated_at = NOW()
+                                WHERE id_grupo = %s
+                            """, o_params)
+                        else:
+                            cursor.execute("""
+                                INSERT INTO tb_grupo_periodos_captura (
+                                    id_nivel_academico, captura_habilitada,
+                                    p1_habilitado, p1_fecha_inicio, p1_fecha_fin,
+                                    p2_habilitado, p2_fecha_inicio, p2_fecha_fin,
+                                    p3_habilitado, p3_fecha_inicio, p3_fecha_fin,
+                                    semestral_habilitado, semestral_fecha_inicio, semestral_fecha_fin,
+                                    extraordinario_habilitado, extraordinario_fecha_inicio, extraordinario_fecha_fin,
+                                    id_grupo, created_at, updated_at
+                                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
+                            """, o_params)
+                        replicados += 1
                 
             conexion.commit()
-            return {"success": True, "message": "Configuración de captura para el grupo guardada correctamente."}
+            msg = "Configuración de fechas de evaluación guardada correctamente."
+            if replicados > 0:
+                msg += f" (Replicada a {replicados} grupo(s) del mismo nivel/CCT)."
+            return {"success": True, "message": msg, "replicados": replicados}
         except Exception as e:
             conexion.rollback()
             return {"success": False, "message": f"Error al guardar configuración: {str(e)}"}

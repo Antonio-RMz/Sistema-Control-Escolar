@@ -384,11 +384,68 @@ class CalificacionesService:
 
             promedio_general = round(suma_calif_global / total_materias_evaluadas, 1) if total_materias_evaluadas > 0 else None
 
+            # Obtener fechas de periodos de evaluación configuradas para el grupo del alumno
+            periodos_evaluacion = None
+            if alumno.get("idGrupo"):
+                cursor.execute("""
+                    SELECT 
+                        p1_fecha_inicio, p1_fecha_fin,
+                        p2_fecha_inicio, p2_fecha_fin,
+                        p3_fecha_inicio, p3_fecha_fin,
+                        semestral_fecha_inicio, semestral_fecha_fin,
+                        extraordinario_fecha_inicio, extraordinario_fecha_fin
+                    FROM tb_grupo_periodos_captura
+                    WHERE id_grupo = %s
+                """, (alumno["idGrupo"],))
+                g_conf = cursor.fetchone()
+                if g_conf:
+                    def fmt_date(d):
+                        if not d:
+                            return None
+                        if isinstance(d, (date, datetime)):
+                            return d.strftime('%d/%m/%Y')
+                        d_str = str(d).strip()
+                        if len(d_str) >= 10 and '-' in d_str[:10]:
+                            parts = d_str[:10].split('-')
+                            if len(parts) == 3:
+                                return f"{parts[2]}/{parts[1]}/{parts[0]}"
+                        return d_str
+
+                    def fmt_range(ini, fin):
+                        d_ini = fmt_date(ini)
+                        d_fin = fmt_date(fin)
+                        if d_ini and d_fin:
+                            return f"{d_ini} al {d_fin}"
+                        elif d_ini:
+                            return f"Desde {d_ini}"
+                        elif d_fin:
+                            return f"Hasta {d_fin}"
+                        return None
+
+                    periodos_evaluacion = {
+                        "p1_inicio": fmt_date(g_conf.get("p1_fecha_inicio")),
+                        "p1_fin": fmt_date(g_conf.get("p1_fecha_fin")),
+                        "p1_rango": fmt_range(g_conf.get("p1_fecha_inicio"), g_conf.get("p1_fecha_fin")),
+                        "p2_inicio": fmt_date(g_conf.get("p2_fecha_inicio")),
+                        "p2_fin": fmt_date(g_conf.get("p2_fecha_fin")),
+                        "p2_rango": fmt_range(g_conf.get("p2_fecha_inicio"), g_conf.get("p2_fecha_fin")),
+                        "p3_inicio": fmt_date(g_conf.get("p3_fecha_inicio")),
+                        "p3_fin": fmt_date(g_conf.get("p3_fecha_fin")),
+                        "p3_rango": fmt_range(g_conf.get("p3_fecha_inicio"), g_conf.get("p3_fecha_fin")),
+                        "semestral_inicio": fmt_date(g_conf.get("semestral_fecha_inicio")),
+                        "semestral_fin": fmt_date(g_conf.get("semestral_fecha_fin")),
+                        "semestral_rango": fmt_range(g_conf.get("semestral_fecha_inicio"), g_conf.get("semestral_fecha_fin")),
+                        "extraordinario_inicio": fmt_date(g_conf.get("extraordinario_fecha_inicio")),
+                        "extraordinario_fin": fmt_date(g_conf.get("extraordinario_fecha_fin")),
+                        "extraordinario_rango": fmt_range(g_conf.get("extraordinario_fecha_inicio"), g_conf.get("extraordinario_fecha_fin")),
+                    }
+
             return {
                 "alumno": alumno,
                 "periodos": kardex_periodos,
                 "promedioGeneral": promedio_general,
-                "totalMateriasEvaluadas": total_materias_evaluadas
+                "totalMateriasEvaluadas": total_materias_evaluadas,
+                "periodosEvaluacion": periodos_evaluacion
             }
         except Exception as e:
             return {"error": str(e)}
