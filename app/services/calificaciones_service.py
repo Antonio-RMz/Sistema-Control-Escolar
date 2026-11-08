@@ -384,9 +384,9 @@ class CalificacionesService:
 
             promedio_general = round(suma_calif_global / total_materias_evaluadas, 1) if total_materias_evaluadas > 0 else None
 
-            # Obtener fechas de periodos de evaluación configuradas para el grupo del alumno
+            # Obtener fechas de periodos de evaluación configuradas para el grupo del alumno (solo aplica a CCT BTI)
             periodos_evaluacion = None
-            if alumno.get("idGrupo"):
+            if alumno.get("idGrupo") and not is_bgne:
                 cursor.execute("""
                     SELECT 
                         p1_fecha_inicio, p1_fecha_fin,
