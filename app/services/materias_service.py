@@ -36,6 +36,18 @@ class MateriasService:
             cursor.execute(sql_total, params)
             total = cursor.fetchone()["total"]
 
+            # Verificar si existen columnas online
+            has_moodle = False
+            try:
+                cursor.execute("SHOW COLUMNS FROM tb_materias LIKE 'id_curso_moodle'")
+                has_moodle = bool(cursor.fetchone())
+            except Exception:
+                has_moodle = False
+
+            extra_cols = ""
+            if has_moodle:
+                extra_cols = "m.id_curso_moodle, m.mes_bloque, m.par_materia_orden,"
+
             # Luego obtener los datos
             sql = f"""
               SELECT 
@@ -48,6 +60,7 @@ class MateriasService:
                     ct.nombre AS nombreCentroTrabajo,
                     m.id_nivel_academico,
                     na.nombre AS nombreNivelAcademico,
+                    {extra_cols}
                     IFNULL(
                         GROUP_CONCAT(
                             CONCAT(d.idDocente, ':', d.nombreDocente)
@@ -220,6 +233,13 @@ class MateriasService:
                 ),
             )
 
+            # Si viene id_curso_moodle, actualizarlo
+            if "id_curso_moodle" in data:
+                cursor.execute(
+                    "UPDATE tb_materias SET id_curso_moodle = %s WHERE id = %s",
+                    (data.get("id_curso_moodle"), id_materia)
+                )
+
             #  Actualizar docentes relacionados (Sincronización)
             # Primero eliminamos todas las asignaciones existentes de la materia
             cursor.execute("DELETE FROM tb_materiadocente WHERE idMateria = %s", (id_materia,))
@@ -245,6 +265,28 @@ class MateriasService:
         except Exception as e:
             conexion.rollback()
             return {"error": str(e)}
+        finally:
+            cursor.close()
+            conexion.close()
+
+    @staticmethod
+    def update_materia_moodle(id_materia, id_curso_moodle):
+        conexion = get_connection()
+        cursor = conexion.cursor()
+        try:
+            cursor.execute(
+                "UPDATE tb_materias SET id_curso_moodle = %s WHERE id = %s",
+                (id_curso_moodle, id_materia)
+            )
+            conexion.commit()
+            return {
+                "success": True,
+                "mensaje": "Curso Moodle vinculado correctamente",
+                "id_curso_moodle": id_curso_moodle
+            }
+        except Exception as e:
+            conexion.rollback()
+            return {"success": False, "error": str(e)}
         finally:
             cursor.close()
             conexion.close()

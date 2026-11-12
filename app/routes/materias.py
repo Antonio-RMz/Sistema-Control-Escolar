@@ -165,7 +165,11 @@ def update_materia(id_materia):
         description: Error interno del servidor
     """
     try:
-        data = request.json
+        data = request.json or {}
+
+        # Si sólo se envía id_curso_moodle para vinculación online
+        if "id_curso_moodle" in data and not data.get("nombreMateria"):
+            return jsonify(MateriasService.update_materia_moodle(id_materia, data.get("id_curso_moodle")))
 
         if not data.get("nombreMateria") or not data.get("estatusMateria"):
             return jsonify({"error": "Faltan datos obligatorios"}), 400
@@ -177,3 +181,18 @@ def update_materia(id_materia):
         return jsonify(MateriasService.update_materia(id_materia, data))
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@materias_bp.route("/materias/<int:id_materia>/moodle-curso", methods=["PUT", "POST"])
+def update_materia_moodle(id_materia):
+    """
+    Vincula o actualiza el ID del curso de Moodle asociado a una materia
+    """
+    try:
+        data = request.json or {}
+        curso_id = data.get("id_curso_moodle")
+        res = MateriasService.update_materia_moodle(id_materia, curso_id)
+        status = 200 if res.get("success") else 400
+        return jsonify(res), status
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
