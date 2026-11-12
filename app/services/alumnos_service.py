@@ -1068,8 +1068,14 @@ class AlumnosService:
             username = str(data.get("moodle_username") or num_ctrl).lower().strip()
             password = str(data.get("moodle_password") or f"Bti.{username}*")
 
-            cursor.execute("SELECT id_curso_moodle, clave FROM tb_grupos WHERE id = %s", (id_grupo,))
-            grupo_info = cursor.fetchone() or {}
+            grupo_info = {}
+            if id_grupo:
+                try:
+                    cursor.execute("SELECT id_curso_moodle, clave FROM tb_grupos WHERE id = %s", (id_grupo,))
+                    grupo_info = cursor.fetchone() or {}
+                except Exception:
+                    cursor.execute("SELECT clave FROM tb_grupos WHERE id = %s", (id_grupo,))
+                    grupo_info = cursor.fetchone() or {}
             course_id = data.get("id_curso_moodle") or grupo_info.get("id_curso_moodle") or 50
 
             moodle_res = MoodleService.crear_usuario(
@@ -1161,12 +1167,20 @@ class AlumnosService:
         conexion = get_connection()
         cursor = conexion.cursor()
         try:
-            cursor.execute("""
-                SELECT a.*, gr.id_curso_moodle, gr.clave AS nombreGrupo 
-                FROM tb_alumnos a
-                LEFT JOIN tb_grupos gr ON a.idGrupo = gr.id
-                WHERE a.idAlumno = %s
-            """, (id_alumno,))
+            try:
+                cursor.execute("""
+                    SELECT a.*, gr.id_curso_moodle, gr.clave AS nombreGrupo 
+                    FROM tb_alumnos a
+                    LEFT JOIN tb_grupos gr ON a.idGrupo = gr.id
+                    WHERE a.idAlumno = %s
+                """, (id_alumno,))
+            except Exception:
+                cursor.execute("""
+                    SELECT a.*, gr.clave AS nombreGrupo 
+                    FROM tb_alumnos a
+                    LEFT JOIN tb_grupos gr ON a.idGrupo = gr.id
+                    WHERE a.idAlumno = %s
+                """, (id_alumno,))
             alumno = cursor.fetchone()
             if not alumno:
                 return {"success": False, "error": "Alumno no encontrado"}, 404
