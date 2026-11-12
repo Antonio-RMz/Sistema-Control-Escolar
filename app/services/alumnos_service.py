@@ -1044,13 +1044,21 @@ class AlumnosService:
             if not alumno:
                 return {"success": False, "error": "Alumno no encontrado"}, 404
 
-            # REGLA ESTRICTA: El alumno debe estar ligado sí o sí a un grupo
+            # Si el alumno no tiene grupo asignado, buscar uno de BGNE (CCT 3) para asignarlo automáticamente
             id_grupo = data.get("idGrupo") or alumno.get("idGrupo")
             if not id_grupo or int(id_grupo) <= 0:
-                return {
-                    "success": False,
-                    "error": "El alumno debe estar asignado sí o sí a un grupo antes de cambiar a modalidad en línea."
-                }, 400
+                cursor.execute("SELECT id FROM tb_grupos WHERE id_centroTrabajo = 3 AND statusGrupo = 'ACTIVO' ORDER BY id ASC LIMIT 1")
+                grp_row = cursor.fetchone()
+                if not grp_row:
+                    cursor.execute("SELECT id FROM tb_grupos WHERE id_centroTrabajo = 3 ORDER BY id ASC LIMIT 1")
+                    grp_row = cursor.fetchone()
+                if not grp_row:
+                    cursor.execute("SELECT id FROM tb_grupos ORDER BY id ASC LIMIT 1")
+                    grp_row = cursor.fetchone()
+                if grp_row:
+                    id_grupo = grp_row["id"]
+                else:
+                    id_grupo = None
 
             dia_pago = str(data.get("dia_pago", "SABADO")).upper()
             if dia_pago not in ['LUNES','MARTES','MIERCOLES','JUEVES','VIERNES','SABADO','DOMINGO']:
@@ -1098,6 +1106,16 @@ class AlumnosService:
                 fecha_prox,
                 id_alumno
             ))
+
+            # Actualizar trimestre_inicio_online si se proporcionó
+            trim_inicio = int(data.get("trimestre_inicio") or data.get("trimestre_inicio_online") or 1)
+            try:
+                cursor.execute("SHOW COLUMNS FROM tb_alumnos LIKE 'trimestre_inicio_online'")
+                if cursor.fetchone():
+                    cursor.execute("UPDATE tb_alumnos SET trimestre_inicio_online = %s WHERE idAlumno = %s", (trim_inicio, id_alumno))
+            except Exception:
+                pass
+
             conexion.commit()
 
             return {
