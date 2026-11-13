@@ -9,3 +9,6 @@ __pycache__/
 
 # Scratch temporal
 scratch/
+
+# Logs de la API y bitácora de auditoría
+logs/

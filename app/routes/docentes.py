@@ -341,6 +341,42 @@ def actualizar_credenciales_docente(idDocente):
         return jsonify({"error": str(e)}), 500
 
 
+@docentes_bp.route("/docentes/login", methods=["POST"])
+def login_docente():
+    """
+    Verificar credenciales de docente. La contraseña se compara en la API; nunca se devuelve el hash.
+    ---
+    parameters:
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          properties:
+            usuario: {type: string}
+            password: {type: string}
+    responses:
+      200: {description: "Credenciales válidas: datos del docente"}
+      401: {description: "Contraseña incorrecta"}
+      403: {description: "Sin contraseña asignada"}
+      404: {description: "No existe o inactivo"}
+    """
+    from app.utils.seguridad import error_interno
+    try:
+        data = request.json or {}
+        estado, datos = DocentesService.login(data.get("usuario"), data.get("password"))
+        respuestas = {
+            "ok": ({"success": True, "data": datos}, 200),
+            "no_existe": ({"error": "Docente no encontrado o inactivo", "motivo": estado}, 404),
+            "sin_password": ({"error": "Esta cuenta aún no tiene contraseña asignada", "motivo": estado}, 403),
+            "password": ({"error": "Contraseña incorrecta", "motivo": estado}, 401),
+        }
+        cuerpo, codigo = respuestas[estado]
+        return jsonify(cuerpo), codigo
+    except Exception as e:
+        return error_interno(e, "login docente")
+
+
 @docentes_bp.route("/docentes/by-username/<string:username>", methods=["GET"])
 def get_docente_by_username(username):
     """

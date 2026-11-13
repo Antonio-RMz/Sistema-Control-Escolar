@@ -525,14 +525,34 @@ class DocentesService:
             conexion.close()
 
     @staticmethod
-    def get_docente_by_username(usuario):
+    def login(usuario, password):
+        """
+        Verifica credenciales de docente dentro de la API (el hash no sale del backend).
+        Devuelve (estado, datos): 'ok' | 'no_existe' | 'sin_password' | 'password'.
+        Solo considera docentes ACTIVOS (igual que la búsqueda por usuario).
+        """
+        from app.utils.seguridad import verificar_password
+        docente = DocentesService.get_docente_by_username(usuario, incluir_password=True)
+        if not docente:
+            return "no_existe", None
+        hash_guardado = docente.pop("password", None)
+        if not hash_guardado:
+            return "sin_password", None
+        if not verificar_password(password, hash_guardado):
+            return "password", None
+        return "ok", docente
+
+    @staticmethod
+    def get_docente_by_username(usuario, incluir_password=False):
+        """Docente activo por usuario/correo/nombre.apellido. La contraseña solo se lee para el login interno."""
         conexion = get_connection()
         cursor = conexion.cursor()
         try:
             if not usuario:
                 return None
             u_clean = usuario.strip()
-            cursor.execute("""
+            columna_password = "password," if incluir_password else ""
+            cursor.execute(f"""
                 SELECT 
                     idDocente, 
                     nombreDocente, 
@@ -540,7 +560,7 @@ class DocentesService:
                     apMaternoDocente, 
                     correoDocente, 
                     usuario, 
-                    password, 
+                    {columna_password}
                     statusDocente,
                     permisos_modulos
                 FROM tb_docentes

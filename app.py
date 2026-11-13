@@ -20,6 +20,10 @@ from app.routes.personal import personal_bp
 from app.routes.permisos_captura import permisos_captura_bp
 from app.routes.reportes_indisciplina import reportes_indisciplina_bp
 from app.routes.dashboard import dashboard_bp
+from app.routes.usuarios import usuarios_bp
+from app.routes.historial_alumnos import historial_alumnos_bp
+from app.utils.seguridad import registrar_token_api
+import os
 
 
 def create_app():
@@ -32,8 +36,14 @@ def create_app():
     app.json.sort_keys = False
     app.json.ensure_ascii = False
 
-    # Habilitar CORS
-    CORS(app)
+    # CORS: la API solo la consume Laravel (servidor a servidor). Solo se habilita para
+    # orígenes explícitos en CORS_ORIGINS (separados por coma).
+    origenes = [o.strip() for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()]
+    if origenes:
+        CORS(app, origins=origenes)
+
+    # Token de servicio (X-API-Token) obligatorio si API_TOKEN está configurado
+    registrar_token_api(app)
 
     # Registro de Blueprints
     app.register_blueprint(alumnos_bp)
@@ -55,6 +65,8 @@ def create_app():
     app.register_blueprint(permisos_captura_bp)
     app.register_blueprint(reportes_indisciplina_bp)
     app.register_blueprint(dashboard_bp)
+    app.register_blueprint(usuarios_bp)
+    app.register_blueprint(historial_alumnos_bp)
 
     # Iniciar programador de tareas diario (7:00 AM)
     from app.utils.scheduler import iniciar_scheduler
@@ -64,8 +76,12 @@ def create_app():
 
 
 app = create_app()
-print(app.url_map)
 if __name__ == "__main__":
     print("--- EJECUTANDO ESTE APP.PY ---")
-    # El servidor se ejecuta en el puerto 5000 por defecto
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    # Por defecto solo escucha en la misma máquina (Laravel llama a 127.0.0.1).
+    # debug=True expone el depurador de Werkzeug (ejecución remota de código): solo con FLASK_DEBUG=1 en desarrollo.
+    app.run(
+        host=os.getenv("API_HOST", "127.0.0.1"),
+        port=int(os.getenv("API_PORT", "5000")),
+        debug=os.getenv("FLASK_DEBUG", "0") == "1",
+    )

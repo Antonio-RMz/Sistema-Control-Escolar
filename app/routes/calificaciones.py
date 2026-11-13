@@ -212,6 +212,24 @@ def save_asistencias_grupo_semestre(idGrupo):
         id_nivel = body.get("id_nivel_academico")
         asistencias = body.get("asistencias") or []
         user = body.get("user") or "SISTEMA"
+
+        # Asistencias: enteros >= 0 y nunca más que las clases impartidas
+        def entero(v):
+            if v is None or str(v).strip() == "":
+                return None
+            n = int(str(v).strip())  # ValueError si no es entero
+            if n < 0:
+                raise ValueError("negativo")
+            return n
+        for item in asistencias:
+            try:
+                tot = entero(item.get("total_asistencias"))
+                asist = entero(item.get("asistencias"))
+            except (ValueError, TypeError):
+                return jsonify({"error": "Las clases y asistencias deben ser números enteros mayores o iguales a 0."}), 400
+            if asist is not None and (tot is None or asist > tot):
+                return jsonify({"error": f"Alumno {item.get('idAlumno')}: las asistencias no pueden ser más que las clases impartidas."}), 400
+
         resultado = CalificacionesService.guardar_asistencias_grupo_semestre(idGrupo, id_nivel, asistencias, user)
         if "error" in resultado:
             return jsonify(resultado), 404 if resultado["error"] == "Grupo no encontrado" else 500
