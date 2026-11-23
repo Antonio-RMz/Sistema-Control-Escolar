@@ -327,6 +327,11 @@ class AsistenciasAlumnosService:
                             "justificado_admin": justificado_admin
                         })
 
+            # Días especiales del calendario (inhábil, suspensión, en línea)
+            dias_especiales = AsistenciasAlumnosService.dias_especiales_lista(
+                AsistenciasAlumnosService.get_dias_especiales(cursor, id_grupo)
+            )
+
             # Convertir fechas del grupo para serializar a JSON
             grupo["fechaInicio"] = grupo["fechaInicio"].strftime("%Y-%m-%d") if isinstance(grupo["fechaInicio"], datetime.date) else str(grupo["fechaInicio"])
             grupo["fechaFin"] = grupo["fechaFin"].strftime("%Y-%m-%d") if isinstance(grupo["fechaFin"], datetime.date) else str(grupo["fechaFin"])
@@ -338,6 +343,7 @@ class AsistenciasAlumnosService:
                 "asistencias": asistencias_resultado,
                 "materias": materias,
                 "reaperturas_fechas": reaperturas_fechas,
+                "dias_especiales": dias_especiales,
                 "selected_materia_id": "general" if (not id_materia or str(id_materia).lower() == 'general') else id_materia
             }
         finally:
@@ -359,6 +365,129 @@ class AsistenciasAlumnosService:
                 KEY idx_reapertura_lookup (id_grupo, fecha, habilitado)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
         """)
+
+    # ------------------------------------------------------------------
+    # Días especiales del calendario del grupo
+    #   INHABIL / SUSPENSION: no son día de clase ni falta (el pase de ese día no se cuenta).
+    #   EN_LINEA: día de clase normal, impartido en línea (se pasa lista igual).
+    # ------------------------------------------------------------------
+    TIPOS_DIA_ESPECIAL = ("INHABIL", "SUSPENSION", "EN_LINEA")
+    TIPOS_SIN_CLASE = ("INHABIL", "SUSPENSION")
+
+    @staticmethod
+    def _asegurar_tabla_dias_especiales(cursor):
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS tb_grupo_dias_especiales (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                id_grupo INT NOT NULL,
+                fecha DATE NOT NULL,
+                tipo VARCHAR(20) NOT NULL,
+                motivo VARCHAR(255) NULL,
+                registrado_por VARCHAR(120) NULL,
+                created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uq_grupo_fecha (id_grupo, fecha),
+                KEY idx_fecha (fecha)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        """)
+
+    @staticmethod
+    def get_dias_especiales(cursor, id_grupo, desde=None, hasta=None):
+        """{fecha(date): {tipo, motivo, registrado_por, actualizado}} del grupo."""
+        AsistenciasAlumnosService._asegurar_tabla_dias_especiales(cursor)
+        sql = "SELECT fecha, tipo, motivo, registrado_por, updated_at FROM tb_grupo_dias_especiales WHERE id_grupo = %s"
+        params = [id_grupo]
+        if desde:
+            sql += " AND fecha >= %s"
+            params.append(desde)
+        if hasta:
+            sql += " AND fecha <= %s"
+            params.append(hasta)
+        cursor.execute(sql, tuple(params))
+        out = {}
+        for r in cursor.fetchall() or []:
+            if not isinstance(r, dict):
+                r = dict(zip(("fecha", "tipo", "motivo", "registrado_por", "updated_at"), r))
+            f = r["fecha"]
+            if isinstance(f, datetime.datetime):
+                f = f.date()
+            elif not isinstance(f, datetime.date):
+                f = datetime.datetime.strptime(str(f)[:10], "%Y-%m-%d").date()
+            upd = r.get("updated_at")
+            out[f] = {
+                "tipo": r["tipo"],
+                "motivo": r.get("motivo") or "",
+                "registrado_por": r.get("registrado_por") or "",
+                "actualizado": upd.isoformat(sep=" ") if isinstance(upd, datetime.datetime) else (str(upd) if upd else None),
+            }
+        return out
+
+    @staticmethod
+    def dias_especiales_lista(dias):
+        return [{"fecha": f.isoformat(), **d} for f, d in sorted(dias.items())]
+
+    @staticmethod
+    def guardar_dia_especial(id_grupo, fecha, tipo, motivo=None, registrado_por=None, aplicar_plantel=False):
+        """
+        Marca (o quita, con tipo vacío/NORMAL) un día especial del grupo.
+        aplicar_plantel: aplica la misma marca a todos los grupos activos del mismo plantel
+        cuyo calendario incluye la fecha (útil para feriados).
+        No toca tb_asistencias_alumnos: el pase que ya exista ese día se conserva y solo deja de contarse.
+        """
+        tipo = (tipo or "").strip().upper()
+        if tipo in ("", "NORMAL"):
+            tipo = None
+        if tipo is not None and tipo not in AsistenciasAlumnosService.TIPOS_DIA_ESPECIAL:
+            return {"error": "Tipo de día no válido."}, 400
+        motivo = (motivo or "").strip()[:255] or None
+        if tipo == "SUSPENSION" and not motivo:
+            return {"error": "Indica el motivo de la suspensión."}, 400
+        try:
+            fecha_d = datetime.datetime.strptime(str(fecha)[:10], "%Y-%m-%d").date()
+        except ValueError:
+            return {"error": "Fecha inválida (use AAAA-MM-DD)."}, 400
+
+        conexion = get_connection()
+        cursor = conexion.cursor(pymysql.cursors.DictCursor)
+        try:
+            AsistenciasAlumnosService._asegurar_tabla_dias_especiales(cursor)
+            cursor.execute("SELECT id, id_centroTrabajo FROM tb_grupos WHERE id = %s", (id_grupo,))
+            grupo = cursor.fetchone()
+            if not grupo:
+                return {"error": "Grupo no encontrado."}, 404
+
+            grupos = {int(id_grupo)}
+            if aplicar_plantel:
+                cursor.execute("""
+                    SELECT id FROM tb_grupos
+                    WHERE id_centroTrabajo = %s AND statusGrupo = 'ACTIVO'
+                      AND fechaInicio <= %s AND fechaFin >= %s
+                """, (grupo["id_centroTrabajo"], fecha_d, fecha_d))
+                grupos |= {int(r["id"]) for r in cursor.fetchall() or []}
+
+            for gid in sorted(grupos):
+                if tipo is None:
+                    cursor.execute("DELETE FROM tb_grupo_dias_especiales WHERE id_grupo = %s AND fecha = %s", (gid, fecha_d))
+                else:
+                    cursor.execute("""
+                        INSERT INTO tb_grupo_dias_especiales (id_grupo, fecha, tipo, motivo, registrado_por)
+                        VALUES (%s, %s, %s, %s, %s)
+                        ON DUPLICATE KEY UPDATE tipo = VALUES(tipo), motivo = VALUES(motivo), registrado_por = VALUES(registrado_por)
+                    """, (gid, fecha_d, tipo, motivo, registrado_por))
+            conexion.commit()
+            return {
+                "success": True,
+                "fecha": fecha_d.isoformat(),
+                "tipo": tipo,
+                "motivo": motivo or "",
+                "grupos_afectados": len(grupos),
+            }
+        except Exception as e:
+            conexion.rollback()
+            return {"error": f"No se pudo guardar el día: {e}"}, 500
+        finally:
+            cursor.close()
+            conexion.close()
 
     @staticmethod
     def reabrir_pase(id_grupo, fecha, id_materia=None, autorizado_por=None, habilitar=True):
@@ -405,8 +534,18 @@ class AsistenciasAlumnosService:
             es_general = (not id_materia or str(id_materia).lower() == 'general')
             mat_id_int = None if es_general else int(id_materia)
 
+            # Días inhábiles o de suspensión: no hay clase, no se registra asistencia
+            sin_clase = {
+                f.isoformat() for f, d in AsistenciasAlumnosService.get_dias_especiales(cursor, id_grupo).items()
+                if d["tipo"] in AsistenciasAlumnosService.TIPOS_SIN_CLASE
+            }
+            omitidas = sorted({str(a.get("fecha"))[:10] for a in asistencias_list if str(a.get("fecha"))[:10] in sin_clase})
+            asistencias_list = [a for a in asistencias_list if str(a.get("fecha"))[:10] not in sin_clase]
+
             fechas_en_lista = sorted(list(set(str(a.get("fecha")) for a in asistencias_list if a.get("fecha"))))
             if not fechas_en_lista:
+                if omitidas:
+                    return {"mensaje": "No se guardó nada: las fechas enviadas están marcadas como día inhábil o suspensión."}
                 return {"mensaje": "No se recibieron registros para guardar."}
 
             # Si es docente, verificar si el pase de lista para las fechas enviadas ya fue cerrado previamente

@@ -279,6 +279,56 @@ def guardar_asistencias_alumnos():
         return jsonify({"error": str(e)}), 500
 
 
+@asistencias_bp.route("/asistencias/alumnos/dia-especial", methods=["POST"])
+def guardar_dia_especial_grupo():
+    """
+    Marca un día del calendario del grupo como INHABIL, SUSPENSION (motivo obligatorio) o EN_LINEA.
+    Con tipo vacío o NORMAL quita la marca. aplicar_plantel=true lo aplica a todos los grupos
+    activos del mismo plantel cuyo calendario incluye la fecha.
+    ---
+    parameters:
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          properties:
+            id_grupo:
+              type: integer
+            fecha:
+              type: string
+            tipo:
+              type: string
+            motivo:
+              type: string
+            registrado_por:
+              type: string
+            aplicar_plantel:
+              type: boolean
+    responses:
+      200:
+        description: Operación exitosa
+      400:
+        description: Datos inválidos
+    """
+    try:
+        data = request.json or {}
+        id_grupo = data.get("id_grupo")
+        fecha = data.get("fecha")
+        if not id_grupo or not fecha:
+            return jsonify({"error": "id_grupo y fecha son requeridos"}), 400
+        from app.services.asistencias_alumnos_service import AsistenciasAlumnosService
+        resultado = AsistenciasAlumnosService.guardar_dia_especial(
+            int(id_grupo), fecha, data.get("tipo"), data.get("motivo"),
+            data.get("registrado_por"), bool(data.get("aplicar_plantel")),
+        )
+        if isinstance(resultado, tuple):
+            return jsonify(resultado[0]), resultado[1]
+        return jsonify(resultado)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @asistencias_bp.route("/asistencias/alumnos/reabrir", methods=["POST"])
 def reabrir_asistencias_alumnos():
     """
@@ -438,6 +488,42 @@ def get_reporte_grupo(id_grupo):
     try:
         from app.services.asistencias_alumnos_service import AsistenciasAlumnosService
         resultado = AsistenciasAlumnosService.get_reporte_grupo(id_grupo)
+        if isinstance(resultado, tuple):
+            return jsonify(resultado[0]), resultado[1]
+        return jsonify(resultado)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@asistencias_bp.route("/reportes/asistencias/bti/grupo/<int:id_grupo>", methods=["GET"])
+def get_reporte_bti_grupo(id_grupo):
+    """
+    Reporte estadístico BTI del grupo (unidad = día): resumen, cobertura del pase de lista y
+    estadísticas por alumno. Filtros opcionales: ?desde=AAAA-MM-DD&hasta=AAAA-MM-DD
+    """
+    try:
+        from app.services.reportes_asistencias_bti_service import ReportesAsistenciasBtiService
+        resultado = ReportesAsistenciasBtiService.get_reporte_grupo(
+            id_grupo, request.args.get("desde"), request.args.get("hasta"), request.args.get("parcial")
+        )
+        if isinstance(resultado, tuple):
+            return jsonify(resultado[0]), resultado[1]
+        return jsonify(resultado)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@asistencias_bp.route("/reportes/asistencias/bti/grupo/<int:id_grupo>/alumno/<int:id_alumno>", methods=["GET"])
+def get_reporte_bti_alumno(id_grupo, id_alumno):
+    """
+    Reporte BTI de un alumno: resumen de boleta (asistencias, faltas y justificadas), faltas
+    con fecha de justificación e historial diario (incluye días sin pase de lista).
+    """
+    try:
+        from app.services.reportes_asistencias_bti_service import ReportesAsistenciasBtiService
+        resultado = ReportesAsistenciasBtiService.get_reporte_alumno(
+            id_grupo, id_alumno, request.args.get("desde"), request.args.get("hasta"), request.args.get("parcial")
+        )
         if isinstance(resultado, tuple):
             return jsonify(resultado[0]), resultado[1]
         return jsonify(resultado)

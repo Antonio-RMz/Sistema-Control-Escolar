@@ -259,6 +259,8 @@ class CalificacionesService:
                         "extraordinario": calif["extraordinario"] if calif else None,
                         "asistencias": calif["asistencias"] if calif else None,
                         "total_asistencias": calif["total_asistencias"] if calif else None,
+                        # La calificación puede estar registrada bajo otra idMateria con el mismo nombre
+                        "idMateriaCalificacion": calif["idMateria"] if calif else None,
                     }
                     materias_califs.append(row)
                     
@@ -354,6 +356,7 @@ class CalificacionesService:
                         "nombreMateria": mat["nombreMateria"],
                         "claveMateria": mat["claveMateria"],
                         "idCalificacion": mat["idCalificacion"],
+                        "idMateriaCalificacion": mat.get("idMateriaCalificacion"),
                         "calificacion": float(calif_val) if tiene_calif else None,
                         "es_equivalencia": is_equiv,
                         "tipoAcreditacion": mat.get("tipoAcreditacion") or ("EQUIVALENCIA" if is_equiv else "ORDINARIO"),
@@ -440,12 +443,18 @@ class CalificacionesService:
                         "extraordinario_rango": fmt_range(g_conf.get("extraordinario_fecha_inicio"), g_conf.get("extraordinario_fecha_fin")),
                     }
 
+            # Asistencias por parcial (BTI) capturadas en Captura de Calificaciones; las usa la boleta
+            asistencias_parciales = {}
+            if not is_bgne:
+                asistencias_parciales = CalificacionesService.get_asistencias_parciales_alumno(cursor, id_alumno)
+
             return {
                 "alumno": alumno,
                 "periodos": kardex_periodos,
                 "promedioGeneral": promedio_general,
                 "totalMateriasEvaluadas": total_materias_evaluadas,
-                "periodosEvaluacion": periodos_evaluacion
+                "periodosEvaluacion": periodos_evaluacion,
+                "asistenciasParciales": asistencias_parciales
             }
         except Exception as e:
             return {"error": str(e)}
@@ -481,12 +490,21 @@ class CalificacionesService:
                     """, (id_alumno, id_materia, tipo_acred))
                     continue
 
-                # Verificar si ya existe calificación para este alumno, materia y tipo de acreditación
-                cursor.execute("""
-                    SELECT id, parcial1, parcial2, parcial3, semestral, extraordinario, asistencias, total_asistencias 
-                    FROM tb_calificaciones 
-                    WHERE idAlumno = %s AND idMateria = %s AND tipoAcreditacion = %s
-                """, (id_alumno, id_materia, tipo_acred))
+                # Verificar si ya existe calificación para este alumno y materia. Ordinario y extraordinario
+                # comparten renglón, así que no se filtra por tipo exacto (evita duplicar el registro).
+                if str(tipo_acred).upper() == "EQUIVALENCIA":
+                    cursor.execute("""
+                        SELECT id, parcial1, parcial2, parcial3, semestral, extraordinario, asistencias, total_asistencias
+                        FROM tb_calificaciones
+                        WHERE idAlumno = %s AND idMateria = %s AND tipoAcreditacion = 'EQUIVALENCIA'
+                    """, (id_alumno, id_materia))
+                else:
+                    cursor.execute("""
+                        SELECT id, parcial1, parcial2, parcial3, semestral, extraordinario, asistencias, total_asistencias
+                        FROM tb_calificaciones
+                        WHERE idAlumno = %s AND idMateria = %s AND tipoAcreditacion != 'EQUIVALENCIA'
+                        ORDER BY id ASC
+                    """, (id_alumno, id_materia))
                 existente = cursor.fetchone()
 
                 parcial1 = item.get("parcial1")
@@ -517,12 +535,12 @@ class CalificacionesService:
 
                     cursor.execute("""
                         UPDATE tb_calificaciones 
-                        SET calificacion = %s, id_nivel_academico = %s, idGrupo = %s, observaciones = %s,
-                            parcial1 = %s, parcial2 = %s, parcial3 = %s, semestral = %s, extraordinario = %s, 
+                        SET calificacion = %s, tipoAcreditacion = %s, id_nivel_academico = %s, idGrupo = COALESCE(%s, idGrupo), observaciones = COALESCE(%s, observaciones),
+                            parcial1 = %s, parcial2 = %s, parcial3 = %s, semestral = %s, extraordinario = %s,
                             asistencias = %s, total_asistencias = %s,
                             updateBy = %s, updateAt = CURRENT_TIMESTAMP
                         WHERE id = %s
-                    """, (calificacion, id_nivel, id_grupo, observaciones, p1_final, p2_final, p3_final, sem_final, ext_final, asist_final, tot_asist_final, create_by, existente["id"]))
+                    """, (calificacion, tipo_acred, id_nivel, id_grupo, observaciones, p1_final, p2_final, p3_final, sem_final, ext_final, asist_final, tot_asist_final, create_by, existente["id"]))
                 else:
                     cursor.execute("""
                         INSERT INTO tb_calificaciones (
@@ -1017,6 +1035,89 @@ class CalificacionesService:
             conexion.close()
 
     @staticmethod
+    def _guardar_calificacion_bgne(cursor, item, id_alumno, id_materia, id_grupo, id_nivel_materia,
+                                   observaciones, create_by, is_docente, allow_p1, allow_ext):
+        """
+        Regla BGNE (CCT 3): no hay parciales ni semestral.
+          - parcial1       -> calificación ORDINARIA (se captura en la ventana p1)
+          - extraordinario -> calificación del examen extraordinario (sin tope; se aprueba con 6)
+          - calificacion   -> calificación EFECTIVA: la del extraordinario si existe, si no la ordinaria
+        Se conservan ambas; kárdex y actas leen `calificacion`.
+        """
+        def num(v):
+            if v is None or v == "" or str(v).strip().lower() == "null":
+                return None
+            return float(v)
+
+        cursor.execute("""
+            SELECT id, calificacion, parcial1, extraordinario, asistencias, total_asistencias
+            FROM tb_calificaciones
+            WHERE idAlumno = %s AND idMateria = %s AND tipoAcreditacion != 'EQUIVALENCIA'
+        """, (id_alumno, id_materia))
+        existente = cursor.fetchone()
+
+        # Front nuevo manda la ordinaria en parcial1; el anterior la mandaba en `calificacion`
+        ord_val = num(item.get("parcial1")) if "parcial1" in item else num(item.get("calificacion"))
+        ext_val = num(item.get("extraordinario"))
+
+        # Registros previos a esta regla: la ordinaria solo estaba en `calificacion`
+        ord_prev = None
+        ext_prev = None
+        if existente:
+            ext_prev = num(existente.get("extraordinario"))
+            ord_prev = num(existente.get("parcial1"))
+            if ord_prev is None and ext_prev is None:
+                ord_prev = num(existente.get("calificacion"))
+
+        # Un docente fuera de su ventana no puede modificar ese campo
+        if is_docente:
+            if not allow_p1:
+                ord_val = ord_prev
+            if not allow_ext:
+                ext_val = ext_prev
+
+        asist_val = item.get("asistencias") if "asistencias" in item else (existente.get("asistencias") if existente else None)
+        tot_asist_val = item.get("total_asistencias") if "total_asistencias" in item else (existente.get("total_asistencias") if existente else None)
+
+        cursor.execute("""
+            DELETE FROM tb_calificaciones
+            WHERE idAlumno = %s AND idMateria = %s AND tipoAcreditacion = 'EQUIVALENCIA'
+        """, (id_alumno, id_materia))
+
+        if ord_val is None and ext_val is None:
+            if asist_val is None and tot_asist_val is None:
+                cursor.execute("""
+                    DELETE FROM tb_calificaciones
+                    WHERE idAlumno = %s AND idMateria = %s AND tipoAcreditacion != 'EQUIVALENCIA'
+                """, (id_alumno, id_materia))
+                return
+            calif_val = 0.0
+        else:
+            calif_val = float(round(ext_val if ext_val is not None else ord_val))
+
+        tipo_acred = "EXTRAORDINARIO" if ext_val is not None else "ORDINARIO"
+
+        if existente:
+            cursor.execute("""
+                UPDATE tb_calificaciones
+                SET calificacion = %s, tipoAcreditacion = %s, idGrupo = %s, observaciones = %s,
+                    parcial1 = %s, parcial2 = NULL, parcial3 = NULL, semestral = NULL, extraordinario = %s,
+                    asistencias = %s, total_asistencias = %s,
+                    id_nivel_academico = COALESCE(id_nivel_academico, %s),
+                    updateBy = %s, updateAt = CURRENT_TIMESTAMP
+                WHERE id = %s
+            """, (calif_val, tipo_acred, id_grupo, observaciones, ord_val, ext_val,
+                  asist_val, tot_asist_val, id_nivel_materia, create_by, existente["id"]))
+        else:
+            cursor.execute("""
+                INSERT INTO tb_calificaciones (
+                    idAlumno, idMateria, idGrupo, id_nivel_academico, calificacion, tipoAcreditacion, observaciones,
+                    fechaEvaluacion, createBy, parcial1, extraordinario, asistencias, total_asistencias
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, CURRENT_DATE, %s, %s, %s, %s, %s)
+            """, (id_alumno, id_materia, id_grupo, id_nivel_materia, calif_val, tipo_acred, observaciones,
+                  create_by, ord_val, ext_val, asist_val, tot_asist_val))
+
+    @staticmethod
     def guardar_calificaciones_grupo_materia(id_grupo, id_materia, calificaciones, create_by="SISTEMA", id_docente=None, rol=None, finalizar=False):
         conexion = get_connection()
         cursor = conexion.cursor()
@@ -1120,6 +1221,12 @@ class CalificacionesService:
                             except ValueError:
                                 return {"error": f"La calificacion '{fld}' no es un numero valido."}
 
+            id_nivel_materia = None
+            if id_cct == 3:
+                cursor.execute("SELECT id_nivel_academico FROM tb_materias WHERE id = %s", (id_materia,))
+                mat_row = cursor.fetchone()
+                id_nivel_materia = mat_row.get("id_nivel_academico") if mat_row else None
+
             for item in calificaciones:
                 id_alumno = item.get("idAlumno")
                 calificacion = item.get("calificacion")
@@ -1156,6 +1263,13 @@ class CalificacionesService:
                                 idAlumno, idMateria, idGrupo, calificacion, tipoAcreditacion, observaciones, fechaEvaluacion, createBy
                             ) VALUES (%s, %s, %s, 0.0, 'EQUIVALENCIA', %s, CURRENT_DATE, %s)
                         """, (id_alumno, id_materia, id_grupo, observaciones, create_by))
+                    continue
+
+                if id_cct == 3:
+                    CalificacionesService._guardar_calificacion_bgne(
+                        cursor, item, id_alumno, id_materia, id_grupo, id_nivel_materia,
+                        observaciones, create_by, is_docente, allow_p1, allow_ext
+                    )
                     continue
 
                 parcial1 = item.get("parcial1")
@@ -1294,7 +1408,8 @@ class CalificacionesService:
                     """, (id_alumno, id_materia, id_grupo, calif_val, tipo_acred, observaciones, create_by, p1_val, p2_val, p3_val, sem_val, ext_val, asist_val, tot_asist_val))
 
             # 3. Registrar como finalizado si corresponde
-            if finalizar and id_docente and is_docente and (allow_sem or allow_ext):
+            # En BGNE la calificación final se captura en la ventana p1 (no hay semestral)
+            if finalizar and id_docente and is_docente and (allow_sem or allow_ext or (id_cct == 3 and allow_p1)):
                 cursor.execute("""
                     SELECT id FROM tb_docente_permisos_captura 
                     WHERE id_docente = %s AND id_grupo = %s AND id_materia = %s
@@ -1424,6 +1539,154 @@ class CalificacionesService:
         finally:
             cursor.close()
             conexion.close()
+
+    # ------------------------------------------------------------------
+    # Asistencias por PARCIAL (BTI): clases impartidas y asistencias de cada
+    # alumno en el 1er, 2do y 3er parcial. Es lo que se imprime en la boleta.
+    # El total del semestre (tb_calificaciones) se recalcula como P1 + P2 + P3.
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _asegurar_tabla_asistencias_parciales(cursor):
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS tb_asistencias_parciales (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                id_alumno INT NOT NULL,
+                id_grupo INT NOT NULL,
+                id_nivel_academico INT NOT NULL,
+                parcial TINYINT NOT NULL,
+                total_clases INT NULL,
+                asistencias INT NULL,
+                updated_by VARCHAR(120) NULL,
+                created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uq_alumno_grupo_nivel_parcial (id_alumno, id_grupo, id_nivel_academico, parcial),
+                KEY idx_grupo_nivel (id_grupo, id_nivel_academico)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        """)
+
+    @staticmethod
+    def get_asistencias_grupo_parcial(id_grupo, id_nivel_academico, parcial):
+        """Alumnos del grupo con sus clases/asistencias del parcial indicado."""
+        base = CalificacionesService.get_asistencias_grupo_semestre(id_grupo, id_nivel_academico)
+        if "error" in base:
+            return base
+
+        conexion = get_connection()
+        cursor = conexion.cursor()
+        try:
+            CalificacionesService._asegurar_tabla_asistencias_parciales(cursor)
+            conexion.commit()
+            id_nivel = int(base["id_nivel_academico"])
+            cursor.execute("""
+                SELECT id_alumno, total_clases, asistencias
+                FROM tb_asistencias_parciales
+                WHERE id_grupo = %s AND id_nivel_academico = %s AND parcial = %s
+            """, (id_grupo, id_nivel, int(parcial)))
+            guardadas = {r["id_alumno"]: r for r in (cursor.fetchall() or [])}
+
+            alumnos = []
+            for al in base["alumnos"]:
+                g = guardadas.get(al["idAlumno"]) or {}
+                tot = g.get("total_clases")
+                asist = g.get("asistencias")
+                alumnos.append({
+                    "idAlumno": al["idAlumno"],
+                    "nombre": al["nombre"],
+                    "apPaterno": al["apPaterno"],
+                    "apMaterno": al["apMaterno"],
+                    "numeroControl": al["numeroControl"],
+                    "total_asistencias": tot,
+                    "asistencias": asist,
+                    "porcentaje": round(asist / tot * 100, 1) if (asist is not None and tot) else None,
+                })
+
+            return {
+                "success": True,
+                "grupo": base["grupo"],
+                "nivel": base["nivel"],
+                "id_nivel_academico": id_nivel,
+                "parcial": int(parcial),
+                "alumnos": alumnos,
+            }
+        finally:
+            cursor.close()
+            conexion.close()
+
+    @staticmethod
+    def guardar_asistencias_grupo_parcial(id_grupo, id_nivel_academico, parcial, asistencias_list, create_by="SISTEMA"):
+        conexion = get_connection()
+        cursor = conexion.cursor()
+        alumnos_ids = []
+        try:
+            cursor.execute("SELECT id FROM tb_grupos WHERE id = %s", (id_grupo,))
+            if not cursor.fetchone():
+                return {"error": "Grupo no encontrado"}
+
+            CalificacionesService._asegurar_tabla_asistencias_parciales(cursor)
+            id_nivel = int(id_nivel_academico)
+            parcial = int(parcial)
+
+            for item in asistencias_list:
+                id_alumno = item.get("idAlumno")
+                if not id_alumno:
+                    continue
+                tot = item.get("total_asistencias")
+                asist = item.get("asistencias")
+                tot = int(tot) if tot is not None and str(tot).strip() != "" else None
+                asist = int(asist) if asist is not None and str(asist).strip() != "" else None
+                alumnos_ids.append(int(id_alumno))
+
+                if tot is None and asist is None:
+                    cursor.execute("""
+                        DELETE FROM tb_asistencias_parciales
+                        WHERE id_alumno = %s AND id_grupo = %s AND id_nivel_academico = %s AND parcial = %s
+                    """, (id_alumno, id_grupo, id_nivel, parcial))
+                    continue
+
+                cursor.execute("""
+                    INSERT INTO tb_asistencias_parciales
+                        (id_alumno, id_grupo, id_nivel_academico, parcial, total_clases, asistencias, updated_by)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    ON DUPLICATE KEY UPDATE
+                        total_clases = VALUES(total_clases),
+                        asistencias = VALUES(asistencias),
+                        updated_by = VALUES(updated_by)
+                """, (id_alumno, id_grupo, id_nivel, parcial, tot, asist, create_by))
+
+            # IMPORTANTE: la captura por parcial solo escribe en tb_asistencias_parciales.
+            # No se toca tb_calificaciones: ahí pueden existir totales de semestre capturados antes
+            # (formato anterior) y no deben sobrescribirse ni generarse renglones nuevos.
+            conexion.commit()
+        except Exception as e:
+            conexion.rollback()
+            raise e
+        finally:
+            cursor.close()
+            conexion.close()
+
+        return {"success": True, "message": "Asistencias del parcial guardadas exitosamente."}
+
+    @staticmethod
+    def get_asistencias_parciales_alumno(cursor, id_alumno):
+        """{id_nivel: {parcial: {total_asistencias, asistencias}}} de todas las capturas del alumno.
+        Solo lectura: si la tabla todavía no existe en el servidor, el kárdex sigue funcionando sin este dato."""
+        try:
+            cursor.execute("""
+                SELECT id_nivel_academico, parcial, total_clases, asistencias, id_grupo, updated_at
+                FROM tb_asistencias_parciales
+                WHERE id_alumno = %s
+                ORDER BY updated_at ASC
+            """, (id_alumno,))
+        except pymysql.err.ProgrammingError:
+            return {}
+        resultado = {}
+        for r in cursor.fetchall() or []:
+            # Si el alumno cambió de grupo dentro del mismo semestre, gana la captura más reciente
+            resultado.setdefault(str(r["id_nivel_academico"]), {})[str(r["parcial"])] = {
+                "total_asistencias": r["total_clases"],
+                "asistencias": r["asistencias"],
+            }
+        return resultado
 
     @staticmethod
     def guardar_asistencias_grupo_semestre(id_grupo, id_nivel_academico, asistencias_list, create_by="SISTEMA"):

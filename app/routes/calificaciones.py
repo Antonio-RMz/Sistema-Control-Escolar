@@ -197,7 +197,14 @@ def check_captura_permission(idGrupo, idMateria):
 def get_asistencias_grupo_semestre(idGrupo):
     try:
         id_nivel = request.args.get("id_nivel_academico")
-        resultado = CalificacionesService.get_asistencias_grupo_semestre(idGrupo, id_nivel)
+        parcial = request.args.get("parcial")
+        if parcial:
+            # BTI: asistencias de un parcial (1, 2 o 3)
+            if parcial not in ("1", "2", "3"):
+                return jsonify({"error": "El parcial debe ser 1, 2 o 3."}), 400
+            resultado = CalificacionesService.get_asistencias_grupo_parcial(idGrupo, id_nivel, int(parcial))
+        else:
+            resultado = CalificacionesService.get_asistencias_grupo_semestre(idGrupo, id_nivel)
         if "error" in resultado:
             return jsonify(resultado), 404 if resultado["error"] == "Grupo no encontrado" else 500
         return jsonify(resultado), 200
@@ -230,7 +237,16 @@ def save_asistencias_grupo_semestre(idGrupo):
             if asist is not None and (tot is None or asist > tot):
                 return jsonify({"error": f"Alumno {item.get('idAlumno')}: las asistencias no pueden ser más que las clases impartidas."}), 400
 
-        resultado = CalificacionesService.guardar_asistencias_grupo_semestre(idGrupo, id_nivel, asistencias, user)
+        parcial = body.get("parcial")
+        if parcial not in (None, ""):
+            # BTI: se guarda el parcial y se recalcula el total del semestre (P1 + P2 + P3)
+            if str(parcial) not in ("1", "2", "3"):
+                return jsonify({"error": "El parcial debe ser 1, 2 o 3."}), 400
+            if not id_nivel:
+                return jsonify({"error": "Falta el semestre (id_nivel_academico)."}), 400
+            resultado = CalificacionesService.guardar_asistencias_grupo_parcial(idGrupo, id_nivel, int(parcial), asistencias, user)
+        else:
+            resultado = CalificacionesService.guardar_asistencias_grupo_semestre(idGrupo, id_nivel, asistencias, user)
         if "error" in resultado:
             return jsonify(resultado), 404 if resultado["error"] == "Grupo no encontrado" else 500
         return jsonify(resultado), 200

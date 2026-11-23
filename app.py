@@ -22,6 +22,7 @@ from app.routes.reportes_indisciplina import reportes_indisciplina_bp
 from app.routes.dashboard import dashboard_bp
 from app.routes.usuarios import usuarios_bp
 from app.routes.historial_alumnos import historial_alumnos_bp
+from app.routes.online import online_bp
 from app.utils.seguridad import registrar_token_api
 import os
 
@@ -67,6 +68,7 @@ def create_app():
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(usuarios_bp)
     app.register_blueprint(historial_alumnos_bp)
+    app.register_blueprint(online_bp)
 
     # Iniciar programador de tareas diario (7:00 AM)
     from app.utils.scheduler import iniciar_scheduler

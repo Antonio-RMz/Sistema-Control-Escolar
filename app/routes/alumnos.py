@@ -453,23 +453,21 @@ def create_alumno_grupo():
 @alumnos_bp.route("/alumnos/<int:id_alumno>/modalidad-online", methods=["POST"])
 def cambiar_modalidad_online(id_alumno):
     """
-    Cambia a un alumno a modalidad en línea, valida asignación a grupo y crea usuario en Moodle.
+    Cambia a un alumno a modalidad en línea. Misma lógica que POST /online/alumnos/<id>/modalidad-online
+    (mismo grupo BGNE, validación de fin de trimestre del grupo y cuenta de Moodle).
     """
-    try:
-        data = request.get_json(silent=True) or {}
-        resultado, status = AlumnosService.cambiar_modalidad_online(id_alumno, data)
-        return jsonify(resultado), status
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
+    from app.routes.online import cambiar_modalidad_online as alta_online
+    return alta_online(id_alumno)
 
 
 @alumnos_bp.route("/alumnos/<int:id_alumno>/modalidad-presencial", methods=["POST"])
 def cambiar_modalidad_presencial(id_alumno):
     """
-    Retorna a un alumno a modalidad presencial.
+    Retorna a un alumno a modalidad presencial y suspende su cuenta de Moodle.
     """
+    from app.services.online_service import OnlineService
     try:
-        resultado, status = AlumnosService.cambiar_modalidad_presencial(id_alumno)
+        resultado, status = OnlineService.cambiar_modalidad_presencial(id_alumno)
         return jsonify(resultado), status
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
@@ -478,14 +476,10 @@ def cambiar_modalidad_presencial(id_alumno):
 @alumnos_bp.route("/alumnos/<int:id_alumno>/pagos", methods=["POST"])
 def registrar_pago_online(id_alumno):
     """
-    Registra el pago de una colegiatura/semana con folio de ticket y desbloquea en Moodle.
+    Registra un pago online de N semanas (cola FIFO). Misma lógica que POST /online/alumnos/<id>/pagos.
     """
-    try:
-        data = request.get_json(silent=True) or {}
-        resultado, status = AlumnosService.registrar_pago_online(id_alumno, data)
-        return jsonify(resultado), status
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
+    from app.routes.online import registrar_pago
+    return registrar_pago(id_alumno)
 
 
 @alumnos_bp.route("/alumnos/<int:id_alumno>/pagos", methods=["GET"])
