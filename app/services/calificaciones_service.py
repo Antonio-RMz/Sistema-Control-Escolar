@@ -559,6 +559,58 @@ class CalificacionesService:
             conexion.close()
 
     @staticmethod
+    def _a_fecha(v):
+        """date/datetime o texto 'YYYY-MM-DD...' → date (None si no se puede)."""
+        if not v:
+            return None
+        if isinstance(v, datetime):
+            return v.date()
+        if isinstance(v, date):
+            return v
+        try:
+            return datetime.strptime(str(v)[:10], '%Y-%m-%d').date()
+        except ValueError:
+            return None
+
+    @staticmethod
+    def ventana_captura_bgne(fecha_inicio, fecha_fin, hoy=None):
+        """
+        Regla BGNE: la calificación de cada trimestre se captura en la semana que sigue a su fin,
+        desde el día en que termina el trimestre hasta 6 días después (antes de que inicie el siguiente).
+        Trimestres con el mismo calendario de Horarios: 13 semanas desde la fecha de inicio del grupo,
+        el siguiente inicia una semana después del fin del anterior, hasta la fecha fin del grupo.
+        Devuelve {'nivel', 'apertura', 'cierre', 'abierta'} de la ventana que corresponde a hoy:
+        la abierta; si no hay, la próxima; si ya pasaron todas, la última. None si el grupo no tiene fechas.
+        """
+        from datetime import timedelta
+        inicio = CalificacionesService._a_fecha(fecha_inicio)
+        fin_grupo = CalificacionesService._a_fecha(fecha_fin)
+        if not inicio:
+            return None
+        hoy = hoy or date.today()
+
+        ventanas = []
+        ini = inicio
+        for nivel in range(1, 7):
+            if fin_grupo and ini > fin_grupo:
+                break
+            fin_trim = ini + timedelta(days=12 * 7)   # 13 semanas
+            cierre_trim = min(fin_trim, fin_grupo) if fin_grupo else fin_trim
+            ventanas.append({'nivel': nivel, 'apertura': cierre_trim, 'cierre': cierre_trim + timedelta(days=6)})
+            if fin_grupo and fin_trim >= fin_grupo:
+                break
+            ini = fin_trim + timedelta(days=7)
+        if not ventanas:
+            return None
+
+        for v in ventanas:
+            if v['apertura'] <= hoy <= v['cierre']:
+                return {**v, 'abierta': True}
+        proxima = next((v for v in ventanas if v['apertura'] > hoy), None)
+        anteriores = [v for v in ventanas if v['cierre'] < hoy]
+        return {**(proxima or ventanas[-1]), 'abierta': False, 'anterior': anteriores[-1] if anteriores else None}
+
+    @staticmethod
     def check_captura_permission(id_grupo, id_materia, id_docente, rol):
         conexion = get_connection()
         cursor = conexion.cursor(pymysql.cursors.DictCursor)
@@ -611,7 +663,7 @@ class CalificacionesService:
                     'reason': 'No tienes asignada esta asignatura en este grupo.'
                 }
 
-            cursor.execute("SELECT statusGrupo, fechaFin, id_nivel_academico FROM tb_grupos WHERE id = %s", (id_grupo,))
+            cursor.execute("SELECT statusGrupo, fechaInicio, fechaFin, id_nivel_academico, id_centroTrabajo FROM tb_grupos WHERE id = %s", (id_grupo,))
             grupo = cursor.fetchone()
             
             cursor.execute("SELECT id_nivel_academico FROM tb_materias WHERE id = %s", (id_materia,))
@@ -637,6 +689,43 @@ class CalificacionesService:
                         'allowed': False,
                         'reason': 'La captura de calificaciones está deshabilitada temporalmente para este grupo por administración.'
                     }
+
+            # BGNE: ventana automática de una semana al terminar cada trimestre.
+            # No aplica si en "Periodos por grupo" se guardaron fechas para la calificación final (mandan esas),
+            # si el docente tiene prórroga vigente o si está abierta la ventana configurada de extraordinario.
+            if int(grupo.get('id_centroTrabajo') or 0) == 3:
+                cursor.execute("""
+                    SELECT p1_fecha_inicio, p1_fecha_fin,
+                           extraordinario_habilitado, extraordinario_fecha_inicio, extraordinario_fecha_fin
+                    FROM tb_grupo_periodos_captura WHERE id_grupo = %s
+                """, (id_grupo,))
+                cfg_b = cursor.fetchone() or {}
+                fechas_manuales = bool(cfg_b.get('p1_fecha_inicio') or cfg_b.get('p1_fecha_fin'))
+                prorroga_vigente = bool(
+                    permiso and permiso.get('habilitado') and not permiso.get('finalizado') and
+                    permiso.get('fecha_limite') and hoy <= str(permiso.get('fecha_limite'))
+                )
+                ext_abierto = bool(
+                    cfg_b.get('extraordinario_habilitado') and
+                    cfg_b.get('extraordinario_fecha_inicio') and cfg_b.get('extraordinario_fecha_fin') and
+                    str(cfg_b['extraordinario_fecha_inicio']) <= hoy <= str(cfg_b['extraordinario_fecha_fin'])
+                )
+                if not fechas_manuales and not prorroga_vigente and not ext_abierto:
+                    v = CalificacionesService.ventana_captura_bgne(grupo.get('fechaInicio'), grupo.get('fechaFin'))
+                    if v and not v['abierta']:
+                        ordinal = {1: '1er', 2: '2do', 3: '3er', 4: '4to', 5: '5to', 6: '6to'}.get(v['nivel'], f"{v['nivel']}°")
+                        f = lambda d: d.strftime('%d/%m/%Y')
+                        ord_de = lambda n: {1: '1er', 2: '2do', 3: '3er', 4: '4to', 5: '5to', 6: '6to'}.get(n, f"{n}°")
+                        partes = []
+                        ant = v.get('anterior')
+                        if ant:
+                            partes.append(f"El plazo para capturar calificaciones del {ord_de(ant['nivel'])} trimestre terminó el "
+                                          f"{f(ant['cierre'])}; para capturarlas solicita una prórroga a la administración.")
+                        if v['apertura'] > date.today():
+                            partes.append(f"La captura del {ordinal} trimestre se abre al terminar el trimestre: "
+                                          f"del {f(v['apertura'])} al {f(v['cierre'])}.")
+                        motivo = ' '.join(partes) or 'La captura de calificaciones está cerrada para este grupo.'
+                        return {'allowed': False, 'reason': motivo}
 
             if grupo.get('statusGrupo') and grupo.get('statusGrupo').upper() != 'ACTIVO':
                 if not permiso or not permiso.get('permitir_modificar_pasados'):
