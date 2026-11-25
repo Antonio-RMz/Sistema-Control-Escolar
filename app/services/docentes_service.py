@@ -582,6 +582,177 @@ class DocentesService:
             conexion.close()
 
     @staticmethod
+    def _resumen_grupos_docente(cursor, id_docente):
+        """
+        Grupos del docente (según su horario, sin prehorarios) para la vista de Pendientes:
+        periodo en curso con su avance en el tiempo, estado de la captura (abierta / próxima / cerrada)
+        y avance de captura por asignatura. Las reglas de captura son las de CalificacionesService.
+        """
+        from app.services.calificaciones_service import CalificacionesService as CS
+        hoy = datetime.date.today()
+        iso = lambda d: d.isoformat() if d else None
+        ORD = {1: '1er', 2: '2do', 3: '3er', 4: '4to', 5: '5to', 6: '6to'}
+
+        cursor.execute("""
+            SELECT DISTINCT g.id, g.clave, g.id_centroTrabajo, g.fechaInicio, g.fechaFin, g.modalidadHorario,
+                   g.statusGrupo, g.id_nivel_academico, g.id_tipoPeriodo, na.nombre AS nombre_nivel
+            FROM tb_horarios h
+            JOIN tb_grupos g ON g.id = h.id_grupo
+            LEFT JOIN tb_niveles_academicos na ON na.id = g.id_nivel_academico
+            WHERE h.id_docente = %s
+              AND (h.es_prehorario IS NULL OR h.es_prehorario = 0)
+              AND (g.statusGrupo = 'ACTIVO' OR g.fechaFin >= %s)
+            ORDER BY g.clave
+        """, (id_docente, hoy - timedelta(days=21)))
+        grupos = cursor.fetchall()
+
+        resultado = []
+        for g in grupos:
+            id_grupo = g['id']
+            es_bgne = int(g.get('id_centroTrabajo') or 0) == 3
+            ini_g = CS._a_fecha(g.get('fechaInicio'))
+            fin_g = CS._a_fecha(g.get('fechaFin'))
+
+            cursor.execute("SELECT * FROM tb_grupo_periodos_captura WHERE id_grupo = %s", (id_grupo,))
+            cfg = cursor.fetchone() or {}
+
+            # ---- Periodo en curso (trimestre BGNE con el calendario del grupo; semestre BTI = fechas del grupo) ----
+            periodo = None
+            if es_bgne:
+                trims = CS.trimestres_grupo(ini_g, fin_g)
+                if trims:
+                    # En la semana de captura se sigue mostrando el trimestre que terminó
+                    t = next((x for x in trims if hoy <= x['captura_fin']), trims[-1])
+                    periodo = {'nombre': f"{ORD.get(t['nivel'], t['nivel'])} trimestre", 'nivel': t['nivel'],
+                               'inicio': t['inicio'], 'fin': t['fin']}
+            elif ini_g:
+                periodo = {'nombre': (g.get('nombre_nivel') or 'Semestre').lower(),
+                           'nivel': g.get('id_nivel_academico'), 'inicio': ini_g, 'fin': fin_g or ini_g}
+            if periodo:
+                total_dias = max((periodo['fin'] - periodo['inicio']).days, 1)
+                transcurridos = (hoy - periodo['inicio']).days
+                periodo.update({
+                    'estado': 'por_iniciar' if hoy < periodo['inicio'] else ('terminado' if hoy > periodo['fin'] else 'en_curso'),
+                    'porcentaje': max(0, min(100, round(transcurridos * 100 / total_dias))),
+                    'semanas': -(-(total_dias + 1) // 7),
+                    'semana': max(1, min(-(-(total_dias + 1) // 7), transcurridos // 7 + 1)),
+                    'dias_restantes': max(0, (periodo['fin'] - hoy).days),
+                    'inicio': iso(periodo['inicio']), 'fin': iso(periodo['fin']),
+                })
+
+            # ---- Estado de la captura del grupo ----
+            # Ventanas configuradas en "Periodos por grupo" (con fechas) y, en BGNE sin fechas, la regla automática
+            NOMBRES = {'p1': 'Calificación final' if es_bgne else '1er parcial', 'p2': '2do parcial', 'p3': '3er parcial',
+                       'semestral': 'Examen semestral', 'extraordinario': 'Extraordinario'}
+            CAMPO = {'p1': 'parcial1', 'p2': 'parcial2', 'p3': 'parcial3', 'semestral': 'semestral', 'extraordinario': 'calificacion'}
+            ventanas = []
+            claves = ('p1', 'extraordinario') if es_bgne else ('p1', 'p2', 'p3', 'semestral', 'extraordinario')
+            for k in claves:
+                hab = cfg.get(f'{k}_habilitado')
+                a, b = CS._a_fecha(cfg.get(f'{k}_fecha_inicio')), CS._a_fecha(cfg.get(f'{k}_fecha_fin'))
+                if (hab is None or hab) and a and b:
+                    ventanas.append({'clave': k, 'etapa': NOMBRES[k], 'inicio': a, 'fin': b})
+            automatica = False
+            if es_bgne and not (cfg.get('p1_fecha_inicio') or cfg.get('p1_fecha_fin')):
+                automatica = True
+                for t in CS.trimestres_grupo(ini_g, fin_g):
+                    ventanas.append({'clave': 'p1', 'etapa': f"{ORD.get(t['nivel'], t['nivel'])} trimestre",
+                                     'inicio': t['fin'], 'fin': t['captura_fin']})
+
+            abiertas = sorted([v for v in ventanas if v['inicio'] <= hoy <= v['fin']], key=lambda v: v['fin'])
+            proximas = sorted([v for v in ventanas if v['inicio'] > hoy], key=lambda v: v['inicio'])
+            pasadas = sorted([v for v in ventanas if v['fin'] < hoy], key=lambda v: v['fin'])
+            if cfg and cfg.get('captura_habilitada') is not None and not cfg.get('captura_habilitada'):
+                captura = {'estado': 'deshabilitada'}
+                ref = None
+            elif abiertas:
+                ref = abiertas[0]
+                captura = {'estado': 'abierta', 'dias_restantes': (ref['fin'] - hoy).days}
+            elif proximas:
+                ref = proximas[0]
+                captura = {'estado': 'proxima', 'dias_para_abrir': (ref['inicio'] - hoy).days}
+            elif pasadas:
+                ref = pasadas[-1]
+                captura = {'estado': 'cerrada'}
+            else:
+                ref = None
+                captura = {'estado': 'sin_fechas'}
+            if ref:
+                captura.update({'etapa': ref['etapa'], 'inicio': iso(ref['inicio']), 'fin': iso(ref['fin'])})
+            if pasadas and captura['estado'] in ('proxima', 'abierta'):
+                ult = pasadas[-1]
+                captura['anterior'] = {'etapa': ult['etapa'], 'fin': iso(ult['fin'])}
+            captura['automatica'] = automatica
+
+            # Campo que mide el avance: el de la etapa abierta o la última cerrada (BTI); la calificación final (BGNE)
+            ref_avance = abiertas[0] if abiertas else (pasadas[-1] if pasadas else None)
+            if es_bgne:
+                cond = "(c.calificacion IS NOT NULL OR c.parcial1 IS NOT NULL)"
+            else:
+                campo = CAMPO.get(ref_avance['clave'], 'calificacion') if ref_avance else 'calificacion'
+                cond = f"c.{campo} IS NOT NULL"   # nombre de columna de una lista fija
+
+            # ---- Alumnos y asignaturas ----
+            cursor.execute("""
+                SELECT COUNT(*) AS n FROM tb_alumnogrupo ag
+                JOIN tb_alumnos a ON a.idAlumno = ag.idAlumno
+                WHERE ag.idGrupo = %s AND ag.estado = 'ACTIVO' AND a.statusAlumno = 'ACTIVO'
+            """, (id_grupo,))
+            total_alumnos = (cursor.fetchone() or {}).get('n') or 0
+
+            cursor.execute("""
+                SELECT DISTINCT m.id, m.nombreMateria, m.clave, m.id_nivel_academico, na.nombre AS nombre_nivel
+                FROM tb_horarios h
+                JOIN tb_materias m ON m.id = h.id_materia
+                LEFT JOIN tb_niveles_academicos na ON na.id = m.id_nivel_academico
+                WHERE h.id_docente = %s AND h.id_grupo = %s
+                  AND (h.es_prehorario IS NULL OR h.es_prehorario = 0)
+                ORDER BY m.nombreMateria
+            """, (id_docente, id_grupo))
+            materias = []
+            for m in cursor.fetchall():
+                calificados = 0
+                if total_alumnos:
+                    cursor.execute(f"""
+                        SELECT COUNT(DISTINCT c.idAlumno) AS n
+                        FROM tb_calificaciones c
+                        JOIN tb_alumnogrupo ag ON ag.idAlumno = c.idAlumno AND ag.idGrupo = %s AND ag.estado = 'ACTIVO'
+                        JOIN tb_alumnos a ON a.idAlumno = c.idAlumno AND a.statusAlumno = 'ACTIVO'
+                        WHERE c.idMateria = %s AND {cond}
+                    """, (id_grupo, m['id']))
+                    calificados = (cursor.fetchone() or {}).get('n') or 0
+                permiso = CS.check_captura_permission(id_grupo, m['id'], id_docente, 'DOCENTE')
+                materias.append({
+                    'id': m['id'],
+                    'nombre': m['nombreMateria'],
+                    'clave': m['clave'],
+                    'nivel': m.get('nombre_nivel'),
+                    'total': total_alumnos,
+                    'calificados': min(calificados, total_alumnos),
+                    'porcentaje': round(min(calificados, total_alumnos) * 100 / total_alumnos) if total_alumnos else 0,
+                    'bloqueado': not permiso['allowed'],
+                    'motivo': None if permiso['allowed'] else permiso['reason'],
+                })
+
+            tot = sum(x['total'] for x in materias)
+            cal = sum(x['calificados'] for x in materias)
+            resultado.append({
+                'id': id_grupo,
+                'clave': g['clave'],
+                'plantel': 'BGNE' if es_bgne else ('BTI' if int(g.get('id_centroTrabajo') or 0) == 2 else ''),
+                'modalidad': g.get('modalidadHorario'),
+                'fecha_inicio': iso(ini_g),
+                'fecha_fin': iso(fin_g),
+                'periodo': periodo,
+                'captura': captura,
+                # Qué se está midiendo en el avance (BTI: el parcial abierto o el último cerrado)
+                'etapa_avance': ref_avance['etapa'] if (ref_avance and not es_bgne) else 'Calificación final',
+                'materias': materias,
+                'avance': {'total': tot, 'calificados': cal, 'porcentaje': round(cal * 100 / tot) if tot else 0},
+            })
+        return resultado
+
+    @staticmethod
     def get_docente_pendientes(id_docente):
         conexion = get_connection()
         cursor = conexion.cursor(pymysql.cursors.DictCursor)
@@ -709,7 +880,8 @@ class DocentesService:
             return {
                 'prorrogas': prorrogas,
                 'por_finalizar': por_finalizar,
-                'calificaciones_pendientes': calificaciones_pendientes
+                'calificaciones_pendientes': calificaciones_pendientes,
+                'grupos': DocentesService._resumen_grupos_docente(cursor, id_docente)
             }
         except Exception as e:
             return {'error': str(e)}

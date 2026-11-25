@@ -573,6 +573,31 @@ class CalificacionesService:
             return None
 
     @staticmethod
+    def trimestres_grupo(fecha_inicio, fecha_fin):
+        """
+        Calendario de trimestres BGNE (mismo que Horarios): 13 semanas desde la fecha de inicio del grupo,
+        el siguiente inicia una semana después del fin del anterior, hasta la fecha fin del grupo.
+        Cada trimestre: {'nivel', 'inicio', 'fin' (tope en la fecha fin del grupo), 'captura_fin' (fin + 6 días)}.
+        """
+        from datetime import timedelta
+        inicio = CalificacionesService._a_fecha(fecha_inicio)
+        fin_grupo = CalificacionesService._a_fecha(fecha_fin)
+        if not inicio:
+            return []
+        trimestres = []
+        ini = inicio
+        for nivel in range(1, 7):
+            if fin_grupo and ini > fin_grupo:
+                break
+            fin_trim = ini + timedelta(days=12 * 7)   # 13 semanas
+            fin_real = min(fin_trim, fin_grupo) if fin_grupo else fin_trim
+            trimestres.append({'nivel': nivel, 'inicio': ini, 'fin': fin_real, 'captura_fin': fin_real + timedelta(days=6)})
+            if fin_grupo and fin_trim >= fin_grupo:
+                break
+            ini = fin_trim + timedelta(days=7)
+        return trimestres
+
+    @staticmethod
     def ventana_captura_bgne(fecha_inicio, fecha_fin, hoy=None):
         """
         Regla BGNE: la calificación de cada trimestre se captura en la semana que sigue a su fin,
@@ -582,24 +607,9 @@ class CalificacionesService:
         Devuelve {'nivel', 'apertura', 'cierre', 'abierta'} de la ventana que corresponde a hoy:
         la abierta; si no hay, la próxima; si ya pasaron todas, la última. None si el grupo no tiene fechas.
         """
-        from datetime import timedelta
-        inicio = CalificacionesService._a_fecha(fecha_inicio)
-        fin_grupo = CalificacionesService._a_fecha(fecha_fin)
-        if not inicio:
-            return None
         hoy = hoy or date.today()
-
-        ventanas = []
-        ini = inicio
-        for nivel in range(1, 7):
-            if fin_grupo and ini > fin_grupo:
-                break
-            fin_trim = ini + timedelta(days=12 * 7)   # 13 semanas
-            cierre_trim = min(fin_trim, fin_grupo) if fin_grupo else fin_trim
-            ventanas.append({'nivel': nivel, 'apertura': cierre_trim, 'cierre': cierre_trim + timedelta(days=6)})
-            if fin_grupo and fin_trim >= fin_grupo:
-                break
-            ini = fin_trim + timedelta(days=7)
+        ventanas = [{'nivel': t['nivel'], 'apertura': t['fin'], 'cierre': t['captura_fin']}
+                    for t in CalificacionesService.trimestres_grupo(fecha_inicio, fecha_fin)]
         if not ventanas:
             return None
 
