@@ -1429,6 +1429,16 @@ class CalificacionesService:
                 if not id_alumno:
                     continue
 
+                # Las equivalencias las gestiona solo la administración: el docente no puede marcarlas ni quitarlas
+                if is_docente:
+                    cursor.execute("""
+                        SELECT 1 FROM tb_calificaciones
+                        WHERE idAlumno = %s AND idMateria = %s AND tipoAcreditacion = 'EQUIVALENCIA' LIMIT 1
+                    """, (id_alumno, id_materia))
+                    ya_es_equiv = cursor.fetchone() is not None
+                    if ya_es_equiv or tipo_acred == "EQUIVALENCIA":
+                        continue
+
                 if tipo_acred == "EQUIVALENCIA":
                     # Limpiar cualquier calificacion ordinaria previa para este alumno y materia
                     cursor.execute("""
