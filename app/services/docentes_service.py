@@ -666,8 +666,9 @@ class DocentesService:
             proximas = sorted([v for v in ventanas if v['inicio'] > hoy], key=lambda v: v['inicio'])
             pasadas = sorted([v for v in ventanas if v['fin'] < hoy], key=lambda v: v['fin'])
             if cfg and cfg.get('captura_habilitada') is not None and not cfg.get('captura_habilitada'):
+                # Se informan las fechas programadas (en curso o próximas) aunque la administración la tenga desactivada
+                ref = abiertas[0] if abiertas else (proximas[0] if proximas else None)
                 captura = {'estado': 'deshabilitada'}
-                ref = None
             elif abiertas:
                 ref = abiertas[0]
                 captura = {'estado': 'abierta', 'dias_restantes': (ref['fin'] - hoy).days}
