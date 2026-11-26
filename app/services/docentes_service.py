@@ -631,6 +631,7 @@ class DocentesService:
             elif ini_g:
                 periodo = {'nombre': (g.get('nombre_nivel') or 'Semestre').lower(),
                            'nivel': g.get('id_nivel_academico'), 'inicio': ini_g, 'fin': fin_g or ini_g}
+            fin_periodo = periodo['fin'] if periodo else None
             if periodo:
                 total_dias = max((periodo['fin'] - periodo['inicio']).days, 1)
                 transcurridos = (hoy - periodo['inicio']).days
@@ -653,6 +654,8 @@ class DocentesService:
             for k in claves:
                 hab = cfg.get(f'{k}_habilitado')
                 a, b = CS._a_fecha(cfg.get(f'{k}_fecha_inicio')), CS._a_fecha(cfg.get(f'{k}_fecha_fin'))
+                if not es_bgne and a and not b:
+                    b = CS._a_fecha(CS.cierre_auto_bti(fin_g))   # BTI: cierre automático = fin del grupo + 6 días
                 if (hab is None or hab) and a and b:
                     ventanas.append({'clave': k, 'etapa': NOMBRES[k], 'inicio': a, 'fin': b})
             automatica = False
@@ -687,6 +690,12 @@ class DocentesService:
                 ult = pasadas[-1]
                 captura['anterior'] = {'etapa': ult['etapa'], 'fin': iso(ult['fin'])}
             captura['automatica'] = automatica
+
+            # Sin ventana abierta ni próxima: la fecha límite se deduce del fin del periodo (trimestre BGNE /
+            # fin del grupo BTI) + 6 días, para que el docente sepa hasta cuándo puede capturar.
+            if captura['estado'] in ('deshabilitada', 'cerrada', 'sin_fechas') and not abiertas and not proximas \
+                    and fin_periodo and hoy <= fin_periodo + timedelta(days=6):
+                captura['limite_estimado'] = {'fin_periodo': iso(fin_periodo), 'limite': iso(fin_periodo + timedelta(days=6))}
 
             # Campo que mide el avance: el de la etapa abierta o la última cerrada (BTI); la calificación final (BGNE)
             ref_avance = abiertas[0] if abiertas else (pasadas[-1] if pasadas else None)

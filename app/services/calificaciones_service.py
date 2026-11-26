@@ -621,10 +621,18 @@ class CalificacionesService:
         return {**(proxima or ventanas[-1]), 'abierta': False, 'anterior': anteriores[-1] if anteriores else None}
 
     @staticmethod
-    def periodo_bti_abierto(cfg, periodo, has_prorroga=False, hoy=None):
+    def cierre_auto_bti(fecha_fin_grupo):
+        """BTI: sin fecha fin configurada, la captura cierra 6 días después del fin del grupo ('YYYY-MM-DD')."""
+        from datetime import timedelta
+        fin = CalificacionesService._a_fecha(fecha_fin_grupo)
+        return (fin + timedelta(days=6)).isoformat() if fin else None
+
+    @staticmethod
+    def periodo_bti_abierto(cfg, periodo, has_prorroga=False, hoy=None, fecha_fin_grupo=None):
         """
-        Regla BTI: las fechas de captura se habilitan manualmente en "Periodos por grupo".
-        Un periodo está abierto solo si está habilitado y hoy cae entre su fecha de inicio y fin.
+        Regla BTI: la apertura se habilita manualmente en "Periodos por grupo" (fecha de inicio).
+        El cierre es la fecha fin configurada o, si no tiene, el cierre automático: fin del grupo + 6 días.
+        Un periodo está abierto solo si está habilitado y hoy cae entre su fecha de inicio y su cierre.
         Con prórroga vigente (también es una habilitación manual) basta con que el periodo no esté
         desactivado y ya haya iniciado (si tiene fecha de inicio).
         Sin prórroga, sin configuración o sin fechas, el periodo está cerrado.
@@ -633,7 +641,8 @@ class CalificacionesService:
         habilitado = cfg.get(f'{periodo}_habilitado')
         hoy = hoy or date.today().strftime('%Y-%m-%d')
         ini = str(cfg[f'{periodo}_fecha_inicio'])[:10] if cfg.get(f'{periodo}_fecha_inicio') else None
-        fin = str(cfg[f'{periodo}_fecha_fin'])[:10] if cfg.get(f'{periodo}_fecha_fin') else None
+        fin = (str(cfg[f'{periodo}_fecha_fin'])[:10] if cfg.get(f'{periodo}_fecha_fin')
+               else CalificacionesService.cierre_auto_bti(fecha_fin_grupo))
         if has_prorroga:
             desactivado = habilitado is not None and not habilitado
             return not desactivado and (not ini or hoy >= ini)
@@ -1108,7 +1117,8 @@ class CalificacionesService:
                 bloqueado = bool(cfg and cfg.get('captura_habilitada') is not None and not cfg.get('captura_habilitada')
                                  and not has_active_special_permission)
                 cct_config = {
-                    f'captura_{p}': (not bloqueado) and CalificacionesService.periodo_bti_abierto(cfg, p, has_active_special_permission)
+                    f'captura_{p}': (not bloqueado) and CalificacionesService.periodo_bti_abierto(
+                        cfg, p, has_active_special_permission, fecha_fin_grupo=grupo.get('fechaFin'))
                     for p in ('p1', 'p2', 'p3', 'semestral', 'extraordinario')
                 }
             elif not cfg:
@@ -1317,14 +1327,15 @@ class CalificacionesService:
                         if fl and hoy <= str(fl):
                             has_prorroga = True
 
-                cursor.execute("SELECT id_centroTrabajo FROM tb_grupos WHERE id = %s", (id_grupo,))
+                cursor.execute("SELECT id_centroTrabajo, fechaFin FROM tb_grupos WHERE id = %s", (id_grupo,))
                 g_cct = cursor.fetchone() or {}
                 if int(g_cct.get('id_centroTrabajo') or 0) == 2:
                     # BTI: solo los periodos habilitados manualmente con fechas (o prórroga vigente)
                     if cfg_grupo and cfg_grupo.get('captura_habilitada') is not None and not cfg_grupo.get('captura_habilitada') and not has_prorroga:
                         return {"error": "La captura de calificaciones está deshabilitada para este grupo por administración."}
                     allow_p1, allow_p2, allow_p3, allow_sem, allow_ext = (
-                        CalificacionesService.periodo_bti_abierto(cfg_grupo, p, has_prorroga)
+                        CalificacionesService.periodo_bti_abierto(cfg_grupo, p, has_prorroga,
+                                                                  fecha_fin_grupo=g_cct.get('fechaFin'))
                         for p in ('p1', 'p2', 'p3', 'semestral', 'extraordinario'))
                     if not any([allow_p1, allow_p2, allow_p3, allow_sem, allow_ext]):
                         return {"error": "La administración no ha habilitado fechas de captura para este grupo."}
