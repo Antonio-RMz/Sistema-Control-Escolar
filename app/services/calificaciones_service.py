@@ -843,6 +843,36 @@ class CalificacionesService:
                         motivo = ' '.join(partes) or 'La captura de calificaciones está cerrada para este grupo.'
                         return {'allowed': False, 'reason': motivo}
 
+            # BTI: solo con un periodo habilitado manualmente cuyas fechas incluyan hoy (o prórroga vigente).
+            # Misma regla que al abrir la captura y al guardar, para que "Mis grupos" no ofrezca capturar de más.
+            if int(grupo.get('id_centroTrabajo') or 0) == 2:
+                cursor.execute("SELECT * FROM tb_grupo_periodos_captura WHERE id_grupo = %s", (id_grupo,))
+                cfg_t = cursor.fetchone() or {}
+                prorroga_vigente = bool(
+                    permiso and permiso.get('habilitado') and not permiso.get('finalizado') and
+                    permiso.get('fecha_limite') and hoy <= str(permiso.get('fecha_limite'))
+                )
+                periodos = ('p1', 'p2', 'p3', 'semestral', 'extraordinario')
+                if not any(CalificacionesService.periodo_bti_abierto(cfg_t, p, prorroga_vigente) for p in periodos):
+                    nombres = {'p1': '1er parcial', 'p2': '2do parcial', 'p3': '3er parcial',
+                               'semestral': 'examen semestral', 'extraordinario': 'extraordinario'}
+                    f = lambda d: datetime.strptime(str(d)[:10], '%Y-%m-%d').strftime('%d/%m/%Y')
+                    ventanas = [(str(cfg_t[f'{p}_fecha_inicio'])[:10], str(cfg_t[f'{p}_fecha_fin'])[:10], p) for p in periodos
+                                if (cfg_t.get(f'{p}_habilitado') is None or cfg_t.get(f'{p}_habilitado'))
+                                and cfg_t.get(f'{p}_fecha_inicio') and cfg_t.get(f'{p}_fecha_fin')]
+                    proximas = sorted(v for v in ventanas if v[0] > hoy)
+                    pasadas = sorted((v for v in ventanas if v[1] < hoy), key=lambda v: v[1])
+                    if proximas:
+                        ini, fin, p = proximas[0]
+                        motivo = f"La captura del {nombres[p]} se abre del {f(ini)} al {f(fin)}."
+                    elif pasadas:
+                        ini, fin, p = pasadas[-1]
+                        motivo = (f"La captura del {nombres[p]} cerró el {f(fin)}. Si te falta capturar, "
+                                  f"solicita una prórroga a la administración.")
+                    else:
+                        motivo = "La administración no ha habilitado fechas de captura para este grupo."
+                    return {'allowed': False, 'reason': motivo}
+
             if grupo.get('statusGrupo') and grupo.get('statusGrupo').upper() != 'ACTIVO':
                 if not permiso or not permiso.get('permitir_modificar_pasados'):
                     return {
