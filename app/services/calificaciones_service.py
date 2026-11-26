@@ -621,6 +621,26 @@ class CalificacionesService:
         return {**(proxima or ventanas[-1]), 'abierta': False, 'anterior': anteriores[-1] if anteriores else None}
 
     @staticmethod
+    def periodo_bti_abierto(cfg, periodo, has_prorroga=False, hoy=None):
+        """
+        Regla BTI: las fechas de captura se habilitan manualmente en "Periodos por grupo".
+        Un periodo está abierto solo si está habilitado y hoy cae entre su fecha de inicio y fin.
+        Con prórroga vigente (también es una habilitación manual) basta con que el periodo no esté
+        desactivado y ya haya iniciado (si tiene fecha de inicio).
+        Sin prórroga, sin configuración o sin fechas, el periodo está cerrado.
+        """
+        cfg = cfg or {}
+        habilitado = cfg.get(f'{periodo}_habilitado')
+        hoy = hoy or date.today().strftime('%Y-%m-%d')
+        ini = str(cfg[f'{periodo}_fecha_inicio'])[:10] if cfg.get(f'{periodo}_fecha_inicio') else None
+        fin = str(cfg[f'{periodo}_fecha_fin'])[:10] if cfg.get(f'{periodo}_fecha_fin') else None
+        if has_prorroga:
+            desactivado = habilitado is not None and not habilitado
+            return not desactivado and (not ini or hoy >= ini)
+        # Igual que "Docentes pendientes": habilitado sin valor cuenta como activo si tiene fechas
+        return bool((habilitado is None or habilitado) and ini and fin and ini <= hoy <= fin)
+
+    @staticmethod
     def check_captura_permission(id_grupo, id_materia, id_docente, rol):
         conexion = get_connection()
         cursor = conexion.cursor(pymysql.cursors.DictCursor)
@@ -1083,7 +1103,15 @@ class CalificacionesService:
                         return False
                 return True
 
-            if not cfg:
+            if is_bti:
+                # BTI: la captura solo se abre manualmente desde "Periodos por grupo" (periodo habilitado y con fechas).
+                bloqueado = bool(cfg and cfg.get('captura_habilitada') is not None and not cfg.get('captura_habilitada')
+                                 and not has_active_special_permission)
+                cct_config = {
+                    f'captura_{p}': (not bloqueado) and CalificacionesService.periodo_bti_abierto(cfg, p, has_active_special_permission)
+                    for p in ('p1', 'p2', 'p3', 'semestral', 'extraordinario')
+                }
+            elif not cfg:
                 cct_config = {
                     'captura_p1': True,
                     'captura_p2': True,
@@ -1128,7 +1156,9 @@ class CalificacionesService:
             if is_docente and not any(cct_config.values()):
                 solo_lectura = True
                 if not mensaje_restriccion:
-                    mensaje_restriccion = "No hay periodos de captura habilitados actualmente para este grupo."
+                    mensaje_restriccion = ("La administración no ha habilitado fechas de captura para este grupo."
+                                           if is_bti else
+                                           "No hay periodos de captura habilitados actualmente para este grupo.")
 
             return {
                 "grupo": grupo,
@@ -1287,7 +1317,18 @@ class CalificacionesService:
                         if fl and hoy <= str(fl):
                             has_prorroga = True
 
-                if cfg_grupo:
+                cursor.execute("SELECT id_centroTrabajo FROM tb_grupos WHERE id = %s", (id_grupo,))
+                g_cct = cursor.fetchone() or {}
+                if int(g_cct.get('id_centroTrabajo') or 0) == 2:
+                    # BTI: solo los periodos habilitados manualmente con fechas (o prórroga vigente)
+                    if cfg_grupo and cfg_grupo.get('captura_habilitada') is not None and not cfg_grupo.get('captura_habilitada') and not has_prorroga:
+                        return {"error": "La captura de calificaciones está deshabilitada para este grupo por administración."}
+                    allow_p1, allow_p2, allow_p3, allow_sem, allow_ext = (
+                        CalificacionesService.periodo_bti_abierto(cfg_grupo, p, has_prorroga)
+                        for p in ('p1', 'p2', 'p3', 'semestral', 'extraordinario'))
+                    if not any([allow_p1, allow_p2, allow_p3, allow_sem, allow_ext]):
+                        return {"error": "La administración no ha habilitado fechas de captura para este grupo."}
+                elif cfg_grupo:
                     if cfg_grupo.get('captura_habilitada') is not None and not cfg_grupo.get('captura_habilitada') and not has_prorroga:
                         return {"error": "La captura de calificaciones está deshabilitada para este grupo por administración."}
                     
