@@ -705,7 +705,7 @@ class CalificacionesService:
             # si el docente tiene prórroga vigente o si está abierta la ventana configurada de extraordinario.
             if int(grupo.get('id_centroTrabajo') or 0) == 3:
                 cursor.execute("""
-                    SELECT p1_fecha_inicio, p1_fecha_fin,
+                    SELECT p1_habilitado, p1_fecha_inicio, p1_fecha_fin,
                            extraordinario_habilitado, extraordinario_fecha_inicio, extraordinario_fecha_fin
                     FROM tb_grupo_periodos_captura WHERE id_grupo = %s
                 """, (id_grupo,))
@@ -736,6 +736,20 @@ class CalificacionesService:
                                           f"del {f(v['apertura'])} al {f(v['cierre'])}.")
                         motivo = ' '.join(partes) or 'La captura de calificaciones está cerrada para este grupo.'
                         return {'allowed': False, 'reason': motivo}
+
+                # Fechas manuales de la calificación final: fuera de ellas tampoco se captura (igual que la regla automática)
+                if fechas_manuales and not prorroga_vigente and not ext_abierto:
+                    f = lambda d: CalificacionesService._a_fecha(d).strftime('%d/%m/%Y')
+                    p1_ini = str(cfg_b['p1_fecha_inicio'])[:10] if cfg_b.get('p1_fecha_inicio') else None
+                    p1_fin = str(cfg_b['p1_fecha_fin'])[:10] if cfg_b.get('p1_fecha_fin') else None
+                    if cfg_b.get('p1_habilitado') is not None and not cfg_b.get('p1_habilitado'):
+                        return {'allowed': False, 'reason': 'La captura de la calificación final está desactivada para este grupo por administración.'}
+                    if p1_fin and hoy > p1_fin:
+                        return {'allowed': False, 'reason': f"El plazo para capturar la calificación final terminó el {f(p1_fin)}; "
+                                                            f"para capturarla solicita una prórroga a la administración."}
+                    if p1_ini and hoy < p1_ini:
+                        rango = f"del {f(p1_ini)} al {f(p1_fin)}" if p1_fin else f"a partir del {f(p1_ini)}"
+                        return {'allowed': False, 'reason': f"La captura de la calificación final se abre {rango}."}
 
             if grupo.get('statusGrupo') and grupo.get('statusGrupo').upper() != 'ACTIVO':
                 if not permiso or not permiso.get('permitir_modificar_pasados'):
