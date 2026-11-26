@@ -901,6 +901,30 @@ class AsistenciasAlumnosService:
         return str(val)[:5]
 
     @staticmethod
+    def dias_clase_grupo(cursor, id_grupo, g):
+        """Días de clase del grupo (tb_grupodias); sin registros, se deducen de la modalidad o la clave.
+        g: fila del grupo con modalidadHorario, clave e id_centroTrabajo."""
+        cursor.execute("SELECT dia FROM tb_grupodias WHERE idGrupo = %s", (id_grupo,))
+        dias = [d["dia"] for d in cursor.fetchall()]
+        if dias:
+            return dias
+        mod = (g.get("modalidadHorario") or "").upper()
+        clave = (g.get("clave") or "").upper()
+        if "SABADO" in mod or "SÁBADO" in mod:
+            return ["SABADO"]
+        if "DOMINGO" in mod:
+            return ["DOMINGO"]
+        if "MATUTINO" in mod or "VESPERTINO" in mod:
+            return ["LUNES-VIERNES"]
+        if clave.endswith("S"):
+            return ["SABADO"]
+        if clave.endswith("D"):
+            return ["DOMINGO"]
+        if "LV" in clave or "BTI" in clave or g.get("id_centroTrabajo") == 2:
+            return ["LUNES-VIERNES"]
+        return ["SABADO"]
+
+    @staticmethod
     def _fechas_clase_con_nivel(cursor, id_grupo):
         """Fechas de clase del grupo con el nivel (trimestre / semestre) al que pertenecen:
         [(date, id_nivel)]. Misma regla que la matriz del pase de lista (get_asistencias_grupo)."""
@@ -918,26 +942,7 @@ class AsistenciasAlumnosService:
         if tipo is None:
             tipo = 1 if (g.get("id_nivel_academico") or 0) >= 7 else 2
 
-        cursor.execute("SELECT dia FROM tb_grupodias WHERE idGrupo = %s", (id_grupo,))
-        dias = [d["dia"] for d in cursor.fetchall()]
-        if not dias:
-            mod = (g.get("modalidadHorario") or "").upper()
-            clave = (g.get("clave") or "").upper()
-            if "SABADO" in mod or "SÁBADO" in mod:
-                dias = ["SABADO"]
-            elif "DOMINGO" in mod:
-                dias = ["DOMINGO"]
-            elif "MATUTINO" in mod or "VESPERTINO" in mod:
-                dias = ["LUNES-VIERNES"]
-            elif clave.endswith("S"):
-                dias = ["SABADO"]
-            elif clave.endswith("D"):
-                dias = ["DOMINGO"]
-            elif "LV" in clave or "BTI" in clave or g.get("id_centroTrabajo") == 2:
-                dias = ["LUNES-VIERNES"]
-            else:
-                dias = ["SABADO"]
-
+        dias = AsistenciasAlumnosService.dias_clase_grupo(cursor, id_grupo, g)
         fechas = AsistenciasAlumnosService._generar_fechas_clase(g["fechaInicio"], g["fechaFin"], dias)
         if tipo == 1:
             # Semestral (BTI): todas las fechas son del semestre en curso; el horario dice qué materias se dan

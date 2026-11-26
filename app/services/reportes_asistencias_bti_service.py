@@ -82,7 +82,7 @@ class ReportesAsistenciasBtiService:
     # Contexto común: grupo, rango, días de clase y estatus diario
     # ------------------------------------------------------------------
     @staticmethod
-    def _cargar_contexto(cursor, id_grupo, desde=None, hasta=None, id_alumno=None, parcial=None):
+    def _cargar_contexto(cursor, id_grupo, desde=None, hasta=None, id_alumno=None, parcial=None, cualquier_plantel=False):
         cursor.execute("""
             SELECT g.id, g.clave, g.fechaInicio, g.fechaFin, g.id_centroTrabajo, g.id_nivel_academico,
                    g.modalidadHorario, ct.nombre AS nombreCentroTrabajo
@@ -93,7 +93,7 @@ class ReportesAsistenciasBtiService:
         grupo = cursor.fetchone()
         if not grupo:
             return None, ({'error': 'Grupo no encontrado'}, 404)
-        if grupo.get('id_centroTrabajo') != CCT_BTI:
+        if grupo.get('id_centroTrabajo') != CCT_BTI and not cualquier_plantel:
             return None, ({'error': 'Este reporte aplica solo a grupos BTI.'}, 400)
 
         inicio_grupo = _to_date(grupo['fechaInicio'])
@@ -142,8 +142,11 @@ class ReportesAsistenciasBtiService:
             nivel_info = cursor.fetchone()
 
         # Días de clase del grupo (mismo calendario que el pase de lista). BTI: lunes a viernes.
-        cursor.execute("SELECT dia FROM tb_grupodias WHERE idGrupo = %s", (id_grupo,))
-        dias_clase = [d['dia'] for d in (cursor.fetchall() or [])] or ['LUNES-VIERNES']
+        if grupo.get('id_centroTrabajo') == CCT_BTI:
+            cursor.execute("SELECT dia FROM tb_grupodias WHERE idGrupo = %s", (id_grupo,))
+            dias_clase = [d['dia'] for d in (cursor.fetchall() or [])] or ['LUNES-VIERNES']
+        else:
+            dias_clase = AsistenciasAlumnosService.dias_clase_grupo(cursor, id_grupo, grupo)
         dias_programados = (
             AsistenciasAlumnosService._generar_fechas_clase(rango_inicio, rango_fin, dias_clase)
             if rango_valido else []
@@ -334,46 +337,7 @@ class ReportesAsistenciasBtiService:
             ctx, err = ReportesAsistenciasBtiService._cargar_contexto(cursor, id_grupo, desde, hasta, parcial=parcial)
             if err:
                 return err
-
-            cont_grupo = _contadores()
-            asistencia_por_dia = {f: _contadores() for f in sorted(ctx['dias_con_pase'])}
-            alumnos_out = []
-
-            for al in ctx['alumnos']:
-                aid = al['idAlumno']
-                c = _contadores()
-                for fecha in ctx['calendario']:
-                    est = ReportesAsistenciasBtiService._estado_dia(ctx, aid, fecha)['estatus']
-                    if est == 'SIN_PASE':
-                        continue
-                    c[est] += 1
-                    cont_grupo[est] += 1
-                    if fecha in asistencia_por_dia:
-                        asistencia_por_dia[fecha][est] += 1
-                alumnos_out.append({
-                    'idAlumno': aid,
-                    'nombreCompleto': ReportesAsistenciasBtiService._nombre(al),
-                    'numeroControl': al.get('numeroControl') or '',
-                    **_resumen(c),
-                })
-
-            resumen = _resumen(cont_grupo)
-            resumen['total_alumnos'] = len(ctx['alumnos'])
-
-            por_dia = []
-            for fecha, c in asistencia_por_dia.items():
-                r = _resumen(c)
-                por_dia.append({
-                    'fecha': fecha.isoformat(),
-                    'dia_nombre': DIAS_NOMBRE.get(fecha.isoweekday(), ''),
-                    'asistencias': r['asistencias'],
-                    'retardos': r['retardos'],
-                    'faltas': r['faltas'],
-                    'faltas_justificadas': r['faltas_justificadas'],
-                    'sin_registro': r['sin_registro'],
-                    'porcentaje_asistencia': r['porcentaje_asistencia'],
-                })
-
+            calc = ReportesAsistenciasBtiService.calcular_grupo(ctx)
             return {
                 'success': True,
                 'tipo': 'BTI',
@@ -381,13 +345,55 @@ class ReportesAsistenciasBtiService:
                 'rango': ReportesAsistenciasBtiService._info_rango(ctx),
                 'cobertura': ReportesAsistenciasBtiService._info_cobertura(ctx),
                 'dias_especiales': AsistenciasAlumnosService.dias_especiales_lista(ctx['dias_especiales']),
-                'resumen': resumen,
-                'alumnos': alumnos_out,
-                'por_dia': por_dia,
+                **calc,
             }
         finally:
             cursor.close()
             conn.close()
+
+    @staticmethod
+    def calcular_grupo(ctx):
+        """Resumen del grupo, por alumno y por día a partir del contexto (pase general)."""
+        cont_grupo = _contadores()
+        asistencia_por_dia = {f: _contadores() for f in sorted(ctx['dias_con_pase'])}
+        alumnos_out = []
+
+        for al in ctx['alumnos']:
+            aid = al['idAlumno']
+            c = _contadores()
+            for fecha in ctx['calendario']:
+                est = ReportesAsistenciasBtiService._estado_dia(ctx, aid, fecha)['estatus']
+                if est == 'SIN_PASE':
+                    continue
+                c[est] += 1
+                cont_grupo[est] += 1
+                if fecha in asistencia_por_dia:
+                    asistencia_por_dia[fecha][est] += 1
+            alumnos_out.append({
+                'idAlumno': aid,
+                'nombreCompleto': ReportesAsistenciasBtiService._nombre(al),
+                'numeroControl': al.get('numeroControl') or '',
+                **_resumen(c),
+            })
+
+        resumen = _resumen(cont_grupo)
+        resumen['total_alumnos'] = len(ctx['alumnos'])
+
+        por_dia = []
+        for fecha, c in asistencia_por_dia.items():
+            r = _resumen(c)
+            por_dia.append({
+                'fecha': fecha.isoformat(),
+                'dia_nombre': DIAS_NOMBRE.get(fecha.isoweekday(), ''),
+                'asistencias': r['asistencias'],
+                'retardos': r['retardos'],
+                'faltas': r['faltas'],
+                'faltas_justificadas': r['faltas_justificadas'],
+                'sin_registro': r['sin_registro'],
+                'porcentaje_asistencia': r['porcentaje_asistencia'],
+            })
+
+        return {'resumen': resumen, 'alumnos': alumnos_out, 'por_dia': por_dia}
 
     # ------------------------------------------------------------------
     # Reporte individual del alumno (resumen de boleta + justificantes + historial)
