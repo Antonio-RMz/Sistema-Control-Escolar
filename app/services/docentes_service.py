@@ -652,18 +652,19 @@ class DocentesService:
             ventanas = []
             claves = ('p1', 'extraordinario') if es_bgne else ('p1', 'p2', 'p3', 'semestral', 'extraordinario')
             for k in claves:
+                if es_bgne and k == 'p1':
+                    continue   # BGNE: la calificación final usa la ventana automática (abajo)
                 hab = cfg.get(f'{k}_habilitado')
                 a, b = CS._a_fecha(cfg.get(f'{k}_fecha_inicio')), CS._a_fecha(cfg.get(f'{k}_fecha_fin'))
-                if not es_bgne and a and not b:
-                    b = CS._a_fecha(CS.cierre_auto_bti(fin_g))   # BTI: cierre automático = fin del grupo + 6 días
                 if (hab is None or hab) and a and b:
                     ventanas.append({'clave': k, 'etapa': NOMBRES[k], 'inicio': a, 'fin': b})
             automatica = False
-            if es_bgne and not (cfg.get('p1_fecha_inicio') or cfg.get('p1_fecha_fin')):
+            if es_bgne and not (cfg.get('p1_habilitado') is not None and not cfg.get('p1_habilitado')):
+                # Último día del trimestre + 6 días; las fechas manuales solo extienden el cierre
                 automatica = True
-                for t in CS.trimestres_grupo(ini_g, fin_g):
-                    ventanas.append({'clave': 'p1', 'etapa': f"{ORD.get(t['nivel'], t['nivel'])} trimestre",
-                                     'inicio': t['fin'], 'fin': t['captura_fin']})
+                for v in CS.ventanas_bgne(ini_g, fin_g, cfg.get('p1_fecha_fin'), cfg.get('p1_fecha_inicio')):
+                    ventanas.append({'clave': 'p1', 'etapa': f"{ORD.get(v['nivel'], v['nivel'])} trimestre",
+                                     'inicio': v['apertura'], 'fin': v['cierre']})
 
             abiertas = sorted([v for v in ventanas if v['inicio'] <= hoy <= v['fin']], key=lambda v: v['fin'])
             proximas = sorted([v for v in ventanas if v['inicio'] > hoy], key=lambda v: v['inicio'])
@@ -691,9 +692,9 @@ class DocentesService:
                 captura['anterior'] = {'etapa': ult['etapa'], 'fin': iso(ult['fin'])}
             captura['automatica'] = automatica
 
-            # Sin ventana abierta ni próxima: la fecha límite se deduce del fin del periodo (trimestre BGNE /
-            # fin del grupo BTI) + 6 días, para que el docente sepa hasta cuándo puede capturar.
-            if captura['estado'] in ('deshabilitada', 'cerrada', 'sin_fechas') and not abiertas and not proximas \
+            # BGNE sin ventana abierta ni próxima: la fecha límite se deduce del fin del trimestre + 6 días,
+            # para que el docente sepa hasta cuándo puede capturar. En BTI las fechas las indica el admin.
+            if es_bgne and captura['estado'] in ('deshabilitada', 'cerrada', 'sin_fechas') and not abiertas and not proximas \
                     and fin_periodo and hoy <= fin_periodo + timedelta(days=6):
                 captura['limite_estimado'] = {'fin_periodo': iso(fin_periodo), 'limite': iso(fin_periodo + timedelta(days=6))}
 

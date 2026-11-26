@@ -598,18 +598,50 @@ class CalificacionesService:
         return trimestres
 
     @staticmethod
-    def ventana_captura_bgne(fecha_inicio, fecha_fin, hoy=None):
+    def ventanas_bgne(fecha_inicio, fecha_fin, fin_manual=None, inicio_manual=None):
+        """
+        Ventanas de captura BGNE de todos los trimestres: [{'nivel', 'apertura', 'cierre'}].
+        Abren el último día del trimestre y cierran 6 días después. Las fechas manuales
+        (p1_* de "Periodos por grupo") solo pueden alargar el cierre de una ventana: la fecha fin
+        manual extiende la última ventana que abrió antes de ella, siempre que el rango manual
+        no tenga inicio o empiece dentro de esa ventana. Nunca adelantan la apertura.
+        """
+        fin_manual = CalificacionesService._a_fecha(fin_manual)
+        inicio_manual = CalificacionesService._a_fecha(inicio_manual)
+        ventanas = [{'nivel': t['nivel'], 'apertura': t['fin'], 'cierre': t['captura_fin']}
+                    for t in CalificacionesService.trimestres_grupo(fecha_inicio, fecha_fin)]
+        if fin_manual:
+            previas = [v for v in ventanas if v['apertura'] <= fin_manual]
+            v = previas[-1] if previas else None
+            if v and fin_manual > v['cierre'] and (not inicio_manual or inicio_manual <= v['cierre']):
+                v['cierre'] = fin_manual
+        return ventanas
+
+    @staticmethod
+    def p1_abierto_bgne(grupo, cfg, has_prorroga=False, hoy=None):
+        """Calificación final BGNE: abierta si hoy cae en la ventana automática (o extendida) o hay prórroga vigente."""
+        cfg = cfg or {}
+        if cfg.get('p1_habilitado') is not None and not cfg.get('p1_habilitado'):
+            return False
+        if has_prorroga:
+            return True
+        v = CalificacionesService.ventana_captura_bgne(grupo.get('fechaInicio'), grupo.get('fechaFin'), hoy,
+                                                       fin_manual=cfg.get('p1_fecha_fin'), inicio_manual=cfg.get('p1_fecha_inicio'))
+        return bool(v and v['abierta'])
+
+    @staticmethod
+    def ventana_captura_bgne(fecha_inicio, fecha_fin, hoy=None, fin_manual=None, inicio_manual=None):
         """
         Regla BGNE: la calificación de cada trimestre se captura en la semana que sigue a su fin,
         desde el día en que termina el trimestre hasta 6 días después (antes de que inicie el siguiente).
+        La fecha fin manual solo extiende el cierre (ver ventanas_bgne).
         Trimestres con el mismo calendario de Horarios: 13 semanas desde la fecha de inicio del grupo,
         el siguiente inicia una semana después del fin del anterior, hasta la fecha fin del grupo.
         Devuelve {'nivel', 'apertura', 'cierre', 'abierta'} de la ventana que corresponde a hoy:
         la abierta; si no hay, la próxima; si ya pasaron todas, la última. None si el grupo no tiene fechas.
         """
         hoy = hoy or date.today()
-        ventanas = [{'nivel': t['nivel'], 'apertura': t['fin'], 'cierre': t['captura_fin']}
-                    for t in CalificacionesService.trimestres_grupo(fecha_inicio, fecha_fin)]
+        ventanas = CalificacionesService.ventanas_bgne(fecha_inicio, fecha_fin, fin_manual, inicio_manual)
         if not ventanas:
             return None
 
@@ -621,18 +653,10 @@ class CalificacionesService:
         return {**(proxima or ventanas[-1]), 'abierta': False, 'anterior': anteriores[-1] if anteriores else None}
 
     @staticmethod
-    def cierre_auto_bti(fecha_fin_grupo):
-        """BTI: sin fecha fin configurada, la captura cierra 6 días después del fin del grupo ('YYYY-MM-DD')."""
-        from datetime import timedelta
-        fin = CalificacionesService._a_fecha(fecha_fin_grupo)
-        return (fin + timedelta(days=6)).isoformat() if fin else None
-
-    @staticmethod
-    def periodo_bti_abierto(cfg, periodo, has_prorroga=False, hoy=None, fecha_fin_grupo=None):
+    def periodo_bti_abierto(cfg, periodo, has_prorroga=False, hoy=None):
         """
-        Regla BTI: la apertura se habilita manualmente en "Periodos por grupo" (fecha de inicio).
-        El cierre es la fecha fin configurada o, si no tiene, el cierre automático: fin del grupo + 6 días.
-        Un periodo está abierto solo si está habilitado y hoy cae entre su fecha de inicio y su cierre.
+        Regla BTI: todo es manual. El admin indica en "Periodos por grupo" la fecha de inicio y fin de cada periodo.
+        Un periodo está abierto solo si está habilitado y hoy cae entre su fecha de inicio y fin.
         Con prórroga vigente (también es una habilitación manual) basta con que el periodo no esté
         desactivado y ya haya iniciado (si tiene fecha de inicio).
         Sin prórroga, sin configuración o sin fechas, el periodo está cerrado.
@@ -641,8 +665,7 @@ class CalificacionesService:
         habilitado = cfg.get(f'{periodo}_habilitado')
         hoy = hoy or date.today().strftime('%Y-%m-%d')
         ini = str(cfg[f'{periodo}_fecha_inicio'])[:10] if cfg.get(f'{periodo}_fecha_inicio') else None
-        fin = (str(cfg[f'{periodo}_fecha_fin'])[:10] if cfg.get(f'{periodo}_fecha_fin')
-               else CalificacionesService.cierre_auto_bti(fecha_fin_grupo))
+        fin = str(cfg[f'{periodo}_fecha_fin'])[:10] if cfg.get(f'{periodo}_fecha_fin') else None
         if has_prorroga:
             desactivado = habilitado is not None and not habilitado
             return not desactivado and (not ini or hoy >= ini)
@@ -729,9 +752,9 @@ class CalificacionesService:
                         'reason': 'La captura de calificaciones está deshabilitada temporalmente para este grupo por administración.'
                     }
 
-            # BGNE: ventana automática de una semana al terminar cada trimestre.
-            # No aplica si en "Periodos por grupo" se guardaron fechas para la calificación final (mandan esas),
-            # si el docente tiene prórroga vigente o si está abierta la ventana configurada de extraordinario.
+            # BGNE: ventana automática al terminar cada trimestre (último día de clases + 6 días).
+            # Una fecha fin manual en "Periodos por grupo" solo alarga el cierre; nunca abre antes.
+            # No aplica si el docente tiene prórroga vigente o si está abierta la ventana configurada de extraordinario.
             if int(grupo.get('id_centroTrabajo') or 0) == 3:
                 cursor.execute("""
                     SELECT p1_habilitado, p1_fecha_inicio, p1_fecha_fin,
@@ -739,7 +762,6 @@ class CalificacionesService:
                     FROM tb_grupo_periodos_captura WHERE id_grupo = %s
                 """, (id_grupo,))
                 cfg_b = cursor.fetchone() or {}
-                fechas_manuales = bool(cfg_b.get('p1_fecha_inicio') or cfg_b.get('p1_fecha_fin'))
                 prorroga_vigente = bool(
                     permiso and permiso.get('habilitado') and not permiso.get('finalizado') and
                     permiso.get('fecha_limite') and hoy <= str(permiso.get('fecha_limite'))
@@ -749,8 +771,12 @@ class CalificacionesService:
                     cfg_b.get('extraordinario_fecha_inicio') and cfg_b.get('extraordinario_fecha_fin') and
                     str(cfg_b['extraordinario_fecha_inicio']) <= hoy <= str(cfg_b['extraordinario_fecha_fin'])
                 )
-                if not fechas_manuales and not prorroga_vigente and not ext_abierto:
-                    v = CalificacionesService.ventana_captura_bgne(grupo.get('fechaInicio'), grupo.get('fechaFin'))
+                if not prorroga_vigente and not ext_abierto:
+                    if cfg_b.get('p1_habilitado') is not None and not cfg_b.get('p1_habilitado'):
+                        return {'allowed': False, 'reason': 'La captura de la calificación final está desactivada para este grupo por administración.'}
+                    v = CalificacionesService.ventana_captura_bgne(grupo.get('fechaInicio'), grupo.get('fechaFin'),
+                                                                   fin_manual=cfg_b.get('p1_fecha_fin'),
+                                                                   inicio_manual=cfg_b.get('p1_fecha_inicio'))
                     if v and not v['abierta']:
                         ordinal = {1: '1er', 2: '2do', 3: '3er', 4: '4to', 5: '5to', 6: '6to'}.get(v['nivel'], f"{v['nivel']}°")
                         f = lambda d: d.strftime('%d/%m/%Y')
@@ -765,20 +791,6 @@ class CalificacionesService:
                                           f"del {f(v['apertura'])} al {f(v['cierre'])}.")
                         motivo = ' '.join(partes) or 'La captura de calificaciones está cerrada para este grupo.'
                         return {'allowed': False, 'reason': motivo}
-
-                # Fechas manuales de la calificación final: fuera de ellas tampoco se captura (igual que la regla automática)
-                if fechas_manuales and not prorroga_vigente and not ext_abierto:
-                    f = lambda d: CalificacionesService._a_fecha(d).strftime('%d/%m/%Y')
-                    p1_ini = str(cfg_b['p1_fecha_inicio'])[:10] if cfg_b.get('p1_fecha_inicio') else None
-                    p1_fin = str(cfg_b['p1_fecha_fin'])[:10] if cfg_b.get('p1_fecha_fin') else None
-                    if cfg_b.get('p1_habilitado') is not None and not cfg_b.get('p1_habilitado'):
-                        return {'allowed': False, 'reason': 'La captura de la calificación final está desactivada para este grupo por administración.'}
-                    if p1_fin and hoy > p1_fin:
-                        return {'allowed': False, 'reason': f"El plazo para capturar la calificación final terminó el {f(p1_fin)}; "
-                                                            f"para capturarla solicita una prórroga a la administración."}
-                    if p1_ini and hoy < p1_ini:
-                        rango = f"del {f(p1_ini)} al {f(p1_fin)}" if p1_fin else f"a partir del {f(p1_ini)}"
-                        return {'allowed': False, 'reason': f"La captura de la calificación final se abre {rango}."}
 
             if grupo.get('statusGrupo') and grupo.get('statusGrupo').upper() != 'ACTIVO':
                 if not permiso or not permiso.get('permitir_modificar_pasados'):
@@ -1117,8 +1129,7 @@ class CalificacionesService:
                 bloqueado = bool(cfg and cfg.get('captura_habilitada') is not None and not cfg.get('captura_habilitada')
                                  and not has_active_special_permission)
                 cct_config = {
-                    f'captura_{p}': (not bloqueado) and CalificacionesService.periodo_bti_abierto(
-                        cfg, p, has_active_special_permission, fecha_fin_grupo=grupo.get('fechaFin'))
+                    f'captura_{p}': (not bloqueado) and CalificacionesService.periodo_bti_abierto(cfg, p, has_active_special_permission)
                     for p in ('p1', 'p2', 'p3', 'semestral', 'extraordinario')
                 }
             elif not cfg:
@@ -1161,6 +1172,16 @@ class CalificacionesService:
                         'captura_semestral': True,
                         'captura_extraordinario': True,
                     }
+
+            # BGNE: la calificación final sigue la ventana automática (las fechas manuales solo extienden el cierre)
+            if int(id_cct_grupo) == 3:
+                bloqueado = bool(cfg and cfg.get('captura_habilitada') is not None and not cfg.get('captura_habilitada')
+                                 and not has_active_special_permission)
+                cct_config['captura_p1'] = (not bloqueado) and CalificacionesService.p1_abierto_bgne(
+                    grupo, cfg, has_active_special_permission)
+                # Extraordinario: solo con fechas configuradas por el admin (o prórroga), igual que al guardar
+                cct_config['captura_extraordinario'] = (not bloqueado) and bool(cfg) and CalificacionesService.periodo_bti_abierto(
+                    cfg, 'extraordinario', has_active_special_permission)
 
             # Si es docente y ningún periodo está habilitado para captura, activar solo_lectura
             if is_docente and not any(cct_config.values()):
@@ -1327,15 +1348,22 @@ class CalificacionesService:
                         if fl and hoy <= str(fl):
                             has_prorroga = True
 
-                cursor.execute("SELECT id_centroTrabajo, fechaFin FROM tb_grupos WHERE id = %s", (id_grupo,))
+                cursor.execute("SELECT id_centroTrabajo, fechaInicio, fechaFin FROM tb_grupos WHERE id = %s", (id_grupo,))
                 g_cct = cursor.fetchone() or {}
-                if int(g_cct.get('id_centroTrabajo') or 0) == 2:
+                if int(g_cct.get('id_centroTrabajo') or 0) == 3:
+                    # BGNE: la calificación final solo en la ventana automática (fechas manuales solo extienden el cierre)
+                    if cfg_grupo and cfg_grupo.get('captura_habilitada') is not None and not cfg_grupo.get('captura_habilitada') and not has_prorroga:
+                        return {"error": "La captura de calificaciones está deshabilitada para este grupo por administración."}
+                    allow_p1 = CalificacionesService.p1_abierto_bgne(g_cct, cfg_grupo, has_prorroga)
+                    allow_ext = bool(cfg_grupo) and CalificacionesService.periodo_bti_abierto(cfg_grupo, 'extraordinario', has_prorroga)
+                    if not allow_p1 and not allow_ext:
+                        return {"error": "La captura de calificaciones está cerrada para este grupo."}
+                elif int(g_cct.get('id_centroTrabajo') or 0) == 2:
                     # BTI: solo los periodos habilitados manualmente con fechas (o prórroga vigente)
                     if cfg_grupo and cfg_grupo.get('captura_habilitada') is not None and not cfg_grupo.get('captura_habilitada') and not has_prorroga:
                         return {"error": "La captura de calificaciones está deshabilitada para este grupo por administración."}
                     allow_p1, allow_p2, allow_p3, allow_sem, allow_ext = (
-                        CalificacionesService.periodo_bti_abierto(cfg_grupo, p, has_prorroga,
-                                                                  fecha_fin_grupo=g_cct.get('fechaFin'))
+                        CalificacionesService.periodo_bti_abierto(cfg_grupo, p, has_prorroga)
                         for p in ('p1', 'p2', 'p3', 'semestral', 'extraordinario'))
                     if not any([allow_p1, allow_p2, allow_p3, allow_sem, allow_ext]):
                         return {"error": "La administración no ha habilitado fechas de captura para este grupo."}
