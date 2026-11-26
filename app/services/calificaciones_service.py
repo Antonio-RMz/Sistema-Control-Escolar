@@ -703,6 +703,30 @@ class CalificacionesService:
                 clave = max(iniciados)[2] if iniciados else 'p1'
         return {'clave': clave, 'nombre': nombres[clave]}
 
+    PERIODOS_BTI = ('p1', 'p2', 'p3', 'semestral', 'extraordinario')
+    NOMBRES_PERIODO_BTI = {'p1': '1er parcial', 'p2': '2do parcial', 'p3': '3er parcial',
+                           'semestral': 'examen semestral', 'extraordinario': 'extraordinario'}
+    _envios_disponible = None
+
+    @staticmethod
+    def envios_disponible(cursor):
+        """True si ya existe tb_docente_envios_captura (scripts/2026-11-26_envios_captura_por_periodo.sql)."""
+        if not CalificacionesService._envios_disponible:
+            cursor.execute("SHOW TABLES LIKE 'tb\\_docente\\_envios\\_captura'")
+            CalificacionesService._envios_disponible = cursor.fetchone() is not None
+        return CalificacionesService._envios_disponible
+
+    @staticmethod
+    def periodos_enviados(cursor, id_docente, id_grupo, id_materia):
+        """Periodos BTI cuyas calificaciones ya envió el docente en esa asignatura y grupo (quedan bloqueados)."""
+        if not id_docente or not CalificacionesService.envios_disponible(cursor):
+            return set()
+        cursor.execute("""
+            SELECT periodo FROM tb_docente_envios_captura
+            WHERE id_docente = %s AND id_grupo = %s AND id_materia = %s
+        """, (id_docente, id_grupo, id_materia))
+        return {r['periodo'] for r in cursor.fetchall()}
+
     @staticmethod
     def periodo_bti_abierto(cfg, periodo, has_prorroga=False, hoy=None):
         """
@@ -872,6 +896,15 @@ class CalificacionesService:
                     else:
                         motivo = "La administración no ha habilitado fechas de captura para este grupo."
                     return {'allowed': False, 'reason': motivo}
+
+                # Periodo ya enviado por el docente: queda bloqueado (no se edita ni se reenvía)
+                abiertos = [p for p in periodos if CalificacionesService.periodo_bti_abierto(cfg_t, p, prorroga_vigente)]
+                enviados = CalificacionesService.periodos_enviados(cursor, id_docente, id_grupo, id_materia)
+                if abiertos and all(p in enviados for p in abiertos):
+                    etapas = ', '.join(CalificacionesService.NOMBRES_PERIODO_BTI[p] for p in abiertos)
+                    return {'allowed': False,
+                            'reason': f"Ya enviaste las calificaciones del {etapas}; quedaron registradas y no se pueden modificar. "
+                                      f"Si necesitas corregirlas, solicita una prórroga a la administración."}
 
             if grupo.get('statusGrupo') and grupo.get('statusGrupo').upper() != 'ACTIVO':
                 if not permiso or not permiso.get('permitir_modificar_pasados'):
@@ -1212,14 +1245,20 @@ class CalificacionesService:
                         return False
                 return True
 
+            periodos_enviados_resp = []
             if is_bti:
                 # BTI: la captura solo se abre manualmente desde "Periodos por grupo" (periodo habilitado y con fechas).
                 bloqueado = bool(cfg and cfg.get('captura_habilitada') is not None and not cfg.get('captura_habilitada')
                                  and not has_active_special_permission)
+                # El docente no edita los periodos que ya envió
+                enviados = (CalificacionesService.periodos_enviados(cursor, id_docente, id_grupo, id_materia)
+                            if is_docente and id_materia else set())
                 cct_config = {
-                    f'captura_{p}': (not bloqueado) and CalificacionesService.periodo_bti_abierto(cfg, p, has_active_special_permission)
-                    for p in ('p1', 'p2', 'p3', 'semestral', 'extraordinario')
+                    f'captura_{p}': (not bloqueado) and p not in enviados
+                                    and CalificacionesService.periodo_bti_abierto(cfg, p, has_active_special_permission)
+                    for p in CalificacionesService.PERIODOS_BTI
                 }
+                periodos_enviados_resp = sorted(enviados, key=CalificacionesService.PERIODOS_BTI.index)
             elif not cfg:
                 cct_config = {
                     'captura_p1': True,
@@ -1289,7 +1328,8 @@ class CalificacionesService:
                 "mensaje_restriccion": mensaje_restriccion,
                 "cct_config": cct_config,
                 "periodo_observaciones": periodo_obs,
-                "finalizado": bool(permiso.get('finalizado')) if permiso else False
+                "finalizado": bool(permiso.get('finalizado')) if permiso else False,
+                "periodos_enviados": periodos_enviados_resp
             }
         except Exception as e:
             return {"error": str(e)}
@@ -1451,11 +1491,17 @@ class CalificacionesService:
                     # BTI: solo los periodos habilitados manualmente con fechas (o prórroga vigente)
                     if cfg_grupo and cfg_grupo.get('captura_habilitada') is not None and not cfg_grupo.get('captura_habilitada') and not has_prorroga:
                         return {"error": "La captura de calificaciones está deshabilitada para este grupo por administración."}
-                    allow_p1, allow_p2, allow_p3, allow_sem, allow_ext = (
-                        CalificacionesService.periodo_bti_abierto(cfg_grupo, p, has_prorroga)
-                        for p in ('p1', 'p2', 'p3', 'semestral', 'extraordinario'))
-                    if not any([allow_p1, allow_p2, allow_p3, allow_sem, allow_ext]):
+                    abiertos_bti = [p for p in CalificacionesService.PERIODOS_BTI
+                                    if CalificacionesService.periodo_bti_abierto(cfg_grupo, p, has_prorroga)]
+                    if not abiertos_bti:
                         return {"error": "La administración no ha habilitado fechas de captura para este grupo."}
+                    # Los periodos que el docente ya envió no se editan ni se reenvían
+                    enviados_bti = CalificacionesService.periodos_enviados(cursor, id_docente, id_grupo, id_materia)
+                    abiertos_bti = [p for p in abiertos_bti if p not in enviados_bti]
+                    if not abiertos_bti:
+                        return {"error": "Ya enviaste las calificaciones de este periodo; no se pueden modificar ni volver a enviar."}
+                    allow_p1, allow_p2, allow_p3, allow_sem, allow_ext = (
+                        p in abiertos_bti for p in CalificacionesService.PERIODOS_BTI)
                 elif cfg_grupo:
                     if cfg_grupo.get('captura_habilitada') is not None and not cfg_grupo.get('captura_habilitada') and not has_prorroga:
                         return {"error": "La captura de calificaciones está deshabilitada para este grupo por administración."}
@@ -1712,9 +1758,20 @@ class CalificacionesService:
                         WHERE idAlumno = %s AND idMateria = %s AND tipoAcreditacion != 'EQUIVALENCIA'
                     """, ((item.get("observaciones") or "").strip() or None, item.get("idAlumno"), id_materia))
 
-            # 3. Registrar como finalizado si corresponde
-            # En BGNE la calificación final se captura en la ventana p1 (no hay semestral)
-            if finalizar and id_docente and is_docente and (allow_sem or allow_ext or (id_cct == 3 and allow_p1)):
+            # 3. Registrar el envío
+            # BTI: se bloquean solo los periodos abiertos que se enviaron (el siguiente parcial se captura cuando lo habiliten)
+            if finalizar and id_docente and is_docente and id_cct == 2:
+                if not CalificacionesService.envios_disponible(cursor):
+                    conexion.rollback()
+                    return {"error": "Falta preparar la base de datos para el envío por periodo "
+                                     "(scripts/2026-11-26_envios_captura_por_periodo.sql). Avisa a la administración."}
+                for p in abiertos_bti:
+                    cursor.execute("""
+                        INSERT IGNORE INTO tb_docente_envios_captura (id_docente, id_grupo, id_materia, periodo)
+                        VALUES (%s, %s, %s, %s)
+                    """, (id_docente, id_grupo, id_materia, p))
+            # BGNE y otros: se bloquea la asignatura. En BGNE la calificación final se captura en la ventana p1 (no hay semestral)
+            elif finalizar and id_docente and is_docente and (allow_sem or allow_ext or (id_cct == 3 and allow_p1)):
                 cursor.execute("""
                     SELECT id FROM tb_docente_permisos_captura 
                     WHERE id_docente = %s AND id_grupo = %s AND id_materia = %s
