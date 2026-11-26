@@ -692,6 +692,14 @@ class DocentesService:
                 captura['anterior'] = {'etapa': ult['etapa'], 'fin': iso(ult['fin'])}
             captura['automatica'] = automatica
 
+            # BTI: todas las fechas que programó la administración (periodos activos con fechas), para que el
+            # docente vea el calendario completo y no solo la ventana vigente.
+            if not es_bgne:
+                captura['periodos'] = [{
+                    'etapa': v['etapa'], 'inicio': iso(v['inicio']), 'fin': iso(v['fin']),
+                    'estado': 'abierta' if v['inicio'] <= hoy <= v['fin'] else ('proxima' if v['inicio'] > hoy else 'cerrada'),
+                } for v in sorted(ventanas, key=lambda v: v['inicio'])]
+
             # BGNE sin ventana abierta ni próxima: la fecha límite se deduce del fin del trimestre + 6 días,
             # para que el docente sepa hasta cuándo puede capturar. En BTI las fechas las indica el admin.
             if es_bgne and captura['estado'] in ('deshabilitada', 'cerrada', 'sin_fechas') and not abiertas and not proximas \
