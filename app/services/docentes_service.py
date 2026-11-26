@@ -598,10 +598,13 @@ class DocentesService:
                    g.statusGrupo, g.id_nivel_academico, g.id_tipoPeriodo, na.nombre AS nombre_nivel
             FROM tb_horarios h
             JOIN tb_grupos g ON g.id = h.id_grupo
+            LEFT JOIN tb_materias m ON m.id = h.id_materia
             LEFT JOIN tb_niveles_academicos na ON na.id = g.id_nivel_academico
             WHERE h.id_docente = %s
               AND (h.es_prehorario IS NULL OR h.es_prehorario = 0)
               AND (g.statusGrupo = 'ACTIVO' OR g.fechaFin >= %s)
+              -- Como en Mi Horario: solo materias del nivel (trimestre/semestre) actual del grupo
+              AND (m.id_nivel_academico IS NULL OR m.id_nivel_academico = g.id_nivel_academico)
             ORDER BY g.clave
         """, (id_docente, hoy - timedelta(days=21)))
         grupos = cursor.fetchall()
@@ -707,8 +710,9 @@ class DocentesService:
                 LEFT JOIN tb_niveles_academicos na ON na.id = m.id_nivel_academico
                 WHERE h.id_docente = %s AND h.id_grupo = %s
                   AND (h.es_prehorario IS NULL OR h.es_prehorario = 0)
+                  AND (m.id_nivel_academico IS NULL OR m.id_nivel_academico = %s)
                 ORDER BY m.nombreMateria
-            """, (id_docente, id_grupo))
+            """, (id_docente, id_grupo, g.get('id_nivel_academico')))
             materias = []
             for m in cursor.fetchall():
                 calificados = 0
