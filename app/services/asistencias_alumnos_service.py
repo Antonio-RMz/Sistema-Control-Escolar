@@ -901,6 +901,108 @@ class AsistenciasAlumnosService:
         return str(val)[:5]
 
     @staticmethod
+    def _fechas_clase_con_nivel(cursor, id_grupo):
+        """Fechas de clase del grupo con el nivel (trimestre / semestre) al que pertenecen:
+        [(date, id_nivel)]. Misma regla que la matriz del pase de lista (get_asistencias_grupo)."""
+        cursor.execute("""
+            SELECT g.fechaInicio, g.fechaFin, g.id_tipoPeriodo, g.id_nivel_academico, g.modalidadHorario,
+                   g.clave, g.id_centroTrabajo, gpc.id_nivel_academico AS nivel_captura
+            FROM tb_grupos g
+            LEFT JOIN tb_grupo_periodos_captura gpc ON gpc.id_grupo = g.id
+            WHERE g.id = %s
+        """, (id_grupo,))
+        g = cursor.fetchone()
+        if not g or not g.get("fechaInicio") or not g.get("fechaFin"):
+            return []
+        tipo = g.get("id_tipoPeriodo")
+        if tipo is None:
+            tipo = 1 if (g.get("id_nivel_academico") or 0) >= 7 else 2
+
+        cursor.execute("SELECT dia FROM tb_grupodias WHERE idGrupo = %s", (id_grupo,))
+        dias = [d["dia"] for d in cursor.fetchall()]
+        if not dias:
+            mod = (g.get("modalidadHorario") or "").upper()
+            clave = (g.get("clave") or "").upper()
+            if "SABADO" in mod or "SÁBADO" in mod:
+                dias = ["SABADO"]
+            elif "DOMINGO" in mod:
+                dias = ["DOMINGO"]
+            elif "MATUTINO" in mod or "VESPERTINO" in mod:
+                dias = ["LUNES-VIERNES"]
+            elif clave.endswith("S"):
+                dias = ["SABADO"]
+            elif clave.endswith("D"):
+                dias = ["DOMINGO"]
+            elif "LV" in clave or "BTI" in clave or g.get("id_centroTrabajo") == 2:
+                dias = ["LUNES-VIERNES"]
+            else:
+                dias = ["SABADO"]
+
+        fechas = AsistenciasAlumnosService._generar_fechas_clase(g["fechaInicio"], g["fechaFin"], dias)
+        if tipo == 1:
+            # Semestral (BTI): todas las fechas son del semestre en curso; el horario dice qué materias se dan
+            return [(f, None) for f in fechas]
+        rangos = AsistenciasAlumnosService._calcular_rangos_niveles(g["fechaInicio"], tipo, cursor)
+        return [(f, AsistenciasAlumnosService._obtener_nivel_para_fecha(f, rangos)["id_nivel"]) for f in fechas]
+
+    @staticmethod
+    def _seguimiento_pase_docente(cursor, id_grupo, materias):
+        """Por materia: clases programadas hasta hoy, en cuáles pasó lista el docente y su % de asistencia
+        (solo con su propio pase). {id_materia: {...}}. Vacío si aún no existe es_pase_general."""
+        if not AsistenciasAlumnosService.tiene_columna_pase_general(cursor):
+            return {}
+        hoy = datetime.date.today()
+        sin_clase = {f for f, d in AsistenciasAlumnosService.get_dias_especiales(cursor, id_grupo).items()
+                     if d["tipo"] in AsistenciasAlumnosService.TIPOS_SIN_CLASE}
+        fechas_nivel = [(f, n) for f, n in AsistenciasAlumnosService._fechas_clase_con_nivel(cursor, id_grupo)
+                        if f <= hoy and f not in sin_clase]
+
+        # Días de la semana en que se imparte cada materia (si el horario lo indica)
+        cursor.execute("""
+            SELECT h.id_materia, h.diaSemana, m.id_nivel_academico
+            FROM tb_horarios h JOIN tb_materias m ON m.id = h.id_materia
+            WHERE h.id_grupo = %s AND h.es_prehorario = 0
+        """, (id_grupo,))
+        dias_mat, nivel_mat = {}, {}
+        for r in cursor.fetchall():
+            if r.get("diaSemana"):
+                dias_mat.setdefault(r["id_materia"], set()).add(int(r["diaSemana"]))
+            nivel_mat[r["id_materia"]] = r.get("id_nivel_academico")
+
+        # Pase del docente (origen 0)
+        cursor.execute("""
+            SELECT id_materia, fecha, estatus FROM tb_asistencias_alumnos
+            WHERE id_grupo = %s AND es_pase_general = 0
+        """, (id_grupo,))
+        pases = {}
+        for r in cursor.fetchall():
+            p = pases.setdefault(r["id_materia"], {"fechas": set(), "A": 0, "F": 0, "R": 0, "J": 0})
+            p["fechas"].add(r["fecha"] if isinstance(r["fecha"], datetime.date) else datetime.date.fromisoformat(str(r["fecha"])[:10]))
+            if r["estatus"] in ("A", "F", "R", "J"):
+                p[r["estatus"]] += 1
+
+        resultado = {}
+        for mat in materias:
+            id_mat = mat["id_materia"]
+            nivel = nivel_mat.get(id_mat, mat.get("id_nivel_academico"))
+            dias_sem = dias_mat.get(id_mat)
+            programadas = sorted(f for f, n in fechas_nivel
+                                 if (nivel is None or n is None or int(n) == int(nivel))
+                                 and (not dias_sem or f.isoweekday() in dias_sem))
+            p = pases.get(id_mat, {"fechas": set(), "A": 0, "F": 0, "R": 0, "J": 0})
+            con_pase = [f for f in programadas if f in p["fechas"]]
+            pendientes = [f for f in programadas if f not in p["fechas"]]
+            denom = p["A"] + p["R"] + p["F"]
+            resultado[id_mat] = {
+                "clases_programadas": len(programadas),
+                "pases_realizados": len(con_pase),
+                "fechas_pendientes": [f.isoformat() for f in pendientes],
+                "ultimo_pase": max(p["fechas"]).isoformat() if p["fechas"] else None,
+                "porcentaje_docente": round((p["A"] + p["R"]) * 100 / denom, 1) if denom else None,
+            }
+        return resultado
+
+    @staticmethod
     def get_reporte_grupo(id_grupo):
         conn = get_connection()
         cursor = conn.cursor()
@@ -974,6 +1076,9 @@ class AsistenciasAlumnosService:
                     st[clave] += 1
                 st['total_registros'] += 1
 
+            # Seguimiento del pase de lista de cada docente (clases con pase / programadas)
+            seguimiento = AsistenciasAlumnosService._seguimiento_pase_docente(cursor, id_grupo, materias)
+
             reporte_materias = []
             for mat in materias:
                 s = stats_map.get(mat['id_materia'], {})
@@ -1005,13 +1110,15 @@ class AsistenciasAlumnosService:
                     'retardos': tot_r,
                     'justificadas': tot_j,
                     'total_registros': tot_reg,
-                    'porcentaje': pct
+                    'porcentaje': pct,
+                    'seguimiento_docente': seguimiento.get(mat['id_materia'])
                 })
 
             return {
                 'success': True,
                 'grupo': {
                     'id': grupo['id'],
+                    'id_centroTrabajo': grupo.get('id_centroTrabajo'),
                     'clave': grupo.get('clave') or '',
                     'horario': grupo.get('horario') or '',
                     'modalidad': grupo.get('modalidadHorario') or ''
