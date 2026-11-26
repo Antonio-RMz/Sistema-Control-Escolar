@@ -295,15 +295,16 @@ class CalificacionesService:
                 """, (id_alumno, id_cct))
                 materias_califs = cursor.fetchall()
 
-            # Consultar asistencias registradas en tb_asistencias_alumnos (fallback automático)
-            cursor.execute("""
+            # Consultar asistencias registradas en tb_asistencias_alumnos (fallback automático; solo pase general)
+            from app.services.asistencias_alumnos_service import AsistenciasAlumnosService as _AAS
+            cursor.execute(f"""
                 SELECT 
                     id_materia,
                     id_nivel_academico,
                     COUNT(*) as total_sesiones,
                     SUM(CASE WHEN estatus IN ('A', 'R') THEN 1 ELSE 0 END) as asistencias_alumno
                 FROM tb_asistencias_alumnos
-                WHERE id_alumno = %s
+                WHERE id_alumno = %s {_AAS.filtro_pase_general(cursor)}
                 GROUP BY id_materia, id_nivel_academico
             """, (id_alumno,))
             asist_fallbacks = {}
@@ -651,6 +652,56 @@ class CalificacionesService:
         proxima = next((v for v in ventanas if v['apertura'] > hoy), None)
         anteriores = [v for v in ventanas if v['cierre'] < hoy]
         return {**(proxima or ventanas[-1]), 'abierta': False, 'anterior': anteriores[-1] if anteriores else None}
+
+    # Observaciones por etapa de captura (script 2026-11-26_calificaciones_observaciones_por_parcial.sql)
+    OBS_COLUMNAS = {'p1': 'obs_parcial1', 'p2': 'obs_parcial2', 'p3': 'obs_parcial3',
+                    'semestral': 'obs_semestral', 'extraordinario': 'obs_extraordinario'}
+    _obs_por_periodo_disponible = None
+
+    @staticmethod
+    def obs_por_periodo_disponible(cursor):
+        """True si tb_calificaciones ya tiene las columnas obs_* (se consulta una vez por proceso)."""
+        if CalificacionesService._obs_por_periodo_disponible is None:
+            cursor.execute("SHOW COLUMNS FROM tb_calificaciones LIKE 'obs\\_extraordinario'")
+            CalificacionesService._obs_por_periodo_disponible = cursor.fetchone() is not None
+        return CalificacionesService._obs_por_periodo_disponible
+
+    @staticmethod
+    def periodo_observaciones(cursor, id_grupo, hoy=None):
+        """
+        Etapa cuyas observaciones se muestran y guardan en la captura: la habilitada hoy.
+          - BGNE: extraordinario si su ventana configurada está abierta; si no, la calificación final (p1).
+          - BTI: el periodo habilitado con fechas que incluye hoy (el último si hay varios); si ninguno,
+            el último que ya inició (sus observaciones se siguen viendo hasta que abre el siguiente); si no, p1.
+        Devuelve {'clave', 'nombre'}.
+        """
+        a_fecha = CalificacionesService._a_fecha
+        hoy = hoy or date.today()
+        cursor.execute("SELECT id_centroTrabajo FROM tb_grupos WHERE id = %s", (id_grupo,))
+        es_bgne = int((cursor.fetchone() or {}).get('id_centroTrabajo') or 0) == 3
+        cursor.execute("SELECT * FROM tb_grupo_periodos_captura WHERE id_grupo = %s", (id_grupo,))
+        cfg = cursor.fetchone() or {}
+
+        def rango(p):
+            hab = cfg.get(f'{p}_habilitado')
+            if hab is not None and not hab:
+                return None, None
+            return a_fecha(cfg.get(f'{p}_fecha_inicio')), a_fecha(cfg.get(f'{p}_fecha_fin'))
+
+        nombres = {'p1': 'Calificación final' if es_bgne else 'Parcial 1', 'p2': 'Parcial 2', 'p3': 'Parcial 3',
+                   'semestral': 'Semestral', 'extraordinario': 'Extraordinario'}
+        if es_bgne:
+            ini, fin = rango('extraordinario')
+            clave = 'extraordinario' if (ini and fin and ini <= hoy <= fin) else 'p1'
+        else:
+            orden = ('p1', 'p2', 'p3', 'semestral', 'extraordinario')
+            abiertos = [p for p in orden if rango(p)[0] and rango(p)[1] and rango(p)[0] <= hoy <= rango(p)[1]]
+            if abiertos:
+                clave = abiertos[-1]
+            else:
+                iniciados = [(rango(p)[0], i, p) for i, p in enumerate(orden) if rango(p)[0] and rango(p)[0] <= hoy]
+                clave = max(iniciados)[2] if iniciados else 'p1'
+        return {'clave': clave, 'nombre': nombres[clave]}
 
     @staticmethod
     def periodo_bti_abierto(cfg, periodo, has_prorroga=False, hoy=None):
@@ -1005,6 +1056,7 @@ class CalificacionesService:
 
             # 3. Lista de alumnos del grupo con sus calificaciones en esta materia
             alumnos_califs = []
+            periodo_obs = None
             if id_materia:
                 # Obtener el nÃºmero de nivel de la materia actual
                 numero_nivel_materia = 1
@@ -1016,8 +1068,14 @@ class CalificacionesService:
                     if nivel_row and nivel_row.get("numero") is not None:
                         numero_nivel_materia = int(nivel_row["numero"])
 
-                cursor.execute("""
-                    SELECT 
+                # Observaciones del parcial habilitado (si ya existen las columnas por parcial)
+                obs_col = None
+                if CalificacionesService.obs_por_periodo_disponible(cursor):
+                    periodo_obs = CalificacionesService.periodo_observaciones(cursor, id_grupo)
+                    obs_col = CalificacionesService.OBS_COLUMNAS[periodo_obs['clave']]
+
+                cursor.execute(f"""
+                    SELECT
                         a.idAlumno,
                         a.numeroControl AS matricula,
                         a.nombre,
@@ -1031,7 +1089,7 @@ class CalificacionesService:
                         c.id AS idCalificacion,
                         c.calificacion,
                         c.tipoAcreditacion,
-                        c.observaciones,
+                        {f'c.{obs_col}' if obs_col else 'c.observaciones'} AS observaciones,
                         c.parcial1,
                         c.parcial2,
                         c.parcial3,
@@ -1200,6 +1258,7 @@ class CalificacionesService:
                 "solo_lectura": solo_lectura,
                 "mensaje_restriccion": mensaje_restriccion,
                 "cct_config": cct_config,
+                "periodo_observaciones": periodo_obs,
                 "finalizado": bool(permiso.get('finalizado')) if permiso else False
             }
         except Exception as e:
@@ -1610,6 +1669,19 @@ class CalificacionesService:
                         ) VALUES (%s, %s, %s, %s, %s, %s, CURRENT_DATE, %s, %s, %s, %s, %s, %s, %s, %s)
                     """, (id_alumno, id_materia, id_grupo, calif_val, tipo_acred, observaciones, create_by, p1_val, p2_val, p3_val, sem_val, ext_val, asist_val, tot_asist_val))
 
+            # Observaciones del parcial habilitado: la columna "Observaciones" de la captura es la de ese parcial.
+            # El periodo lo decide el servidor (no el cliente). Solo filas con calificación; las equivalencias no.
+            if CalificacionesService.obs_por_periodo_disponible(cursor):
+                clave_obs = CalificacionesService.periodo_observaciones(cursor, id_grupo)['clave']
+                col_obs = CalificacionesService.OBS_COLUMNAS[clave_obs]   # nombre de columna de una lista fija
+                for item in calificaciones:
+                    if not item.get("idAlumno") or "observaciones" not in item:
+                        continue
+                    cursor.execute(f"""
+                        UPDATE tb_calificaciones SET {col_obs} = %s
+                        WHERE idAlumno = %s AND idMateria = %s AND tipoAcreditacion != 'EQUIVALENCIA'
+                    """, ((item.get("observaciones") or "").strip() or None, item.get("idAlumno"), id_materia))
+
             # 3. Registrar como finalizado si corresponde
             # En BGNE la calificación final se captura en la ventana p1 (no hay semestral)
             if finalizar and id_docente and is_docente and (allow_sem or allow_ext or (id_cct == 3 and allow_p1)):
@@ -1693,13 +1765,15 @@ class CalificacionesService:
             """, (id_grupo, id_nivel_academico))
             califs_asist = {c["idAlumno"]: c for c in (cursor.fetchall() or [])}
 
-            # 4. Asistencias en tb_asistencias_alumnos como fallback
-            cursor.execute("""
+            # 4. Asistencias en tb_asistencias_alumnos como fallback (solo pase general)
+            from app.services.asistencias_alumnos_service import AsistenciasAlumnosService as _AAS
+            cursor.execute(f"""
                 SELECT id_alumno,
                        COUNT(*) as total_sesiones,
                        SUM(CASE WHEN estatus IN ('A', 'R') THEN 1 ELSE 0 END) as asistencias_alumno
                 FROM tb_asistencias_alumnos
                 WHERE id_grupo = %s AND (id_nivel_academico = %s OR id_nivel_academico IS NULL)
+                {_AAS.filtro_pase_general(cursor)}
                 GROUP BY id_alumno
             """, (id_grupo, id_nivel_academico))
             rollcall_asist = {r["id_alumno"]: r for r in (cursor.fetchall() or [])}
