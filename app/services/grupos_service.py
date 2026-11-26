@@ -41,9 +41,12 @@ class GruposService:
                     ["CONCAT_WS(' ', a.nombre, a.apPaterno, a.apMaterno) LIKE %s"] * len(palabras))
                 where_clauses.append(f"""
                     (g.clave LIKE %s OR EXISTS (
-                        SELECT 1 FROM tb_alumnogrupo ag
-                        JOIN tb_alumnos a ON a.idAlumno = ag.idAlumno
-                        WHERE ag.idGrupo = g.id AND ag.estado = 'ACTIVO'
+                        -- Alumno activo cuyo grupo actual es este (como en la captura) o inscrito activo en él
+                        SELECT 1 FROM tb_alumnos a
+                        WHERE a.statusAlumno = 'ACTIVO'
+                          AND (a.idGrupo = g.id OR EXISTS (
+                                SELECT 1 FROM tb_alumnogrupo ag
+                                WHERE ag.idAlumno = a.idAlumno AND ag.idGrupo = g.id AND ag.estado = 'ACTIVO'))
                           AND (a.numeroControl LIKE %s OR ({cond_nombre}))
                     ))
                 """)
