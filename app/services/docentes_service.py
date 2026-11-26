@@ -794,10 +794,10 @@ class DocentesService:
                 FROM tb_docente_permisos_captura p
                 JOIN tb_grupos g ON p.id_grupo = g.id
                 JOIN tb_materias m ON p.id_materia = m.id
-                JOIN tb_horarios h ON p.id_grupo = h.id_grupo 
-                                   AND p.id_materia = h.id_materia 
-                                   AND p.id_docente = h.id_docente
                 WHERE p.id_docente = %s
+                  -- EXISTS y no JOIN: la materia tiene una fila de horario por día y la prórroga se repetía
+                  AND EXISTS (SELECT 1 FROM tb_horarios h
+                              WHERE h.id_grupo = p.id_grupo AND h.id_materia = p.id_materia AND h.id_docente = p.id_docente)
                   AND p.habilitado = 1
                   AND p.fecha_limite >= %s
                 ORDER BY p.fecha_limite ASC
@@ -811,6 +811,11 @@ class DocentesService:
                     p['createAt'] = str(p['createAt'])
                 if p.get('updateAt'):
                     p['updateAt'] = str(p['updateAt'])
+
+            # Una prórroga de un periodo que el docente ya envió no le sirve (no reabre lo enviado): no se anuncia
+            from app.services.calificaciones_service import CalificacionesService as CS
+            prorrogas = [p for p in prorrogas if not (
+                p.get('periodo') and p['periodo'] in CS.periodos_enviados(cursor, id_docente, p['id_grupo'], p['id_materia']))]
 
             # 2. Grupos por finalizar (próximos 15 días)
             cursor.execute("""

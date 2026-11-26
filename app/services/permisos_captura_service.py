@@ -76,8 +76,9 @@ class PermisosCapturaService:
         return PermisosCapturaService._columna_periodo
 
     @staticmethod
-    def _periodo_prorroga(cursor, id_grupo, data):
-        """Valida el periodo de la prórroga. En BTI es obligatorio. Devuelve (periodo, error)."""
+    def _periodo_prorroga(cursor, id_grupo, data, id_docente=None, id_materia=None):
+        """Valida el periodo de la prórroga. En BTI es obligatorio y no puede ser uno que el docente
+        ya envió (la prórroga es para quien no capturó, no reabre lo enviado). Devuelve (periodo, error)."""
         periodo = (data.get('periodo') or '').strip() or None
         if periodo and periodo not in PermisosCapturaService.PERIODOS_PRORROGA:
             return None, "Periodo de prórroga no válido."
@@ -90,6 +91,10 @@ class PermisosCapturaService:
                           "(scripts/2026-11-26_prorroga_por_periodo.sql).")
         if not periodo:
             return None, "Indica a qué periodo se extiende la prórroga (parcial, semestral o extraordinario)."
+        from app.services.calificaciones_service import CalificacionesService as CS
+        if periodo in CS.periodos_enviados(cursor, id_docente, id_grupo, id_materia):
+            return None, (f"El docente ya envió las calificaciones del {CS.NOMBRES_PERIODO_BTI[periodo]} en esta asignatura; "
+                          f"la prórroga no reabre un periodo enviado. Si hay que corregirlas, hazlo desde la cuenta de administración.")
         return periodo, None
 
     @staticmethod
@@ -104,7 +109,8 @@ class PermisosCapturaService:
             if cursor.fetchone():
                 return {"success": False, "message": "Ya existe un permiso registrado para este docente en esta asignatura y grupo."}
 
-            periodo, error = PermisosCapturaService._periodo_prorroga(cursor, data.get('id_grupo'), data)
+            periodo, error = PermisosCapturaService._periodo_prorroga(
+                cursor, data.get('id_grupo'), data, data.get('id_docente'), data.get('id_materia'))
             if error:
                 return {"success": False, "message": error}
 
@@ -136,11 +142,13 @@ class PermisosCapturaService:
         conexion = get_connection()
         cursor = conexion.cursor()
         try:
-            cursor.execute("SELECT id_grupo FROM tb_docente_permisos_captura WHERE id = %s", (id_permiso,))
+            cursor.execute("SELECT id_grupo, id_docente, id_materia FROM tb_docente_permisos_captura WHERE id = %s",
+                           (id_permiso,))
             actual = cursor.fetchone()
             if not actual:
                 return {"success": False, "message": "La prórroga no existe."}
-            periodo, error = PermisosCapturaService._periodo_prorroga(cursor, actual['id_grupo'], data)
+            periodo, error = PermisosCapturaService._periodo_prorroga(
+                cursor, actual['id_grupo'], data, actual['id_docente'], actual['id_materia'])
             if error:
                 return {"success": False, "message": error}
 
