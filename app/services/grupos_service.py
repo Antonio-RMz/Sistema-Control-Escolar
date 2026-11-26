@@ -33,7 +33,22 @@ class GruposService:
                 """)
                 params.append(id_docente)
 
-            if search:
+            if search and id_docente:
+                # Docentes no conocen las claves: también se busca por alumno del grupo (nombre o número de control).
+                # Cada palabra debe aparecer en el nombre completo del alumno.
+                palabras = search.split()
+                cond_nombre = " AND ".join(
+                    ["CONCAT_WS(' ', a.nombre, a.apPaterno, a.apMaterno) LIKE %s"] * len(palabras))
+                where_clauses.append(f"""
+                    (g.clave LIKE %s OR EXISTS (
+                        SELECT 1 FROM tb_alumnogrupo ag
+                        JOIN tb_alumnos a ON a.idAlumno = ag.idAlumno
+                        WHERE ag.idGrupo = g.id AND ag.estado = 'ACTIVO'
+                          AND (a.numeroControl LIKE %s OR ({cond_nombre}))
+                    ))
+                """)
+                params.extend([f"%{search}%", f"%{search}%", *[f"%{p}%" for p in palabras]])
+            elif search:
                 where_clauses.append("g.clave LIKE %s")
                 params.append(f"%{search}%")
             if id_centro_trabajo:
