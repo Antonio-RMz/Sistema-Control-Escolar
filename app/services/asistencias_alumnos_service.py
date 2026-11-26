@@ -655,8 +655,27 @@ class AsistenciasAlumnosService:
             propio = "" if not tiene_origen else (
                 " AND (es_pase_general IS NULL OR es_pase_general = 1)" if es_general else " AND es_pase_general = 0")
 
+            # BGNE (una materia por hora): el docente pasa lista de su clase solo el día de la clase y puede
+            # corregirla durante ese día. Otras fechas solo con reapertura de administración.
+            cursor.execute("SELECT id_centroTrabajo FROM tb_grupos WHERE id = %s", (id_grupo,))
+            es_bgne = int((cursor.fetchone() or {}).get("id_centroTrabajo") or 0) == 3
+            if id_docente and es_bgne and not es_general:
+                for f_target in fechas_en_lista:
+                    if f_target[:10] == hoy_str:
+                        continue
+                    cursor.execute("""
+                        SELECT 1 FROM tb_asistencias_reaperturas
+                        WHERE id_grupo = %s AND fecha = %s AND habilitado = 1
+                          AND (id_materia IS NULL OR id_materia = 0 OR id_materia = %s)
+                        LIMIT 1
+                    """, (id_grupo, f_target, mat_id_int))
+                    if cursor.fetchone() is None:
+                        return {
+                            "error": f"Solo puedes pasar lista el día de tu clase. Para modificar el {f_target} solicita la reapertura a la administración."
+                        }, 403
+
             # Si es docente, verificar si el pase de lista para las fechas enviadas ya fue cerrado previamente
-            if id_docente:
+            if id_docente and not (es_bgne and not es_general):
                 for f_target in fechas_en_lista:
                     if not es_general:
                         cursor.execute(f"""
