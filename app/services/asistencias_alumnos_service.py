@@ -247,21 +247,34 @@ class AsistenciasAlumnosService:
 
             # 7. Obtener pases de lista registrados para este grupo y materia
             asistencias_raw = []
+            col_origen = ", es_pase_general" if AsistenciasAlumnosService.tiene_columna_pase_general(cursor) else ""
             if id_materia and str(id_materia).lower() != 'general':
-                cursor.execute("""
-                    SELECT id_alumno, fecha, id_nivel_academico, estatus, observaciones
+                # Pase por materia: lo que registró el docente en su clase (no el pase general)
+                cursor.execute(f"""
+                    SELECT id, id_alumno, fecha, id_nivel_academico, estatus, observaciones,
+                           created_at, updated_at{col_origen}
                     FROM tb_asistencias_alumnos
                     WHERE id_grupo = %s AND id_materia = %s
+                    {AsistenciasAlumnosService.filtro_pase_docente(cursor)}
                 """, (id_grupo, id_materia))
-                asistencias_raw = cursor.fetchall()
+                por_dia = {}
+                for a in cursor.fetchall():
+                    por_dia.setdefault((a["id_alumno"], a["fecha"]), []).append(a)
+                asistencias_raw = [AsistenciasAlumnosService.resolver_fila_clase(f) for f in por_dia.values()]
             else:
-                cursor.execute("""
-                    SELECT id_alumno, fecha, id_nivel_academico, estatus, observaciones
+                # Pase general: una marca por (alumno, día) con la regla de resolver_estatus_dia.
+                # Las filas del pase de los docentes no cuentan aquí.
+                cursor.execute(f"""
+                    SELECT id, id_alumno, fecha, id_nivel_academico, estatus, observaciones,
+                           created_at, updated_at{col_origen}
                     FROM tb_asistencias_alumnos
                     WHERE id_grupo = %s
-                    ORDER BY updated_at DESC
+                    {AsistenciasAlumnosService.filtro_pase_general(cursor)}
                 """, (id_grupo,))
-                asistencias_raw = cursor.fetchall()
+                por_dia = {}
+                for a in cursor.fetchall():
+                    por_dia.setdefault((a["id_alumno"], a["fecha"]), []).append(a)
+                asistencias_raw = [AsistenciasAlumnosService.resolver_estatus_dia(f) for f in por_dia.values()]
 
             # 8. Obtener justificaciones del administrador en el rango de fechas
             justificaciones = {}
@@ -365,6 +378,94 @@ class AsistenciasAlumnosService:
                 KEY idx_reapertura_lookup (id_grupo, fecha, habilitado)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
         """)
+
+    # ------------------------------------------------------------------
+    # Estatus del DÍA cuando hay varias filas (una por materia) con marcas distintas
+    #   El pase general de Administración escribe una fila por cada materia del horario; un
+    #   pase por materia (docente) sobrescribe solo la de su materia. La regla (definida por la
+    #   escuela) es que el día lo decide el PASE GENERAL. tb_asistencias_alumnos.es_pase_general
+    #   (scripts/2026-11-23_asistencias_origen_pase.sql) dice de dónde viene cada fila; las
+    #   anteriores a esa columna quedan en NULL.
+    # ------------------------------------------------------------------
+    _col_pase_general = False   # solo se cachea cuando la columna ya existe
+
+    @staticmethod
+    def tiene_columna_pase_general(cursor):
+        """True si ya se aplicó el script que agrega es_pase_general (sin él, todo sigue igual)."""
+        if not AsistenciasAlumnosService._col_pase_general:
+            cursor.execute("""
+                SELECT 1 FROM information_schema.COLUMNS
+                WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tb_asistencias_alumnos'
+                  AND COLUMN_NAME = 'es_pase_general' LIMIT 1
+            """)
+            AsistenciasAlumnosService._col_pase_general = cursor.fetchone() is not None
+        return AsistenciasAlumnosService._col_pase_general
+
+    # ------------------------------------------------------------------
+    # Dos registros independientes en tb_asistencias_alumnos (ver
+    # scripts/2026-11-26_asistencias_pase_general_y_docente.sql):
+    #   * PASE GENERAL (es_pase_general = 1): el que manda; es el de la boleta BTI y la matriz general.
+    #   * PASE DEL DOCENTE (es_pase_general = 0): quién estuvo en cada clase de su materia. Se guarda
+    #     aparte y no cambia la boleta.
+    #   * Filas anteriores a la columna (NULL): origen desconocido; cuentan para ambos lados.
+    # ------------------------------------------------------------------
+    @staticmethod
+    def filtro_pase_general(cursor, alias=""):
+        """Condición SQL (' AND …') para leer solo el pase general (y las filas sin origen)."""
+        if not AsistenciasAlumnosService.tiene_columna_pase_general(cursor):
+            return ""
+        return f" AND ({alias}es_pase_general IS NULL OR {alias}es_pase_general = 1)"
+
+    @staticmethod
+    def filtro_pase_docente(cursor, alias=""):
+        """Condición SQL (' AND …') para leer solo el pase del docente (y las filas sin origen)."""
+        if not AsistenciasAlumnosService.tiene_columna_pase_general(cursor):
+            return ""
+        return f" AND ({alias}es_pase_general IS NULL OR {alias}es_pase_general = 0)"
+
+    @staticmethod
+    def resolver_fila_clase(filas):
+        """Marca de UNA clase (alumno, materia, día): manda el pase del docente; si no lo hay,
+        la fila sin origen; si tampoco, la del pase general. Entre iguales, la más reciente."""
+        if not filas:
+            return None
+        prioridad = {0: 0, None: 1, 1: 2}
+        def reciente(f):
+            return (f.get('updated_at') or f.get('created_at') or datetime.datetime.min, f.get('id') or 0)
+        mejor = min(prioridad.get(f.get('es_pase_general'), 1) for f in filas)
+        return max((f for f in filas if prioridad.get(f.get('es_pase_general'), 1) == mejor), key=reciente)
+
+    @staticmethod
+    def resolver_estatus_dia(filas):
+        """Elige la fila que representa el día de un alumno.
+
+        filas: dicts con estatus, updated_at, id y (opcional) es_pase_general.
+          1. Hay filas del pase general (es_pase_general = 1): la editada más recientemente.
+          2. Hay filas sin origen (capturadas antes de la columna): el estatus que tiene la
+             mayoría de ellas; el pase general llena todas las materias y un pase por materia
+             cambia solo una. En empate, la más reciente.
+          3. Solo pase por materia: la editada más recientemente. (Las lecturas del pase general
+             filtran antes las filas del docente con filtro_pase_general, así que no llegan aquí.)
+        """
+        if not filas:
+            return None
+        def reciente(f):
+            return (f.get('updated_at') or f.get('created_at') or datetime.datetime.min, f.get('id') or 0)
+
+        general = [f for f in filas if f.get('es_pase_general') == 1]
+        if general:
+            return max(general, key=reciente)
+
+        sin_origen = [f for f in filas if f.get('es_pase_general') is None]
+        if sin_origen:
+            conteo = {}
+            for f in sin_origen:
+                conteo[f['estatus']] = conteo.get(f['estatus'], 0) + 1
+            maximo = max(conteo.values())
+            candidatas = [f for f in sin_origen if conteo[f['estatus']] == maximo]
+            return max(candidatas, key=reciente)
+
+        return max(filas, key=reciente)
 
     # ------------------------------------------------------------------
     # Días especiales del calendario del grupo
@@ -548,19 +649,27 @@ class AsistenciasAlumnosService:
                     return {"mensaje": "No se guardó nada: las fechas enviadas están marcadas como día inhábil o suspensión."}
                 return {"mensaje": "No se recibieron registros para guardar."}
 
+            # Pase general y pase del docente son registros separados: cada uno revisa y borra solo los suyos.
+            # El docente solo cuenta como "ya enviado" su propio pase (con origen 0), no el pase general.
+            tiene_origen = AsistenciasAlumnosService.tiene_columna_pase_general(cursor)
+            propio = "" if not tiene_origen else (
+                " AND (es_pase_general IS NULL OR es_pase_general = 1)" if es_general else " AND es_pase_general = 0")
+
             # Si es docente, verificar si el pase de lista para las fechas enviadas ya fue cerrado previamente
             if id_docente:
                 for f_target in fechas_en_lista:
                     if not es_general:
-                        cursor.execute("""
+                        cursor.execute(f"""
                             SELECT 1 FROM tb_asistencias_alumnos 
                             WHERE id_grupo = %s AND id_materia = %s AND fecha = %s AND estatus IS NOT NULL AND estatus != ''
+                            {propio}
                             LIMIT 1
                         """, (id_grupo, mat_id_int, f_target))
                     else:
-                        cursor.execute("""
+                        cursor.execute(f"""
                             SELECT 1 FROM tb_asistencias_alumnos 
                             WHERE id_grupo = %s AND fecha = %s AND estatus IS NOT NULL AND estatus != ''
+                            {propio}
                             LIMIT 1
                         """, (id_grupo, f_target))
                     ya_enviado = cursor.fetchone() is not None
@@ -587,11 +696,19 @@ class AsistenciasAlumnosService:
                                 "error": f"El pase de lista para la fecha {f_target} ya fue enviado previamente y se encuentra cerrado. Para realizar modificaciones, solicita la reapertura a la administración."
                             }, 403
             
-            query = """
-                INSERT INTO tb_asistencias_alumnos 
-                (id_alumno, id_materia, id_docente, id_grupo, fecha, id_nivel_academico, estatus, observaciones)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            # Origen de la fila (pase general = 1, pase por materia = 0): con él la matriz y la
+            # boleta saben qué marca manda en el día (ver resolver_estatus_dia).
+            if AsistenciasAlumnosService.tiene_columna_pase_general(cursor):
+                origen = "1" if es_general else "0"
+                col_origen, val_origen, upd_origen = ", es_pase_general", f", {origen}", f"es_pase_general = {origen},"
+            else:
+                col_origen = val_origen = upd_origen = ""
+            query = f"""
+                INSERT INTO tb_asistencias_alumnos
+                (id_alumno, id_materia, id_docente, id_grupo, fecha, id_nivel_academico, estatus, observaciones{col_origen})
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s{val_origen})
                 ON DUPLICATE KEY UPDATE
+                    {upd_origen}
                     estatus = VALUES(estatus),
                     id_nivel_academico = VALUES(id_nivel_academico),
                     observaciones = VALUES(observaciones),
@@ -630,7 +747,7 @@ class AsistenciasAlumnosService:
                     obs = a.get("observaciones") or None
 
                     if estatus is None or estatus == "":
-                        cursor.execute("DELETE FROM tb_asistencias_alumnos WHERE id_grupo = %s AND id_alumno = %s AND fecha = %s", (id_grupo, id_alumno, fecha))
+                        cursor.execute(f"DELETE FROM tb_asistencias_alumnos WHERE id_grupo = %s AND id_alumno = %s AND fecha = %s{propio}", (id_grupo, id_alumno, fecha))
                     elif estatus in ('A', 'F', 'R', 'J'):
                         for h in horarios:
                             m_id = h.get("id_materia") if isinstance(h, dict) else h[0]
@@ -662,7 +779,7 @@ class AsistenciasAlumnosService:
                     obs = a.get("observaciones") or None
 
                     if estatus is None or estatus == "":
-                        cursor.execute("DELETE FROM tb_asistencias_alumnos WHERE id_grupo = %s AND id_materia = %s AND id_alumno = %s AND fecha = %s", (id_grupo, id_materia, id_alumno, fecha))
+                        cursor.execute(f"DELETE FROM tb_asistencias_alumnos WHERE id_grupo = %s AND id_materia = %s AND id_alumno = %s AND fecha = %s{propio}", (id_grupo, id_materia, id_alumno, fecha))
                     elif estatus in ('A', 'F', 'R', 'J'):
                         cursor.execute(query, (id_alumno, id_materia, id_docente, id_grupo, fecha, id_nivel, estatus, obs))
 
@@ -818,20 +935,25 @@ class AsistenciasAlumnosService:
                 ''', (grupo.get('id_centroTrabajo'),))
                 materias = cursor.fetchall()
 
-            # 4. Estadisticas
-            cursor.execute('''
-                SELECT id_materia,
-                       SUM(CASE WHEN estatus = 'A' THEN 1 ELSE 0 END) AS total_a,
-                       SUM(CASE WHEN estatus = 'F' THEN 1 ELSE 0 END) AS total_f,
-                       SUM(CASE WHEN estatus = 'R' THEN 1 ELSE 0 END) AS total_r,
-                       SUM(CASE WHEN estatus = 'J' THEN 1 ELSE 0 END) AS total_j,
-                       COUNT(*) AS total_registros
+            # 4. Estadisticas por materia: una marca por clase (alumno, materia, día).
+            #    Manda el pase del docente; sin él, el pase general (ver resolver_fila_clase).
+            col_origen = ", es_pase_general" if AsistenciasAlumnosService.tiene_columna_pase_general(cursor) else ""
+            cursor.execute(f'''
+                SELECT id, id_alumno, id_materia, fecha, estatus, created_at, updated_at{col_origen}
                 FROM tb_asistencias_alumnos
                 WHERE id_grupo = %s
-                GROUP BY id_materia
             ''', (id_grupo,))
-            stats_rows = cursor.fetchall()
-            stats_map = {r['id_materia']: r for r in stats_rows}
+            por_clase = {}
+            for r in cursor.fetchall():
+                por_clase.setdefault((r['id_alumno'], r['id_materia'], r['fecha']), []).append(r)
+            stats_map = {}
+            for (_, id_mat, _), filas in por_clase.items():
+                r = AsistenciasAlumnosService.resolver_fila_clase(filas)
+                st = stats_map.setdefault(id_mat, {'total_a': 0, 'total_f': 0, 'total_r': 0, 'total_j': 0, 'total_registros': 0})
+                clave = {'A': 'total_a', 'F': 'total_f', 'R': 'total_r', 'J': 'total_j'}.get(r['estatus'])
+                if clave:
+                    st[clave] += 1
+                st['total_registros'] += 1
 
             reporte_materias = []
             for mat in materias:
@@ -938,13 +1060,17 @@ class AsistenciasAlumnosService:
             ''', (id_grupo,))
             horarios_grupo = cursor.fetchall()
 
-            # 4. Asistencias del alumno agrupadas por fecha
-            cursor.execute('''
-                SELECT id, id_materia, id_docente, fecha, estatus, observaciones
+            # 4. Asistencias del alumno agrupadas por fecha: una marca por clase (manda el pase del docente)
+            col_origen = ", es_pase_general" if AsistenciasAlumnosService.tiene_columna_pase_general(cursor) else ""
+            cursor.execute(f'''
+                SELECT id, id_materia, id_docente, fecha, estatus, observaciones, created_at, updated_at{col_origen}
                 FROM tb_asistencias_alumnos
                 WHERE id_grupo = %s AND id_alumno = %s
             ''', (id_grupo, id_alumno))
-            asistencias_raw = cursor.fetchall()
+            por_clase = {}
+            for r in cursor.fetchall():
+                por_clase.setdefault((r['id_materia'], r['fecha']), []).append(r)
+            asistencias_raw = [AsistenciasAlumnosService.resolver_fila_clase(f) for f in por_clase.values()]
             asistencias_alumno = {}
             for a in asistencias_raw:
                 f_str = a['fecha'].strftime('%Y-%m-%d') if isinstance(a['fecha'], (datetime.date, datetime.datetime)) else str(a['fecha'])

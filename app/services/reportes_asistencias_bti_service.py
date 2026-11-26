@@ -179,24 +179,31 @@ class ReportesAsistenciasBtiService:
         sin_clase = {f for f, d in dias_especiales.items() if d['tipo'] in AsistenciasAlumnosService.TIPOS_SIN_CLASE}
         dias_programados = [f for f in dias_programados if f not in sin_clase]
 
-        # Estatus diario: una fila por (alumno, fecha); gana la editada más recientemente
+        # Estatus diario: una marca por (alumno, fecha). Si las filas del día (una por materia)
+        # no coinciden, manda el pase general (ver AsistenciasAlumnosService.resolver_estatus_dia),
+        # igual que en la matriz del pase de lista.
         registros = {}       # (id_alumno, fecha) -> {estatus, observaciones, actualizado}
         dias_con_pase = set()
         if rango_valido:
-            cursor.execute("""
-                SELECT id_alumno, fecha, estatus, observaciones, created_at, updated_at
+            col_origen = ", es_pase_general" if AsistenciasAlumnosService.tiene_columna_pase_general(cursor) else ""
+            cursor.execute(f"""
+                SELECT id, id_alumno, fecha, estatus, observaciones, created_at, updated_at{col_origen}
                 FROM tb_asistencias_alumnos
                 WHERE id_grupo = %s AND fecha BETWEEN %s AND %s
-                ORDER BY updated_at ASC, id ASC
+                {AsistenciasAlumnosService.filtro_pase_general(cursor)}
             """, (id_grupo, rango_inicio, rango_fin))
+            filas_dia = {}
             for r in cursor.fetchall() or []:
                 if r['estatus'] not in ESTATUS_VALIDOS:
                     continue
                 f = _to_date(r['fecha'])
                 if f in sin_clase:
                     continue
+                filas_dia.setdefault((r['id_alumno'], f), []).append(r)
+            for (id_al, f), filas in filas_dia.items():
+                r = AsistenciasAlumnosService.resolver_estatus_dia(filas)
                 dias_con_pase.add(f)
-                registros[(r['id_alumno'], f)] = {
+                registros[(id_al, f)] = {
                     'estatus': r['estatus'],
                     'observaciones': r.get('observaciones') or '',
                     'registrado': r.get('created_at'),

@@ -34,15 +34,17 @@ class DashboardService:
             cursor.execute("SELECT COUNT(*) as total FROM tb_materias WHERE estatusMateria = 1 OR estatusMateria = 'ACTIVO' OR 1=1")
             materias_cnt = (cursor.fetchone() or {}).get('total', 0)
 
-            # 5. Asistencias
-            cursor.execute("""
-                SELECT 
+            # 5. Asistencias (solo pase general: el pase de los docentes es un registro aparte)
+            from app.services.asistencias_alumnos_service import AsistenciasAlumnosService
+            cursor.execute(f"""
+                SELECT
                     COUNT(*) as total,
                     SUM(CASE WHEN estatus = 'A' THEN 1 ELSE 0 END) as presentes,
                     SUM(CASE WHEN estatus = 'F' THEN 1 ELSE 0 END) as faltas,
                     SUM(CASE WHEN estatus = 'R' THEN 1 ELSE 0 END) as retardos,
                     SUM(CASE WHEN estatus = 'J' THEN 1 ELSE 0 END) as justificaciones
                 FROM tb_asistencias_alumnos
+                WHERE 1 = 1 {AsistenciasAlumnosService.filtro_pase_general(cursor)}
             """)
             asist_row = cursor.fetchone() or {}
             tot_asist = int(asist_row.get('total') or 0)
