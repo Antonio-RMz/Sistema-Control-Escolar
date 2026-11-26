@@ -87,8 +87,6 @@ class PermisosCapturaService:
                 1 if data.get('permitir_modificar_pasados') else 0,
                 1 if data.get('habilitado', True) else 0
             ))
-            PermisosCapturaService._desbloquear_envios(
-                cursor, data.get('id_docente'), data.get('id_grupo'), data.get('id_materia'))
             conexion.commit()
             return {"success": True, "message": "Permiso asignado correctamente."}
         except Exception as e:
@@ -96,16 +94,6 @@ class PermisosCapturaService:
             return {"success": False, "message": f"Error al guardar permiso: {str(e)}"}
         finally:
             conexion.close()
-
-    @staticmethod
-    def _desbloquear_envios(cursor, id_docente, id_grupo, id_materia):
-        """La prórroga reabre la captura: se borran los periodos que el docente ya había enviado (BTI)."""
-        from app.services.calificaciones_service import CalificacionesService
-        if CalificacionesService.envios_disponible(cursor):
-            cursor.execute("""
-                DELETE FROM tb_docente_envios_captura
-                WHERE id_docente = %s AND id_grupo = %s AND id_materia = %s
-            """, (id_docente, id_grupo, id_materia))
 
     @staticmethod
     def actualizar_permiso(id_permiso, data):
@@ -122,11 +110,6 @@ class PermisosCapturaService:
                 1 if data.get('habilitado') else 0,
                 id_permiso
             ))
-            cursor.execute("SELECT id_docente, id_grupo, id_materia FROM tb_docente_permisos_captura WHERE id = %s",
-                           (id_permiso,))
-            perm = cursor.fetchone()
-            if perm:
-                PermisosCapturaService._desbloquear_envios(cursor, perm['id_docente'], perm['id_grupo'], perm['id_materia'])
             conexion.commit()
             return {"success": True, "message": "Permiso actualizado correctamente."}
         except Exception as e:

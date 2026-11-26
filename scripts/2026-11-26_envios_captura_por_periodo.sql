@@ -5,7 +5,7 @@
 -- Cuando el docente envía las calificaciones de un periodo (1er parcial, 2do parcial, semestral…),
 -- ese periodo queda bloqueado para él en esa asignatura y grupo: no puede editarlo ni volver a
 -- enviarlo. Los demás periodos siguen su propia habilitación (switch + fechas del admin).
--- La administración lo desbloquea al otorgar o actualizar una prórroga (se borran sus envíos).
+-- La prórroga no lo desbloquea (es solo para quien no capturó); las correcciones las hace la administración.
 --
 -- SEGURO DE EJECUTAR EN PRODUCCIÓN:
 --   * Solo crea una tabla nueva; no toca datos existentes.

@@ -903,8 +903,7 @@ class CalificacionesService:
                 if abiertos and all(p in enviados for p in abiertos):
                     etapas = ', '.join(CalificacionesService.NOMBRES_PERIODO_BTI[p] for p in abiertos)
                     return {'allowed': False,
-                            'reason': f"Ya enviaste las calificaciones del {etapas}; quedaron registradas y no se pueden modificar. "
-                                      f"Si necesitas corregirlas, solicita una prórroga a la administración."}
+                            'reason': f"Ya enviaste las calificaciones del {etapas}; quedaron registradas y no se pueden modificar."}
 
             if grupo.get('statusGrupo') and grupo.get('statusGrupo').upper() != 'ACTIVO':
                 if not permiso or not permiso.get('permitir_modificar_pasados'):
