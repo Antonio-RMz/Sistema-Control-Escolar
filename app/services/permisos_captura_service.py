@@ -14,6 +14,7 @@ class PermisosCapturaService:
                     p.*,
                     CONCAT(d.nombreDocente, ' ', COALESCE(d.apPaternoDocente, ''), ' ', COALESCE(d.apMaternoDocente, '')) as nombre_docente,
                     g.clave as clave_grupo,
+                    g.id_centroTrabajo as id_cct_grupo,
                     m.nombreMateria as nombre_materia,
                     m.clave as clave_materia
                 FROM tb_docente_permisos_captura p
@@ -63,18 +64,50 @@ class PermisosCapturaService:
         finally:
             conexion.close()
 
+    PERIODOS_PRORROGA = ('p1', 'p2', 'p3', 'semestral', 'extraordinario')
+    _columna_periodo = None
+
+    @staticmethod
+    def _columna_periodo_disponible(cursor):
+        """True si tb_docente_permisos_captura ya tiene la columna periodo (scripts/2026-11-26_prorroga_por_periodo.sql)."""
+        if not PermisosCapturaService._columna_periodo:
+            cursor.execute("SHOW COLUMNS FROM tb_docente_permisos_captura LIKE 'periodo'")
+            PermisosCapturaService._columna_periodo = cursor.fetchone() is not None
+        return PermisosCapturaService._columna_periodo
+
+    @staticmethod
+    def _periodo_prorroga(cursor, id_grupo, data):
+        """Valida el periodo de la prórroga. En BTI es obligatorio. Devuelve (periodo, error)."""
+        periodo = (data.get('periodo') or '').strip() or None
+        if periodo and periodo not in PermisosCapturaService.PERIODOS_PRORROGA:
+            return None, "Periodo de prórroga no válido."
+        cursor.execute("SELECT id_centroTrabajo FROM tb_grupos WHERE id = %s", (id_grupo,))
+        es_bti = int((cursor.fetchone() or {}).get('id_centroTrabajo') or 0) == 2
+        if not es_bti:
+            return None, None   # BGNE: la prórroga aplica a la calificación final
+        if not PermisosCapturaService._columna_periodo_disponible(cursor):
+            return None, ("Falta preparar la base de datos para la prórroga por periodo "
+                          "(scripts/2026-11-26_prorroga_por_periodo.sql).")
+        if not periodo:
+            return None, "Indica a qué periodo se extiende la prórroga (parcial, semestral o extraordinario)."
+        return periodo, None
+
     @staticmethod
     def guardar_permiso(data):
         conexion = get_connection()
         cursor = conexion.cursor()
         try:
             cursor.execute("""
-                SELECT 1 FROM tb_docente_permisos_captura 
+                SELECT 1 FROM tb_docente_permisos_captura
                 WHERE id_docente = %s AND id_grupo = %s AND id_materia = %s
             """, (data.get('id_docente'), data.get('id_grupo'), data.get('id_materia')))
             if cursor.fetchone():
                 return {"success": False, "message": "Ya existe un permiso registrado para este docente en esta asignatura y grupo."}
-            
+
+            periodo, error = PermisosCapturaService._periodo_prorroga(cursor, data.get('id_grupo'), data)
+            if error:
+                return {"success": False, "message": error}
+
             cursor.execute("""
                 INSERT INTO tb_docente_permisos_captura (
                     id_docente, id_grupo, id_materia, fecha_limite, permitir_modificar_pasados, habilitado, created_at, updated_at
@@ -87,6 +120,9 @@ class PermisosCapturaService:
                 1 if data.get('permitir_modificar_pasados') else 0,
                 1 if data.get('habilitado', True) else 0
             ))
+            if periodo:
+                cursor.execute("UPDATE tb_docente_permisos_captura SET periodo = %s WHERE id = %s",
+                               (periodo, cursor.lastrowid))
             conexion.commit()
             return {"success": True, "message": "Permiso asignado correctamente."}
         except Exception as e:
@@ -100,8 +136,16 @@ class PermisosCapturaService:
         conexion = get_connection()
         cursor = conexion.cursor()
         try:
+            cursor.execute("SELECT id_grupo FROM tb_docente_permisos_captura WHERE id = %s", (id_permiso,))
+            actual = cursor.fetchone()
+            if not actual:
+                return {"success": False, "message": "La prórroga no existe."}
+            periodo, error = PermisosCapturaService._periodo_prorroga(cursor, actual['id_grupo'], data)
+            if error:
+                return {"success": False, "message": error}
+
             cursor.execute("""
-                UPDATE tb_docente_permisos_captura 
+                UPDATE tb_docente_permisos_captura
                 SET fecha_limite = %s, permitir_modificar_pasados = %s, habilitado = %s, finalizado = 0, updated_at = NOW()
                 WHERE id = %s
             """, (
@@ -110,6 +154,8 @@ class PermisosCapturaService:
                 1 if data.get('habilitado') else 0,
                 id_permiso
             ))
+            if periodo:
+                cursor.execute("UPDATE tb_docente_permisos_captura SET periodo = %s WHERE id = %s", (periodo, id_permiso))
             conexion.commit()
             return {"success": True, "message": "Permiso actualizado correctamente."}
         except Exception as e:

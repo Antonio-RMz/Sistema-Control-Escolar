@@ -667,11 +667,12 @@ class CalificacionesService:
         return CalificacionesService._obs_por_periodo_disponible
 
     @staticmethod
-    def periodo_observaciones(cursor, id_grupo, hoy=None):
+    def periodo_observaciones(cursor, id_grupo, hoy=None, prorroga_periodo=None):
         """
         Etapa cuyas observaciones se muestran y guardan en la captura: la habilitada hoy.
           - BGNE: extraordinario si su ventana configurada está abierta; si no, la calificación final (p1).
           - BTI: el periodo habilitado con fechas que incluye hoy (el último si hay varios); si ninguno,
+            el periodo de la prórroga vigente del docente (prorroga_periodo); si no,
             el último que ya inició (sus observaciones se siguen viendo hasta que abre el siguiente); si no, p1.
         Devuelve {'clave', 'nombre'}.
         """
@@ -698,6 +699,8 @@ class CalificacionesService:
             abiertos = [p for p in orden if rango(p)[0] and rango(p)[1] and rango(p)[0] <= hoy <= rango(p)[1]]
             if abiertos:
                 clave = abiertos[-1]
+            elif prorroga_periodo in orden:
+                clave = prorroga_periodo
             else:
                 iniciados = [(rango(p)[0], i, p) for i, p in enumerate(orden) if rango(p)[0] and rango(p)[0] <= hoy]
                 clave = max(iniciados)[2] if iniciados else 'p1'
@@ -728,11 +731,24 @@ class CalificacionesService:
         return {r['periodo'] for r in cursor.fetchall()}
 
     @staticmethod
-    def periodo_bti_abierto(cfg, periodo, has_prorroga=False, hoy=None):
+    def periodo_prorroga_vigente(permiso, hoy=None):
+        """Periodo de la prórroga del docente si está vigente (habilitada, no finalizada y antes de su fecha límite).
+        None si no hay prórroga vigente o si no indica periodo (aplica a todos, como antes)."""
+        hoy = hoy or date.today().strftime('%Y-%m-%d')
+        if not (permiso and permiso.get('habilitado') and not permiso.get('finalizado')
+                and permiso.get('fecha_limite') and hoy <= str(permiso.get('fecha_limite'))):
+            return None
+        p = permiso.get('periodo')
+        return p if p in CalificacionesService.PERIODOS_BTI else None
+
+    @staticmethod
+    def periodo_bti_abierto(cfg, periodo, has_prorroga=False, hoy=None, prorroga_periodo=None):
         """
         Regla BTI: todo es manual. El admin indica en "Periodos por grupo" la fecha de inicio y fin de cada periodo.
         Un periodo está abierto solo si está habilitado y hoy cae entre su fecha de inicio y fin.
-        Con prórroga vigente (también es una habilitación manual) basta con que el periodo no esté
+        Prórroga vigente con periodo (prorroga_periodo): abre solo ese periodo para el docente, aunque esté
+        cerrado en el grupo; los demás siguen la regla normal.
+        Prórroga vigente sin periodo (anteriores al cambio): basta con que el periodo no esté
         desactivado y ya haya iniciado (si tiene fecha de inicio).
         Sin prórroga, sin configuración o sin fechas, el periodo está cerrado.
         """
@@ -741,6 +757,10 @@ class CalificacionesService:
         hoy = hoy or date.today().strftime('%Y-%m-%d')
         ini = str(cfg[f'{periodo}_fecha_inicio'])[:10] if cfg.get(f'{periodo}_fecha_inicio') else None
         fin = str(cfg[f'{periodo}_fecha_fin'])[:10] if cfg.get(f'{periodo}_fecha_fin') else None
+        if has_prorroga and prorroga_periodo:
+            if periodo == prorroga_periodo:
+                return True
+            has_prorroga = False
         if has_prorroga:
             desactivado = habilitado is not None and not habilitado
             return not desactivado and (not ini or hoy >= ini)
@@ -767,7 +787,7 @@ class CalificacionesService:
             hoy = date.today().strftime('%Y-%m-%d')
 
             cursor.execute("""
-                SELECT habilitado, fecha_limite, permitir_modificar_pasados, finalizado 
+                SELECT * 
                 FROM tb_docente_permisos_captura
                 WHERE id_docente = %s AND id_grupo = %s AND id_materia = %s
             """, (id_docente, id_grupo, id_materia))
@@ -876,8 +896,9 @@ class CalificacionesService:
                     permiso and permiso.get('habilitado') and not permiso.get('finalizado') and
                     permiso.get('fecha_limite') and hoy <= str(permiso.get('fecha_limite'))
                 )
+                prorroga_periodo = CalificacionesService.periodo_prorroga_vigente(permiso, hoy)
                 periodos = ('p1', 'p2', 'p3', 'semestral', 'extraordinario')
-                if not any(CalificacionesService.periodo_bti_abierto(cfg_t, p, prorroga_vigente) for p in periodos):
+                if not any(CalificacionesService.periodo_bti_abierto(cfg_t, p, prorroga_vigente, prorroga_periodo=prorroga_periodo) for p in periodos):
                     nombres = {'p1': '1er parcial', 'p2': '2do parcial', 'p3': '3er parcial',
                                'semestral': 'examen semestral', 'extraordinario': 'extraordinario'}
                     f = lambda d: datetime.strptime(str(d)[:10], '%Y-%m-%d').strftime('%d/%m/%Y')
@@ -898,7 +919,7 @@ class CalificacionesService:
                     return {'allowed': False, 'reason': motivo}
 
                 # Periodo ya enviado por el docente: queda bloqueado (no se edita ni se reenvía)
-                abiertos = [p for p in periodos if CalificacionesService.periodo_bti_abierto(cfg_t, p, prorroga_vigente)]
+                abiertos = [p for p in periodos if CalificacionesService.periodo_bti_abierto(cfg_t, p, prorroga_vigente, prorroga_periodo=prorroga_periodo)]
                 enviados = CalificacionesService.periodos_enviados(cursor, id_docente, id_grupo, id_materia)
                 if abiertos and all(p in enviados for p in abiertos):
                     etapas = ', '.join(CalificacionesService.NOMBRES_PERIODO_BTI[p] for p in abiertos)
@@ -1133,7 +1154,14 @@ class CalificacionesService:
                 # Observaciones del parcial habilitado (si ya existen las columnas por parcial)
                 obs_col = None
                 if CalificacionesService.obs_por_periodo_disponible(cursor):
-                    periodo_obs = CalificacionesService.periodo_observaciones(cursor, id_grupo)
+                    prorroga_obs = None
+                    if id_docente:
+                        cursor.execute("""
+                            SELECT * FROM tb_docente_permisos_captura
+                            WHERE id_docente = %s AND id_grupo = %s AND id_materia = %s
+                        """, (id_docente, id_grupo, id_materia))
+                        prorroga_obs = CalificacionesService.periodo_prorroga_vigente(cursor.fetchone())
+                    periodo_obs = CalificacionesService.periodo_observaciones(cursor, id_grupo, prorroga_periodo=prorroga_obs)
                     obs_col = CalificacionesService.OBS_COLUMNAS[periodo_obs['clave']]
 
                 cursor.execute(f"""
@@ -1182,7 +1210,7 @@ class CalificacionesService:
             permiso = None
             if id_docente and id_materia:
                 cursor.execute("""
-                    SELECT habilitado, fecha_limite, permitir_modificar_pasados, finalizado 
+                    SELECT * 
                     FROM tb_docente_permisos_captura
                     WHERE id_docente = %s AND id_grupo = %s AND id_materia = %s
                 """, (id_docente, id_grupo, id_materia))
@@ -1206,8 +1234,9 @@ class CalificacionesService:
                     solo_lectura = True
                     mensaje_restriccion = perm_res['reason']
 
-            # Prórroga especial activa para este docente/asignatura
+            # Prórroga especial activa para este docente/asignatura (en BTI, para un periodo)
             hoy = date.today().strftime('%Y-%m-%d')
+            prorroga_periodo = CalificacionesService.periodo_prorroga_vigente(permiso, hoy)
             has_active_special_permission = False
             if permiso and permiso.get('habilitado') and not permiso.get('finalizado'):
                 fecha_limite = permiso.get('fecha_limite')
@@ -1254,7 +1283,7 @@ class CalificacionesService:
                             if is_docente and id_materia else set())
                 cct_config = {
                     f'captura_{p}': (not bloqueado) and p not in enviados
-                                    and CalificacionesService.periodo_bti_abierto(cfg, p, has_active_special_permission)
+                                    and CalificacionesService.periodo_bti_abierto(cfg, p, has_active_special_permission, prorroga_periodo=prorroga_periodo)
                     for p in CalificacionesService.PERIODOS_BTI
                 }
                 periodos_enviados_resp = sorted(enviados, key=CalificacionesService.PERIODOS_BTI.index)
@@ -1449,6 +1478,7 @@ class CalificacionesService:
             allow_p3 = True
             allow_sem = True
             allow_ext = True
+            prorroga_periodo = None   # periodo de la prórroga vigente del docente (BTI)
 
             if is_docente:
                 cursor.execute("""
@@ -1465,7 +1495,7 @@ class CalificacionesService:
                 has_prorroga = False
                 if id_docente:
                     cursor.execute("""
-                        SELECT habilitado, fecha_limite, finalizado
+                        SELECT *
                         FROM tb_docente_permisos_captura
                         WHERE id_docente = %s AND id_grupo = %s AND id_materia = %s
                     """, (id_docente, id_grupo, id_materia))
@@ -1475,6 +1505,7 @@ class CalificacionesService:
                         hoy = date.today().strftime('%Y-%m-%d')
                         if fl and hoy <= str(fl):
                             has_prorroga = True
+                    prorroga_periodo = CalificacionesService.periodo_prorroga_vigente(perm_doc)
 
                 cursor.execute("SELECT id_centroTrabajo, fechaInicio, fechaFin FROM tb_grupos WHERE id = %s", (id_grupo,))
                 g_cct = cursor.fetchone() or {}
@@ -1491,7 +1522,7 @@ class CalificacionesService:
                     if cfg_grupo and cfg_grupo.get('captura_habilitada') is not None and not cfg_grupo.get('captura_habilitada') and not has_prorroga:
                         return {"error": "La captura de calificaciones está deshabilitada para este grupo por administración."}
                     abiertos_bti = [p for p in CalificacionesService.PERIODOS_BTI
-                                    if CalificacionesService.periodo_bti_abierto(cfg_grupo, p, has_prorroga)]
+                                    if CalificacionesService.periodo_bti_abierto(cfg_grupo, p, has_prorroga, prorroga_periodo=prorroga_periodo)]
                     if not abiertos_bti:
                         return {"error": "La administración no ha habilitado fechas de captura para este grupo."}
                     # Los periodos que el docente ya envió no se editan ni se reenvían
@@ -1747,7 +1778,8 @@ class CalificacionesService:
             # Observaciones del parcial habilitado: la columna "Observaciones" de la captura es la de ese parcial.
             # El periodo lo decide el servidor (no el cliente). Solo filas con calificación; las equivalencias no.
             if CalificacionesService.obs_por_periodo_disponible(cursor):
-                clave_obs = CalificacionesService.periodo_observaciones(cursor, id_grupo)['clave']
+                clave_obs = CalificacionesService.periodo_observaciones(
+                    cursor, id_grupo, prorroga_periodo=prorroga_periodo)['clave']
                 col_obs = CalificacionesService.OBS_COLUMNAS[clave_obs]   # nombre de columna de una lista fija
                 for item in calificaciones:
                     if not item.get("idAlumno") or "observaciones" not in item:
