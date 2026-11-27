@@ -808,7 +808,12 @@ class CalificacionesService:
             """, (id_docente, id_grupo, id_materia))
             permiso = cursor.fetchone()
 
-            if permiso and (permiso.get('finalizado') == 1 or permiso.get('finalizado') is True):
+            # BTI bloquea por periodo enviado (tb_docente_envios_captura), no la asignatura completa:
+            # el marcador "finalizado" de envíos anteriores al cambio no aplica en BTI.
+            cursor.execute("SELECT id_centroTrabajo FROM tb_grupos WHERE id = %s", (id_grupo,))
+            es_bti_grupo = int((cursor.fetchone() or {}).get('id_centroTrabajo') or 0) == 2
+
+            if permiso and not es_bti_grupo and (permiso.get('finalizado') == 1 or permiso.get('finalizado') is True):
                 return {
                     'allowed': False,
                     'reason': 'Las calificaciones de esta asignatura ya fueron enviadas y confirmadas. Solo el administrador puede realizar cambios.'
