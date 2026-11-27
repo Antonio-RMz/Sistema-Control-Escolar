@@ -936,24 +936,8 @@ class CalificacionesService:
                 prorroga_periodo = CalificacionesService.periodo_prorroga_vigente(permiso, hoy)
                 periodos = ('p1', 'p2', 'p3', 'semestral', 'extraordinario')
                 if not any(CalificacionesService.periodo_bti_abierto(cfg_t, p, prorroga_vigente, prorroga_periodo=prorroga_periodo) for p in periodos):
-                    nombres = {'p1': '1er parcial', 'p2': '2do parcial', 'p3': '3er parcial',
-                               'semestral': 'examen semestral', 'extraordinario': 'extraordinario'}
-                    f = lambda d: datetime.strptime(str(d)[:10], '%Y-%m-%d').strftime('%d/%m/%Y')
-                    ventanas = [(str(cfg_t[f'{p}_fecha_inicio'])[:10], str(cfg_t[f'{p}_fecha_fin'])[:10], p) for p in periodos
-                                if (cfg_t.get(f'{p}_habilitado') is None or cfg_t.get(f'{p}_habilitado'))
-                                and cfg_t.get(f'{p}_fecha_inicio') and cfg_t.get(f'{p}_fecha_fin')]
-                    proximas = sorted(v for v in ventanas if v[0] > hoy)
-                    pasadas = sorted((v for v in ventanas if v[1] < hoy), key=lambda v: v[1])
-                    if proximas:
-                        ini, fin, p = proximas[0]
-                        motivo = f"La captura del {nombres[p]} se abre del {f(ini)} al {f(fin)}."
-                    elif pasadas:
-                        ini, fin, p = pasadas[-1]
-                        motivo = (f"La captura del {nombres[p]} cerró el {f(fin)}. Si te falta capturar, "
-                                  f"solicita una prórroga a la administración.")
-                    else:
-                        motivo = "La administración no ha habilitado fechas de captura para este grupo."
-                    return {'allowed': False, 'reason': motivo}
+                    # Ningún periodo abierto (cerró, aún no abre o sin fechas): mensaje único, sin detalles que confundan
+                    return {'allowed': False, 'reason': "Captura bloqueada por la administración."}
 
                 # Periodo ya enviado por el docente: queda bloqueado (no se edita ni se reenvía)
                 abiertos = [p for p in periodos if CalificacionesService.periodo_bti_abierto(cfg_t, p, prorroga_vigente, prorroga_periodo=prorroga_periodo)]
@@ -1387,7 +1371,7 @@ class CalificacionesService:
             if is_docente and not any(cct_config.values()):
                 solo_lectura = True
                 if not mensaje_restriccion:
-                    mensaje_restriccion = ("La administración no ha habilitado fechas de captura para este grupo."
+                    mensaje_restriccion = ("Captura bloqueada por la administración."
                                            if is_bti else
                                            "No hay periodos de captura habilitados actualmente para este grupo.")
 
@@ -1574,7 +1558,7 @@ class CalificacionesService:
                     abiertos_bti = [p for p in CalificacionesService.PERIODOS_BTI
                                     if CalificacionesService.periodo_bti_abierto(cfg_grupo, p, has_prorroga, prorroga_periodo=prorroga_periodo)]
                     if not abiertos_bti:
-                        return {"error": "La administración no ha habilitado fechas de captura para este grupo."}
+                        return {"error": "Captura bloqueada por la administración."}
                     # Los periodos que el docente ya envió no se editan ni se reenvían;
                     # con prórroga de ese periodo solo se capturan los alumnos sin calificación
                     enviados_bti = CalificacionesService.periodos_enviados(cursor, id_docente, id_grupo, id_materia)
