@@ -16,7 +16,114 @@ def str_from_td(td):
     secs = tot_sec % 60
     return f"{hrs:02d}:{mins:02d}:{secs:02d}"
 
+def _a_td(valor):
+    """time / timedelta / 'HH:MM[:SS]' → timedelta (None si no se puede)."""
+    if valor is None:
+        return None
+    if isinstance(valor, timedelta):
+        return valor
+    if isinstance(valor, datetime.time):
+        return timedelta(hours=valor.hour, minutes=valor.minute, seconds=valor.second)
+    try:
+        partes = [int(p) for p in str(valor).strip().split(':')]
+        return timedelta(hours=partes[0], minutes=partes[1] if len(partes) > 1 else 0,
+                         seconds=partes[2] if len(partes) > 2 else 0)
+    except (ValueError, IndexError):
+        return None
+
+
 class AsistenciasService:
+    @staticmethod
+    def _tiene_columna_marcajes(cursor):
+        cursor.execute("""
+            SELECT 1 FROM information_schema.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tb_asistencias_docentes' AND COLUMN_NAME = 'marcajes'
+        """)
+        return cursor.fetchone() is not None
+
+    @staticmethod
+    def get_detalle_asistencia_docente(id_docente, fecha_str):
+        """Clases del docente en ese día con la hora a la que llegó y salió de cada una (según los marcajes
+        del biométrico guardados al importar). Usa las mismas clases que el TOT del día."""
+        try:
+            datetime.datetime.strptime(fecha_str, "%Y-%m-%d")
+        except ValueError:
+            raise ValueError("La fecha debe tener el formato YYYY-MM-DD")
+
+        from app.services.docentes_service import DocentesService
+        clases_raw = DocentesService.get_detalle_horas_docente(id_docente, fecha_str)
+
+        conexion = get_connection()
+        cursor = conexion.cursor(pymysql.cursors.DictCursor)
+        try:
+            con_marcajes = AsistenciasService._tiene_columna_marcajes(cursor)
+            cursor.execute(f"""
+                SELECT TIME_FORMAT(hora_entrada, '%%H:%%i') AS hora_entrada, TIME_FORMAT(hora_salida, '%%H:%%i') AS hora_salida,
+                       horas_trabajadas, estado, observaciones{', marcajes' if con_marcajes else ''}
+                FROM tb_asistencias_docentes WHERE id_docente = %s AND fecha = %s
+            """, (id_docente, fecha_str))
+            registro = cursor.fetchone()
+        finally:
+            cursor.close()
+            conexion.close()
+
+        marcajes_txt = (registro or {}).get('marcajes')
+        marcajes = sorted(t for t in (_a_td(x) for x in (marcajes_txt or '').split(',') if x.strip()) if t is not None)
+
+        # Una fila por horario (las materias que comparten hora y grupo van juntas), como el detalle del TOT
+        filas = {}
+        for c in clases_raw:
+            clave = (c['hora_inicio'], c['hora_fin'], c['grupo'])
+            if clave not in filas:
+                filas[clave] = {'grupo': c['grupo'], 'aula': c.get('aula'), 'materias': [],
+                                'hora_inicio': c['hora_inicio'][:5], 'hora_fin': c['hora_fin'][:5]}
+            filas[clave]['materias'].append(c['materia'])
+
+        TOL = timedelta(minutes=5)      # mismo margen que el importador para retardo / salida anticipada
+        VENTANA = timedelta(minutes=45)  # mismo margen que el importador para asociar marcajes a una clase
+        clases = []
+        for f in sorted(filas.values(), key=lambda x: x['hora_inicio']):
+            ini, fin = _a_td(f['hora_inicio']), _a_td(f['hora_fin'])
+            # Llegada: el marcaje más cercano al inicio, entre 45 min antes y el fin de la clase
+            entradas = [t for t in marcajes if ini - VENTANA <= t < fin]
+            llegada = min(entradas, key=lambda t: abs(t - ini)) if entradas else None
+            # Salida: el marcaje más cercano al fin, después de la llegada y hasta 45 min después del fin
+            salidas = [t for t in marcajes if (llegada or ini) < t <= fin + VENTANA]
+            salida = min(salidas, key=lambda t: abs(t - fin)) if salidas else None
+
+            if not marcajes_txt:
+                estado = None
+            elif llegada is None:
+                estado = 'Sin marcaje'
+            else:
+                notas = []
+                if llegada > ini + TOL:
+                    notas.append(f"Retardo de {int((llegada - ini).total_seconds() // 60)} min")
+                if salida is None:
+                    notas.append('Sin marcaje de salida')
+                elif salida < fin - TOL:
+                    notas.append(f"Salida anticipada de {int((fin - salida).total_seconds() // 60)} min")
+                estado = '; '.join(notas) or 'A tiempo'
+
+            f.update({'llegada': str_from_td(llegada)[:5] if llegada is not None else None,
+                      'salida': str_from_td(salida)[:5] if salida is not None else None,
+                      'estado': estado})
+            clases.append(f)
+
+        if registro and registro.get('horas_trabajadas') is not None:
+            h = float(registro['horas_trabajadas'])
+            registro['horas_trabajadas'] = int(h) if h.is_integer() else h
+
+        return {
+            'fecha': fecha_str,
+            'clases': clases,
+            'marcajes': [str_from_td(t)[:5] for t in marcajes],
+            # False: el día se importó antes de guardar marcajes (hay que reimportar el biométrico)
+            'tiene_marcajes': bool(marcajes_txt),
+            'registro': {k: registro[k] for k in ('hora_entrada', 'hora_salida', 'horas_trabajadas', 'estado', 'observaciones')}
+                        if registro else None,
+        }
+
     @staticmethod
     def procesar_excel(file_stream):
         # 1. Leer el archivo Excel en memoria usando pandas
@@ -81,6 +188,8 @@ class AsistenciasService:
         conexion = get_connection()
         cursor = conexion.cursor(pymysql.cursors.DictCursor)
         registros_procesados = 0
+        # Los marcajes del día se guardan si ya se ejecutó scripts/2026-11-27_asistencias_docentes_marcajes.sql
+        guarda_marcajes = AsistenciasService._tiene_columna_marcajes(cursor)
 
         try:
             r = 0
@@ -354,17 +463,35 @@ class AsistenciasService:
                                         observaciones = "Asistencia completa."
 
                                 # Guardar en la base de datos
-                                cursor.execute("""
-                                    INSERT INTO tb_asistencias_docentes 
-                                        (id_docente, fecha, hora_entrada, hora_salida, horas_trabajadas, estado, observaciones)
-                                    VALUES (%s, %s, %s, %s, %s, %s, %s)
-                                    ON DUPLICATE KEY UPDATE
-                                        hora_entrada = VALUES(hora_entrada),
-                                        hora_salida = VALUES(hora_salida),
-                                        horas_trabajadas = VALUES(horas_trabajadas),
-                                        estado = VALUES(estado),
-                                        observaciones = VALUES(observaciones)
-                                """, (db_teacher_id, date_val.strftime("%Y-%m-%d"), hora_entrada_str, hora_salida_str, horas_trabajadas, estado, observaciones))
+                                valores = [db_teacher_id, date_val.strftime("%Y-%m-%d"), hora_entrada_str, hora_salida_str,
+                                           horas_trabajadas, estado, observaciones]
+                                if guarda_marcajes:
+                                    # Marcajes del día ("11:58,13:00,...") para ver la llegada a cada clase
+                                    valores.append(",".join(str_from_td(t)[:5] for t in check_tds) or None)
+                                    cursor.execute("""
+                                        INSERT INTO tb_asistencias_docentes
+                                            (id_docente, fecha, hora_entrada, hora_salida, horas_trabajadas, estado, observaciones, marcajes)
+                                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                                        ON DUPLICATE KEY UPDATE
+                                            hora_entrada = VALUES(hora_entrada),
+                                            hora_salida = VALUES(hora_salida),
+                                            horas_trabajadas = VALUES(horas_trabajadas),
+                                            estado = VALUES(estado),
+                                            observaciones = VALUES(observaciones),
+                                            marcajes = VALUES(marcajes)
+                                    """, valores)
+                                else:
+                                    cursor.execute("""
+                                        INSERT INTO tb_asistencias_docentes
+                                            (id_docente, fecha, hora_entrada, hora_salida, horas_trabajadas, estado, observaciones)
+                                        VALUES (%s, %s, %s, %s, %s, %s, %s)
+                                        ON DUPLICATE KEY UPDATE
+                                            hora_entrada = VALUES(hora_entrada),
+                                            hora_salida = VALUES(hora_salida),
+                                            horas_trabajadas = VALUES(horas_trabajadas),
+                                            estado = VALUES(estado),
+                                            observaciones = VALUES(observaciones)
+                                    """, valores)
                                 registros_procesados += 1
 
                             elif row_personal:

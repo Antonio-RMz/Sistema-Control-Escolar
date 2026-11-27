@@ -118,6 +118,41 @@ def get_asistencias():
         return jsonify({"error": str(e)}), 500
 
 
+@asistencias_bp.route("/asistencias/detalle_docente", methods=["GET"])
+def get_detalle_asistencia_docente():
+    """
+    Detalle de asistencia de un docente en un día: sus clases con la hora de llegada y salida de cada una
+    ---
+    parameters:
+      - name: id_docente
+        in: query
+        type: integer
+        required: true
+      - name: fecha
+        in: query
+        type: string
+        required: true
+        description: YYYY-MM-DD
+    responses:
+      200:
+        description: Operación exitosa
+      400:
+        description: Parámetros faltantes o inválidos
+      500:
+        description: Error interno del servidor
+    """
+    try:
+        id_docente = request.args.get("id_docente")
+        fecha = request.args.get("fecha")
+        if not id_docente or not fecha:
+            return jsonify({"error": "Faltan parámetros id_docente o fecha"}), 400
+        return jsonify(AsistenciasService.get_detalle_asistencia_docente(id_docente, fecha))
+    except ValueError as ve:
+        return jsonify({"error": str(ve)}), 400
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @asistencias_bp.route("/clear_asistencias", methods=["DELETE"])
 def clear_asistencias():
     """
