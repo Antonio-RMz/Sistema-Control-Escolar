@@ -2,7 +2,6 @@ from app.config.conexion import get_connection
 import pymysql
 import datetime
 from datetime import timedelta
-from app.services.periodos_academico import PeriodoAcademicoService
 
 
 
@@ -299,12 +298,13 @@ class DocentesService:
                             h_fecha_fin = h_fecha_fin.date()
 
                         if h['diaSemana'] == db_weekday and h_fecha_inicio <= d <= h_fecha_fin:
-                            g_tipo = h.get('id_tipoPeriodo')
                             g_nivel_db = h.get('id_nivel_grupo')
                             m_nivel_id = h.get('id_nivel_materia')
-                            
-                            active_lvl = PeriodoAcademicoService.get_active_level_for_date(h_fecha_inicio, h_fecha_fin, g_tipo, g_nivel_db, d)
-                            if m_nivel_id is None or m_nivel_id == active_lvl:
+
+                            # Misma regla que "Horario del docente": cuentan las materias del nivel actual del grupo.
+                            # El horario no guarda historial, así que no se filtra por el trimestre de cada fecha
+                            # (eso descartaba todas las clases en quincenas pasadas).
+                            if m_nivel_id is None or m_nivel_id == g_nivel_db:
                                 key = (h['horaInicio'], h['horaFin'])
                                 slots_dia_map[key] = h
 
@@ -424,14 +424,11 @@ class DocentesService:
             
             resultado = []
             for r in rows:
-                g_start = r['fechaInicio']
-                g_end = r['fechaFin']
-                g_tipo = r.get('id_tipoPeriodo')
                 g_nivel_db = r.get('id_nivel_grupo')
                 m_nivel_id = r.get('id_nivel_materia')
-                
-                active_lvl = PeriodoAcademicoService.get_active_level_for_date(g_start, g_end, g_tipo, g_nivel_db, d_fecha)
-                if m_nivel_id is not None and m_nivel_id != active_lvl:
+
+                # Misma regla que el total por día y que "Horario del docente": materias del nivel actual del grupo
+                if m_nivel_id is not None and m_nivel_id != g_nivel_db:
                     continue
                 
                 start_td = r['horaInicio']
