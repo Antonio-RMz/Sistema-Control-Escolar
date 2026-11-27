@@ -5,7 +5,6 @@ from datetime import timedelta
 import pandas as pd
 import pymysql
 from app.config.conexion import get_connection
-from app.services.periodos_academico import PeriodoAcademicoService
 
 
 def str_from_td(td):
@@ -165,6 +164,8 @@ class AsistenciasService:
                                 JOIN tb_grupos g ON h.id_grupo = g.id
                                 LEFT JOIN tb_materias m ON h.id_materia = m.id
                                 WHERE h.id_docente = %s
+                                  -- Los prehorarios son borradores: no generan bloques de clase
+                                  AND (h.es_prehorario IS NULL OR h.es_prehorario = 0)
                             """, (db_teacher_id,))
                             teacher_schedules = cursor.fetchall()
 
@@ -212,12 +213,12 @@ class AsistenciasService:
                                         h_fecha_fin = h_fecha_fin.date()
                                         
                                     if s['diaSemana'] == db_weekday and h_fecha_inicio <= date_val <= h_fecha_fin:
-                                        g_tipo = s.get('id_tipoPeriodo')
                                         g_nivel_db = s.get('id_nivel_grupo')
                                         m_nivel_id = s.get('id_nivel_materia')
-                                        
-                                        active_lvl = PeriodoAcademicoService.get_active_level_for_date(h_fecha_inicio, h_fecha_fin, g_tipo, g_nivel_db, date_val)
-                                        if m_nivel_id is None or m_nivel_id == active_lvl:
+
+                                        # Misma regla que el TOT de Horas Laboradas y "Horario del docente":
+                                        # solo las materias del nivel actual del grupo
+                                        if m_nivel_id is None or m_nivel_id == g_nivel_db:
                                             slots_dia.append(s)
 
                                 # Agrupar por (horaInicio, horaFin) para deduplicar materias en el mismo horario
