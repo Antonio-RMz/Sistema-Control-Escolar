@@ -722,6 +722,8 @@ class CalificacionesService:
     @staticmethod
     def periodos_enviados(cursor, id_docente, id_grupo, id_materia):
         """Periodos BTI cuyas calificaciones ya envió el docente en esa asignatura y grupo (quedan bloqueados).
+        Un envío sin ninguna calificación en ese periodo (se envió vacío o después se borraron todas)
+        no cuenta: es como si no se hubiera capturado.
         Devuelve {periodo: fecha y hora del último envío}."""
         if not id_docente or not CalificacionesService.envios_disponible(cursor):
             return {}
@@ -729,7 +731,22 @@ class CalificacionesService:
             SELECT periodo, enviado_at FROM tb_docente_envios_captura
             WHERE id_docente = %s AND id_grupo = %s AND id_materia = %s
         """, (id_docente, id_grupo, id_materia))
-        return {r['periodo']: r['enviado_at'] for r in cursor.fetchall()}
+        envios = {r['periodo']: r['enviado_at'] for r in cursor.fetchall()}
+        columnas = {'p1': 'parcial1', 'p2': 'parcial2', 'p3': 'parcial3',
+                    'semestral': 'semestral', 'extraordinario': 'extraordinario'}
+        for p in list(envios):
+            col = columnas.get(p)
+            if not col:
+                continue
+            cursor.execute(f"""
+                SELECT 1 FROM tb_calificaciones c
+                JOIN tb_alumnogrupo ag ON ag.idAlumno = c.idAlumno AND ag.idGrupo = %s AND ag.estado = 'ACTIVO'
+                WHERE c.idMateria = %s AND c.{col} IS NOT NULL AND c.tipoAcreditacion != 'EQUIVALENCIA'
+                LIMIT 1
+            """, (id_grupo, id_materia))   # nombre de columna de una lista fija
+            if cursor.fetchone() is None:
+                del envios[p]
+        return envios
 
     @staticmethod
     def periodo_solo_faltantes(permiso, enviados, hoy=None):
