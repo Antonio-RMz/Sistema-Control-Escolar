@@ -835,6 +835,7 @@ class DocentesService:
                 JOIN tb_grupos g ON h.id_grupo = g.id
                 JOIN tb_materias m ON h.id_materia = m.id
                 WHERE h.id_docente = %s
+                  AND (h.es_prehorario IS NULL OR h.es_prehorario = 0)
                   AND g.statusGrupo = 'ACTIVO'
                   AND (m.id_nivel_academico IS NULL OR m.id_nivel_academico = g.id_nivel_academico)
                   AND g.fechaFin >= %s
@@ -859,6 +860,7 @@ class DocentesService:
                 JOIN tb_grupos g ON h.id_grupo = g.id
                 JOIN tb_materias m ON h.id_materia = m.id
                 WHERE h.id_docente = %s
+                  AND (h.es_prehorario IS NULL OR h.es_prehorario = 0)
                   AND g.statusGrupo = 'ACTIVO'
                   AND (m.id_nivel_academico IS NULL OR m.id_nivel_academico = g.id_nivel_academico)
             """, (id_docente,))
