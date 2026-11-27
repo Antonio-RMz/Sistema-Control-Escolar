@@ -70,7 +70,7 @@ def eliminar_permiso(id):
 @permisos_captura_bp.route("/permisos-captura/estado-grupos", methods=["GET"])
 def estado_captura_grupos():
     try:
-        return jsonify(PermisosCapturaService.estado_captura_grupos())
+        return jsonify(PermisosCapturaService.estado_captura_grupos(request.args.get('id_docente', type=int)))
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

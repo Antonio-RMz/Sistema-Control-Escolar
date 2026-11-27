@@ -183,11 +183,51 @@ class PermisosCapturaService:
             conexion.close()
 
     @staticmethod
-    def estado_captura_grupos():
+    def estado_captura_grupos(id_docente=None):
         """Estado de la captura de calificaciones de cada grupo, con las mismas reglas que la captura:
         BTI manual (switch + fechas); BGNE calificación final automática y extraordinario manual.
-        Devuelve {id_grupo: {'estado': abierta|proxima|cerrada|deshabilitada|sin_fechas,
-                             'etapas': [...], 'fin': 'YYYY-MM-DD'|None, 'inicio': ...}}."""
+        Con id_docente (vista del docente), un grupo "abierto" en el que no puede capturar ninguna de
+        sus asignaturas (ya envió el periodo, bloqueo de la administración…) se reporta como 'bloqueada'.
+        Devuelve {id_grupo: {'estado': abierta|bloqueada|proxima|cerrada|deshabilitada|sin_fechas,
+                             'etapas': [...], 'fin': 'YYYY-MM-DD'|None, 'inicio': ..., 'motivo': ...}}."""
+        resultado = PermisosCapturaService._estado_captura_grupos()
+        if not id_docente:
+            return resultado
+        from app.services.calificaciones_service import CalificacionesService as CS
+        conexion = get_connection()
+        cursor = conexion.cursor()
+        try:
+            # Asignaturas del docente por grupo (solo las del nivel actual del grupo, como en "Mis grupos")
+            cursor.execute("""
+                SELECT DISTINCT h.id_grupo, h.id_materia
+                FROM tb_horarios h
+                JOIN tb_grupos g ON g.id = h.id_grupo
+                LEFT JOIN tb_materias m ON m.id = h.id_materia
+                WHERE h.id_docente = %s AND (h.es_prehorario IS NULL OR h.es_prehorario = 0)
+                  AND (m.id_nivel_academico IS NULL OR m.id_nivel_academico = g.id_nivel_academico)
+            """, (id_docente,))
+            materias = {}
+            for r in cursor.fetchall():
+                materias.setdefault(r['id_grupo'], []).append(r['id_materia'])
+        finally:
+            conexion.close()
+
+        for id_grupo, e in resultado.items():
+            if e['estado'] != 'abierta' or id_grupo not in materias:
+                continue
+            motivos = []
+            for id_materia in materias[id_grupo]:
+                perm = CS.check_captura_permission(id_grupo, id_materia, id_docente, 'DOCENTE')
+                if perm['allowed']:
+                    break
+                motivos.append(perm['reason'])
+            else:
+                resultado[id_grupo] = {**e, 'estado': 'bloqueada', 'motivo': motivos[0] if motivos else None}
+        return resultado
+
+    @staticmethod
+    def _estado_captura_grupos():
+        """Estado de la captura a nivel grupo (ver estado_captura_grupos)."""
         from app.services.calificaciones_service import CalificacionesService as CS
         conexion = get_connection()
         cursor = conexion.cursor()
