@@ -254,6 +254,8 @@ class DocentesService:
                 JOIN tb_grupos g ON h.id_grupo = g.id
                 LEFT JOIN tb_materias m ON h.id_materia = m.id
                 WHERE g.fechaInicio <= %s AND g.fechaFin >= %s
+                  -- Los prehorarios son borradores: no cuentan como horas del docente
+                  AND (h.es_prehorario IS NULL OR h.es_prehorario = 0)
             """, (fecha_fin_str, fecha_inicio_str))
             horarios = cursor.fetchall()
 
@@ -412,8 +414,9 @@ class DocentesService:
                 JOIN tb_materias m ON h.id_materia = m.id
                 WHERE h.id_docente = %s 
                   AND h.diaSemana = %s
-                  AND g.fechaInicio <= %s 
+                  AND g.fechaInicio <= %s
                   AND g.fechaFin >= %s
+                  AND (h.es_prehorario IS NULL OR h.es_prehorario = 0)
                 ORDER BY h.horaInicio, m.nombreMateria
             """, (id_docente, db_weekday, fecha_str, fecha_str))
             
