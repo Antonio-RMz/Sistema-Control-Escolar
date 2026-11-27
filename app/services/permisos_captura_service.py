@@ -183,6 +183,69 @@ class PermisosCapturaService:
             conexion.close()
 
     @staticmethod
+    def estado_captura_grupos():
+        """Estado de la captura de calificaciones de cada grupo, con las mismas reglas que la captura:
+        BTI manual (switch + fechas); BGNE calificación final automática y extraordinario manual.
+        Devuelve {id_grupo: {'estado': abierta|proxima|cerrada|deshabilitada|sin_fechas,
+                             'etapas': [...], 'fin': 'YYYY-MM-DD'|None, 'inicio': ...}}."""
+        from app.services.calificaciones_service import CalificacionesService as CS
+        conexion = get_connection()
+        cursor = conexion.cursor()
+        try:
+            hoy = date.today()
+            hoy_s = hoy.strftime('%Y-%m-%d')
+            cursor.execute("""
+                SELECT c.*, g.id AS gid, g.id_centroTrabajo AS gcct, g.fechaInicio AS gini, g.fechaFin AS gfin
+                FROM tb_grupos g
+                LEFT JOIN tb_grupo_periodos_captura c ON c.id_grupo = g.id
+            """)
+            iso = lambda d: CS._a_fecha(d).isoformat() if CS._a_fecha(d) else None
+            nombres = {'p1': '1er parcial', 'p2': '2do parcial', 'p3': '3er parcial',
+                       'semestral': 'Semestral', 'extraordinario': 'Extraordinario'}
+            resultado = {}
+            for r in cursor.fetchall():
+                cfg = r if r.get('id_grupo') else {}
+                cct = int(r.get('gcct') or 0)
+                if cfg and cfg.get('captura_habilitada') is not None and not cfg.get('captura_habilitada'):
+                    resultado[r['gid']] = {'estado': 'deshabilitada', 'etapas': []}
+                    continue
+
+                abiertas, proximas = [], []   # (etapa, inicio, fin)
+                if cct == 3:
+                    grupo = {'fechaInicio': r.get('gini'), 'fechaFin': r.get('gfin')}
+                    if CS.p1_abierto_bgne(grupo, cfg):
+                        v = CS.ventana_captura_bgne(r.get('gini'), r.get('gfin'), fin_manual=cfg.get('p1_fecha_fin'),
+                                                    inicio_manual=cfg.get('p1_fecha_inicio'))
+                        abiertas.append(('Calificación final', v and v['apertura'], v and v['cierre']))
+                    elif not (cfg.get('p1_habilitado') is not None and not cfg.get('p1_habilitado')):
+                        v = CS.ventana_captura_bgne(r.get('gini'), r.get('gfin'), fin_manual=cfg.get('p1_fecha_fin'),
+                                                    inicio_manual=cfg.get('p1_fecha_inicio'))
+                        if v and v['apertura'] > hoy:
+                            proximas.append(('Calificación final', v['apertura'], v['cierre']))
+                    claves = ('extraordinario',)
+                else:
+                    claves = CS.PERIODOS_BTI
+                for p in claves:
+                    ini, fin = cfg.get(f'{p}_fecha_inicio'), cfg.get(f'{p}_fecha_fin')
+                    if CS.periodo_bti_abierto(cfg, p, hoy=hoy_s):
+                        abiertas.append((nombres[p], ini, fin))
+                    elif (cfg.get(f'{p}_habilitado') is None or cfg.get(f'{p}_habilitado')) and ini and fin \
+                            and str(ini)[:10] > hoy_s:
+                        proximas.append((nombres[p], ini, fin))
+
+                if abiertas:
+                    resultado[r['gid']] = {'estado': 'abierta', 'etapas': [a[0] for a in abiertas],
+                                           'fin': min((iso(a[2]) for a in abiertas if a[2]), default=None)}
+                elif proximas:
+                    prox = min(proximas, key=lambda x: str(x[1]))
+                    resultado[r['gid']] = {'estado': 'proxima', 'etapas': [prox[0]], 'inicio': iso(prox[1]), 'fin': iso(prox[2])}
+                else:
+                    resultado[r['gid']] = {'estado': 'cerrada' if cfg else 'sin_fechas', 'etapas': []}
+            return resultado
+        finally:
+            conexion.close()
+
+    @staticmethod
     def obtener_ccts():
         conexion = get_connection()
         cursor = conexion.cursor()

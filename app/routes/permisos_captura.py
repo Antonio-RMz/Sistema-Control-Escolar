@@ -67,6 +67,13 @@ def eliminar_permiso(id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@permisos_captura_bp.route("/permisos-captura/estado-grupos", methods=["GET"])
+def estado_captura_grupos():
+    try:
+        return jsonify(PermisosCapturaService.estado_captura_grupos())
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @permisos_captura_bp.route("/permisos-captura/ccts", methods=["GET"])
 def obtener_ccts():
     try:
