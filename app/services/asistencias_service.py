@@ -68,6 +68,10 @@ class AsistenciasService:
             conexion.close()
 
         marcajes_txt = (registro or {}).get('marcajes')
+        # Sin registro del biométrico ese día (no marcó): sus clases se muestran sin llegada ni salida.
+        # Con registro pero marcajes NULL: se importó antes de guardar marcajes (hay que reimportar).
+        sin_registro = registro is None
+        tiene_marcajes = sin_registro or marcajes_txt is not None
         marcajes = sorted(t for t in (_a_td(x) for x in (marcajes_txt or '').split(',') if x.strip()) if t is not None)
 
         # Una fila por horario (las materias que comparten hora y grupo van juntas), como el detalle del TOT
@@ -75,14 +79,27 @@ class AsistenciasService:
         for c in clases_raw:
             clave = (c['hora_inicio'], c['hora_fin'], c['grupo'])
             if clave not in filas:
+                # horas: duración del módulo como en el TOT (en BTI un módulo de 50 min cuenta como 1 h)
                 filas[clave] = {'grupo': c['grupo'], 'aula': c.get('aula'), 'materias': [],
-                                'hora_inicio': c['hora_inicio'][:5], 'hora_fin': c['hora_fin'][:5]}
+                                'hora_inicio': c['hora_inicio'][:5], 'hora_fin': c['hora_fin'][:5],
+                                'horas': float(c.get('duracion') or 0)}
             filas[clave]['materias'].append(c['materia'])
+
+        # Módulos seguidos de la misma materia y grupo son una sola clase (como en el importador):
+        # 07:30-08:20 + 08:20-09:10 → 07:30-09:10
+        unidas = []
+        for f in sorted(filas.values(), key=lambda x: x['hora_inicio']):
+            prev = unidas[-1] if unidas else None
+            if prev and prev['grupo'] == f['grupo'] and prev['materias'] == f['materias'] and prev['hora_fin'] == f['hora_inicio']:
+                prev['hora_fin'] = f['hora_fin']
+                prev['horas'] += f['horas']
+            else:
+                unidas.append(f)
 
         TOL = timedelta(minutes=5)      # mismo margen que el importador para retardo / salida anticipada
         VENTANA = timedelta(minutes=45)  # mismo margen que el importador para asociar marcajes a una clase
         clases = []
-        for f in sorted(filas.values(), key=lambda x: x['hora_inicio']):
+        for f in unidas:
             ini, fin = _a_td(f['hora_inicio']), _a_td(f['hora_fin'])
             # Llegada: el marcaje más cercano al inicio, entre 45 min antes y el fin de la clase
             entradas = [t for t in marcajes if ini - VENTANA <= t < fin]
@@ -91,7 +108,7 @@ class AsistenciasService:
             salidas = [t for t in marcajes if (llegada or ini) < t <= fin + VENTANA]
             salida = min(salidas, key=lambda t: abs(t - fin)) if salidas else None
 
-            if not marcajes_txt:
+            if not tiene_marcajes:
                 estado = None
             elif llegada is None:
                 estado = 'Sin marcaje'
@@ -119,7 +136,8 @@ class AsistenciasService:
             'clases': clases,
             'marcajes': [str_from_td(t)[:5] for t in marcajes],
             # False: el día se importó antes de guardar marcajes (hay que reimportar el biométrico)
-            'tiene_marcajes': bool(marcajes_txt),
+            'tiene_marcajes': tiene_marcajes,
+            'sin_registro': sin_registro,
             'registro': {k: registro[k] for k in ('hora_entrada', 'hora_salida', 'horas_trabajadas', 'estado', 'observaciones')}
                         if registro else None,
         }
@@ -260,10 +278,12 @@ class AsistenciasService:
                             db_teacher_id = row_docente['idDocente']
                             # Obtener los horarios de este docente registrados en el sistema
                             cursor.execute("""
-                                SELECT 
+                                SELECT
                                     h.diaSemana,
                                     h.horaInicio,
                                     h.horaFin,
+                                    h.id_grupo,
+                                    h.id_materia,
                                     g.fechaInicio,
                                     g.fechaFin,
                                     g.id_tipoPeriodo,
@@ -342,25 +362,21 @@ class AsistenciasService:
                                     continue
 
                                 # Agrupar los horarios en bloques contiguos de clase
-                                class_intervals = []
+                                modulos = []
                                 for s in slots_dia_dedup:
-                                    start_td = s['horaInicio']
-                                    end_td = s['horaFin']
-                                    if isinstance(start_td, str):
-                                        h_v, m_v, s_v = map(int, start_td.split(':'))
-                                        start_td = timedelta(hours=h_v, minutes=m_v, seconds=s_v)
-                                    elif isinstance(start_td, datetime.time):
-                                        start_td = timedelta(hours=start_td.hour, minutes=start_td.minute, seconds=start_td.second)
-                                        
-                                    if isinstance(end_td, str):
-                                        h_v, m_v, s_v = map(int, end_td.split(':'))
-                                        end_td = timedelta(hours=h_v, minutes=m_v, seconds=s_v)
-                                    elif isinstance(end_td, datetime.time):
-                                        end_td = timedelta(hours=end_td.hour, minutes=end_td.minute, seconds=end_td.second)
-                                        
-                                    class_intervals.append((start_td, end_td))
+                                    modulos.append((_a_td(s['horaInicio']), _a_td(s['horaFin']),
+                                                    (s.get('id_grupo'), s.get('id_materia'))))
+                                modulos.sort(key=lambda x: x[0])
 
-                                class_intervals.sort(key=lambda x: x[0])
+                                # Módulos seguidos de la misma materia y grupo son una sola clase:
+                                # no se exige marcaje en el cambio de módulo (ej. 07:30-08:20 + 08:20-09:10)
+                                class_intervals = []
+                                for start_td, end_td, clave in modulos:
+                                    if class_intervals and class_intervals[-1][2] == clave and class_intervals[-1][1] == start_td:
+                                        class_intervals[-1] = (class_intervals[-1][0], end_td, clave)
+                                    else:
+                                        class_intervals.append((start_td, end_td, clave))
+                                class_intervals = [(a, b) for a, b, _ in class_intervals]
                                 
                                 blocks = []
                                 for start, end in class_intervals:
@@ -467,7 +483,7 @@ class AsistenciasService:
                                            horas_trabajadas, estado, observaciones]
                                 if guarda_marcajes:
                                     # Marcajes del día ("11:58,13:00,...") para ver la llegada a cada clase
-                                    valores.append(",".join(str_from_td(t)[:5] for t in check_tds) or None)
+                                    valores.append(",".join(str_from_td(t)[:5] for t in check_tds))   # '' = importado sin marcajes
                                     cursor.execute("""
                                         INSERT INTO tb_asistencias_docentes
                                             (id_docente, fecha, hora_entrada, hora_salida, horas_trabajadas, estado, observaciones, marcajes)
