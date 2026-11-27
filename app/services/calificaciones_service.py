@@ -881,7 +881,7 @@ class CalificacionesService:
                 if not has_prorroga_vigente:
                     return {
                         'allowed': False,
-                        'reason': 'La captura de calificaciones está deshabilitada temporalmente para este grupo por administración.'
+                        'reason': 'Captura bloqueada por la administración.'
                     }
 
             # BGNE: ventana automática al terminar cada trimestre (último día de clases + 6 días).
@@ -905,24 +905,13 @@ class CalificacionesService:
                 )
                 if not prorroga_vigente and not ext_abierto:
                     if cfg_b.get('p1_habilitado') is not None and not cfg_b.get('p1_habilitado'):
-                        return {'allowed': False, 'reason': 'La captura de la calificación final está desactivada para este grupo por administración.'}
+                        return {'allowed': False, 'reason': 'Captura bloqueada por la administración.'}
                     v = CalificacionesService.ventana_captura_bgne(grupo.get('fechaInicio'), grupo.get('fechaFin'),
                                                                    fin_manual=cfg_b.get('p1_fecha_fin'),
                                                                    inicio_manual=cfg_b.get('p1_fecha_inicio'))
                     if v and not v['abierta']:
-                        ordinal = {1: '1er', 2: '2do', 3: '3er', 4: '4to', 5: '5to', 6: '6to'}.get(v['nivel'], f"{v['nivel']}°")
-                        f = lambda d: d.strftime('%d/%m/%Y')
-                        ord_de = lambda n: {1: '1er', 2: '2do', 3: '3er', 4: '4to', 5: '5to', 6: '6to'}.get(n, f"{n}°")
-                        partes = []
-                        ant = v.get('anterior')
-                        if ant:
-                            partes.append(f"El plazo para capturar calificaciones del {ord_de(ant['nivel'])} trimestre terminó el "
-                                          f"{f(ant['cierre'])}; para capturarlas solicita una prórroga a la administración.")
-                        if v['apertura'] > date.today():
-                            partes.append(f"La captura del {ordinal} trimestre se abre al terminar el trimestre: "
-                                          f"del {f(v['apertura'])} al {f(v['cierre'])}.")
-                        motivo = ' '.join(partes) or 'La captura de calificaciones está cerrada para este grupo.'
-                        return {'allowed': False, 'reason': motivo}
+                        # Fuera de la ventana del trimestre: mismo mensaje corto que BTI
+                        return {'allowed': False, 'reason': 'Captura bloqueada por la administración.'}
 
             # BTI: solo con un periodo habilitado manualmente cuyas fechas incluyan hoy (o prórroga vigente).
             # Misma regla que al abrir la captura y al guardar, para que "Mis grupos" no ofrezca capturar de más.
@@ -1273,7 +1262,7 @@ class CalificacionesService:
             if is_docente and cfg and cfg.get('captura_habilitada') is not None and not cfg.get('captura_habilitada') and not has_active_special_permission:
                 solo_lectura = True
                 if not mensaje_restriccion:
-                    mensaje_restriccion = "La captura de calificaciones está deshabilitada para este grupo por administración."
+                    mensaje_restriccion = "Captura bloqueada por la administración."
 
             # Bloqueo por semestre si no hay permiso especial activo
             # (No bloquear si la materia está formalmente asignada al docente en tb_horarios para este grupo)
@@ -1371,9 +1360,7 @@ class CalificacionesService:
             if is_docente and not any(cct_config.values()):
                 solo_lectura = True
                 if not mensaje_restriccion:
-                    mensaje_restriccion = ("Captura bloqueada por la administración."
-                                           if is_bti else
-                                           "No hay periodos de captura habilitados actualmente para este grupo.")
+                    mensaje_restriccion = "Captura bloqueada por la administración."
 
             return {
                 "grupo": grupo,
@@ -1546,15 +1533,15 @@ class CalificacionesService:
                 if int(g_cct.get('id_centroTrabajo') or 0) == 3:
                     # BGNE: la calificación final solo en la ventana automática (fechas manuales solo extienden el cierre)
                     if cfg_grupo and cfg_grupo.get('captura_habilitada') is not None and not cfg_grupo.get('captura_habilitada') and not has_prorroga:
-                        return {"error": "La captura de calificaciones está deshabilitada para este grupo por administración."}
+                        return {"error": "Captura bloqueada por la administración."}
                     allow_p1 = CalificacionesService.p1_abierto_bgne(g_cct, cfg_grupo, has_prorroga)
                     allow_ext = bool(cfg_grupo) and CalificacionesService.periodo_bti_abierto(cfg_grupo, 'extraordinario', has_prorroga)
                     if not allow_p1 and not allow_ext:
-                        return {"error": "La captura de calificaciones está cerrada para este grupo."}
+                        return {"error": "Captura bloqueada por la administración."}
                 elif int(g_cct.get('id_centroTrabajo') or 0) == 2:
                     # BTI: solo los periodos habilitados manualmente con fechas (o prórroga vigente)
                     if cfg_grupo and cfg_grupo.get('captura_habilitada') is not None and not cfg_grupo.get('captura_habilitada') and not has_prorroga:
-                        return {"error": "La captura de calificaciones está deshabilitada para este grupo por administración."}
+                        return {"error": "Captura bloqueada por la administración."}
                     abiertos_bti = [p for p in CalificacionesService.PERIODOS_BTI
                                     if CalificacionesService.periodo_bti_abierto(cfg_grupo, p, has_prorroga, prorroga_periodo=prorroga_periodo)]
                     if not abiertos_bti:
@@ -1570,7 +1557,7 @@ class CalificacionesService:
                         p in abiertos_bti for p in CalificacionesService.PERIODOS_BTI)
                 elif cfg_grupo:
                     if cfg_grupo.get('captura_habilitada') is not None and not cfg_grupo.get('captura_habilitada') and not has_prorroga:
-                        return {"error": "La captura de calificaciones está deshabilitada para este grupo por administración."}
+                        return {"error": "Captura bloqueada por la administración."}
                     
                     def check_period(en, st, en_date):
                         if not en:
@@ -1593,7 +1580,7 @@ class CalificacionesService:
                         if cfg_grupo.get('captura_habilitada') or cfg_grupo.get('captura_habilitada') is None:
                             allow_p1 = allow_p2 = allow_p3 = allow_sem = allow_ext = True
                         else:
-                            return {"error": "No hay periodos de captura habilitados actualmente para este grupo."}
+                            return {"error": "Captura bloqueada por la administración."}
 
             # 3. Validar rango de calificaciones (enteros 1 a 10) para BTI (CCT 2) y BGNE (CCT 3)
             cursor.execute("SELECT id_centroTrabajo FROM tb_grupos WHERE id = %s", (id_grupo,))
