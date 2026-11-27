@@ -595,7 +595,7 @@ class DocentesService:
 
         cursor.execute("""
             SELECT DISTINCT g.id, g.clave, g.id_centroTrabajo, g.fechaInicio, g.fechaFin, g.modalidadHorario,
-                   g.statusGrupo, g.id_nivel_academico, g.id_tipoPeriodo, na.nombre AS nombre_nivel
+                   g.statusGrupo, g.id_nivel_academico, g.id_tipoPeriodo, na.nombre AS nombre_nivel, na.numero AS numero_nivel
             FROM tb_horarios h
             JOIN tb_grupos g ON g.id = h.id_grupo
             LEFT JOIN tb_materias m ON m.id = h.id_materia
@@ -764,6 +764,8 @@ class DocentesService:
                 'clave': g['clave'],
                 'plantel': 'BGNE' if es_bgne else ('BTI' if int(g.get('id_centroTrabajo') or 0) == 2 else ''),
                 'modalidad': g.get('modalidadHorario'),
+                # Número de semestre (BTI) o trimestre en curso (BGNE), para ordenar de menor a mayor
+                'numero_nivel': (periodo.get('nivel') if (es_bgne and periodo) else g.get('numero_nivel')),
                 'fecha_inicio': iso(ini_g),
                 'fecha_fin': iso(fin_g),
                 'periodo': periodo,
