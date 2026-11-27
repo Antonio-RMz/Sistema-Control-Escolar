@@ -812,10 +812,15 @@ class DocentesService:
                 if p.get('updateAt'):
                     p['updateAt'] = str(p['updateAt'])
 
-            # Una prórroga de un periodo que el docente ya envió no le sirve (no reabre lo enviado): no se anuncia
+            # Prórroga de un periodo ya enviado: sirve para capturar a los alumnos faltantes hasta que vuelve a
+            # enviar; después ya no se anuncia
             from app.services.calificaciones_service import CalificacionesService as CS
-            prorrogas = [p for p in prorrogas if not (
-                p.get('periodo') and p['periodo'] in CS.periodos_enviados(cursor, id_docente, p['id_grupo'], p['id_materia']))]
+            def prorroga_util(p):
+                if not p.get('periodo'):
+                    return True
+                env = CS.periodos_enviados(cursor, id_docente, p['id_grupo'], p['id_materia'])
+                return p['periodo'] not in env or CS.periodo_solo_faltantes(p, env) == p['periodo']
+            prorrogas = [p for p in prorrogas if prorroga_util(p)]
 
             # 2. Grupos por finalizar (próximos 15 días)
             cursor.execute("""

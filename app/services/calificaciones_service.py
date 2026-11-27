@@ -721,14 +721,29 @@ class CalificacionesService:
 
     @staticmethod
     def periodos_enviados(cursor, id_docente, id_grupo, id_materia):
-        """Periodos BTI cuyas calificaciones ya envió el docente en esa asignatura y grupo (quedan bloqueados)."""
+        """Periodos BTI cuyas calificaciones ya envió el docente en esa asignatura y grupo (quedan bloqueados).
+        Devuelve {periodo: fecha y hora del último envío}."""
         if not id_docente or not CalificacionesService.envios_disponible(cursor):
-            return set()
+            return {}
         cursor.execute("""
-            SELECT periodo FROM tb_docente_envios_captura
+            SELECT periodo, enviado_at FROM tb_docente_envios_captura
             WHERE id_docente = %s AND id_grupo = %s AND id_materia = %s
         """, (id_docente, id_grupo, id_materia))
-        return {r['periodo'] for r in cursor.fetchall()}
+        return {r['periodo']: r['enviado_at'] for r in cursor.fetchall()}
+
+    @staticmethod
+    def periodo_solo_faltantes(permiso, enviados, hoy=None):
+        """Periodo ya enviado que la prórroga vigente reabre SOLO para los alumnos sin calificación
+        (las ya enviadas siguen bloqueadas). Deja de aplicar en cuanto el docente vuelve a enviar
+        después de otorgada (o editada) la prórroga. None si no aplica."""
+        p = CalificacionesService.periodo_prorroga_vigente(permiso, hoy)
+        if not p or p not in enviados:
+            return None
+        otorgada = permiso.get('updated_at') or permiso.get('created_at')
+        enviado = enviados.get(p)
+        if otorgada and enviado and enviado >= otorgada:
+            return None   # ya volvió a enviar con la prórroga
+        return p
 
     @staticmethod
     def periodo_prorroga_vigente(permiso, hoy=None):
@@ -921,7 +936,9 @@ class CalificacionesService:
                 # Periodo ya enviado por el docente: queda bloqueado (no se edita ni se reenvía)
                 abiertos = [p for p in periodos if CalificacionesService.periodo_bti_abierto(cfg_t, p, prorroga_vigente, prorroga_periodo=prorroga_periodo)]
                 enviados = CalificacionesService.periodos_enviados(cursor, id_docente, id_grupo, id_materia)
-                if abiertos and all(p in enviados for p in abiertos):
+                # La prórroga de un periodo enviado lo reabre solo para los alumnos sin calificación
+                faltantes = CalificacionesService.periodo_solo_faltantes(permiso, enviados, hoy)
+                if abiertos and all(p in enviados and p != faltantes for p in abiertos):
                     etapas = ', '.join(CalificacionesService.NOMBRES_PERIODO_BTI[p] for p in abiertos)
                     return {'allowed': False,
                             'reason': f"Ya enviaste las calificaciones del {etapas}; quedaron registradas y no se pueden modificar."}
@@ -951,7 +968,10 @@ class CalificacionesService:
                                     'reason': f"Esta asignatura pertenece a un periodo anterior ({nivel_materia.get('nombre')}). Requiere autorización de administración para modificar calificaciones pasadas."
                                 }
 
-            if permiso and permiso.get('fecha_limite'):
+            # Prórroga BTI de un periodo: al vencer solo deja de abrir ese periodo (los demás siguen sus fechas)
+            prorroga_de_periodo = int(grupo.get('id_centroTrabajo') or 0) == 2 and permiso and \
+                permiso.get('periodo') in CalificacionesService.PERIODOS_BTI
+            if permiso and permiso.get('fecha_limite') and not prorroga_de_periodo:
                 fecha_limite_str = str(permiso.get('fecha_limite'))
                 if hoy > fecha_limite_str:
                     return {
@@ -1274,19 +1294,22 @@ class CalificacionesService:
                 return True
 
             periodos_enviados_resp = []
+            periodo_solo_faltantes_resp = None
             if is_bti:
                 # BTI: la captura solo se abre manualmente desde "Periodos por grupo" (periodo habilitado y con fechas).
                 bloqueado = bool(cfg and cfg.get('captura_habilitada') is not None and not cfg.get('captura_habilitada')
                                  and not has_active_special_permission)
-                # El docente no edita los periodos que ya envió
+                # El docente no edita los periodos que ya envió; con prórroga de ese periodo, solo captura los faltantes
                 enviados = (CalificacionesService.periodos_enviados(cursor, id_docente, id_grupo, id_materia)
-                            if is_docente and id_materia else set())
+                            if is_docente and id_materia else {})
+                solo_faltantes = CalificacionesService.periodo_solo_faltantes(permiso, enviados, hoy) if is_docente else None
                 cct_config = {
-                    f'captura_{p}': (not bloqueado) and p not in enviados
+                    f'captura_{p}': (not bloqueado) and (p not in enviados or p == solo_faltantes)
                                     and CalificacionesService.periodo_bti_abierto(cfg, p, has_active_special_permission, prorroga_periodo=prorroga_periodo)
                     for p in CalificacionesService.PERIODOS_BTI
                 }
                 periodos_enviados_resp = sorted(enviados, key=CalificacionesService.PERIODOS_BTI.index)
+                periodo_solo_faltantes_resp = solo_faltantes
             elif not cfg:
                 cct_config = {
                     'captura_p1': True,
@@ -1357,7 +1380,9 @@ class CalificacionesService:
                 "cct_config": cct_config,
                 "periodo_observaciones": periodo_obs,
                 "finalizado": bool(permiso.get('finalizado')) if permiso else False,
-                "periodos_enviados": periodos_enviados_resp
+                "periodos_enviados": periodos_enviados_resp,
+                # Periodo enviado reabierto por prórroga: solo se capturan los alumnos sin calificación en él
+                "periodo_solo_faltantes": periodo_solo_faltantes_resp
             }
         except Exception as e:
             return {"error": str(e)}
@@ -1479,6 +1504,9 @@ class CalificacionesService:
             allow_sem = True
             allow_ext = True
             prorroga_periodo = None   # periodo de la prórroga vigente del docente (BTI)
+            solo_faltantes_bti = None  # periodo enviado reabierto por prórroga solo para alumnos sin calificación
+            alumnos_ya_enviados = set()   # en ese periodo, alumnos que ya tenían calificación (no se tocan)
+            perm_doc = None
 
             if is_docente:
                 cursor.execute("""
@@ -1525,9 +1553,11 @@ class CalificacionesService:
                                     if CalificacionesService.periodo_bti_abierto(cfg_grupo, p, has_prorroga, prorroga_periodo=prorroga_periodo)]
                     if not abiertos_bti:
                         return {"error": "La administración no ha habilitado fechas de captura para este grupo."}
-                    # Los periodos que el docente ya envió no se editan ni se reenvían
+                    # Los periodos que el docente ya envió no se editan ni se reenvían;
+                    # con prórroga de ese periodo solo se capturan los alumnos sin calificación
                     enviados_bti = CalificacionesService.periodos_enviados(cursor, id_docente, id_grupo, id_materia)
-                    abiertos_bti = [p for p in abiertos_bti if p not in enviados_bti]
+                    solo_faltantes_bti = CalificacionesService.periodo_solo_faltantes(perm_doc, enviados_bti) if id_docente else None
+                    abiertos_bti = [p for p in abiertos_bti if p not in enviados_bti or p == solo_faltantes_bti]
                     if not abiertos_bti:
                         return {"error": "Ya enviaste las calificaciones de este periodo; no se pueden modificar ni volver a enviar."}
                     allow_p1, allow_p2, allow_p3, allow_sem, allow_ext = (
@@ -1745,6 +1775,20 @@ class CalificacionesService:
                         if not allow_ext:
                             ext_val = None
 
+                    # Prórroga de un periodo ya enviado: solo se capturan los alumnos sin calificación en ese periodo;
+                    # las calificaciones ya enviadas se conservan tal cual (y también sus observaciones)
+                    if solo_faltantes_bti and existente:
+                        col = {'p1': 'parcial1', 'p2': 'parcial2', 'p3': 'parcial3',
+                               'semestral': 'semestral', 'extraordinario': 'extraordinario'}[solo_faltantes_bti]
+                        if existente.get(col) is not None:
+                            previo = float(existente[col])
+                            if solo_faltantes_bti == 'p1': p1_val = previo
+                            elif solo_faltantes_bti == 'p2': p2_val = previo
+                            elif solo_faltantes_bti == 'p3': p3_val = previo
+                            elif solo_faltantes_bti == 'semestral': sem_val = previo
+                            else: ext_val = previo
+                            alumnos_ya_enviados.add(int(id_alumno))
+
                     # Recalcular calif_val a partir de los parciales válidos si existe algún parcial
                     if any(x is not None for x in [p1_val, p2_val, p3_val, sem_val, ext_val]):
                         if ext_val is not None:
@@ -1784,6 +1828,9 @@ class CalificacionesService:
                 for item in calificaciones:
                     if not item.get("idAlumno") or "observaciones" not in item:
                         continue
+                    # Solo faltantes: las observaciones de lo ya enviado tampoco se modifican
+                    if clave_obs == solo_faltantes_bti and int(item.get("idAlumno")) in alumnos_ya_enviados:
+                        continue
                     cursor.execute(f"""
                         UPDATE tb_calificaciones SET {col_obs} = %s
                         WHERE idAlumno = %s AND idMateria = %s AND tipoAcreditacion != 'EQUIVALENCIA'
@@ -1796,10 +1843,12 @@ class CalificacionesService:
                     conexion.rollback()
                     return {"error": "Falta preparar la base de datos para el envío por periodo "
                                      "(scripts/2026-11-26_envios_captura_por_periodo.sql). Avisa a la administración."}
+                # Si reenvía con prórroga (solo faltantes) se actualiza la hora: así la prórroga deja de reabrirlo
                 for p in abiertos_bti:
                     cursor.execute("""
-                        INSERT IGNORE INTO tb_docente_envios_captura (id_docente, id_grupo, id_materia, periodo)
+                        INSERT INTO tb_docente_envios_captura (id_docente, id_grupo, id_materia, periodo)
                         VALUES (%s, %s, %s, %s)
+                        ON DUPLICATE KEY UPDATE enviado_at = NOW()
                     """, (id_docente, id_grupo, id_materia, p))
             # BGNE y otros: se bloquea la asignatura. En BGNE la calificación final se captura en la ventana p1 (no hay semestral)
             elif finalizar and id_docente and is_docente and (allow_sem or allow_ext or (id_cct == 3 and allow_p1)):
